@@ -82,12 +82,15 @@ func (w *Workspace) SafeJoin(name string) (string, error) {
 	if filepath.IsAbs(p) {
 		return "", xcerr.E(xcerr.CodeValidation, "absolute paths are not allowed here", nil)
 	}
+	// Backslash-rooted ("\x") is absolute on Windows and a legal-but-hostile
+	// filename elsewhere; reject on ALL platforms so paths generated on one OS
+	// can never be misinterpreted on another (workspaces may live on shares).
+	if strings.HasPrefix(p, `\`) || strings.HasPrefix(p, `/`) {
+		return "", xcerr.E(xcerr.CodeValidation, "rooted paths are not allowed here", nil)
+	}
 	if runtime.GOOS == "windows" {
 		if vol := filepath.VolumeName(p); vol != "" {
 			return "", xcerr.E(xcerr.CodeValidation, "drive-qualified paths are not allowed here", nil)
-		}
-		if strings.HasPrefix(p, `\`) {
-			return "", xcerr.E(xcerr.CodeValidation, "rooted paths are not allowed here", nil)
 		}
 	}
 	for _, elem := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
