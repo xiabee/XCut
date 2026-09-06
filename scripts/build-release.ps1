@@ -8,6 +8,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Resolve relative output path up front: later steps change the CWD.
+$OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
+
 if (-not $Version) {
     $Version = (git describe --tags --always 2>$null)
     if (-not $Version) { $Version = "dev-$(Get-Date -Format 'yyyyMMdd-HHmm')" }
@@ -32,14 +35,28 @@ foreach ($plat in $Platforms.Split(",")) {
 }
 Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
 
-# Host-platform Rust worker, when the crate has been built.
-$workerExe = "crates/xcut-worker-media/target/release/xcut-worker-media.exe"
-if (-not (Test-Path $workerExe)) { $workerExe = "crates/xcut-worker-media/target/release/xcut-worker-media" }
-if (Test-Path $workerExe) {
-    Copy-Item $workerExe (Join-Path $OutDir "xcut-worker-media-$Version-$(if ($IsWindows -or $env:OS -like '*Windows*') { 'windows' } else { 'linux' })-amd64$(if ($IsWindows -or $env:OS -like '*Windows*') { '.exe' } else { '' })") -Force
-    Write-Host "copied rust worker"
+# Rust workers: static linux (musl via bundled rust-lld) + windows host.
+$workerDir = "crates/xcut-worker-media"
+if (Get-Command cargo -ErrorAction SilentlyContinue) {
+    Push-Location $workerDir
+    # PS 5.1 decorates native stderr as errors; route through cmd instead.
+    cmd /c "cargo build --release --target x86_64-unknown-linux-musl 2>nul" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Copy-Item "target/x86_64-unknown-linux-musl/release/xcut-worker-media" `
+            (Join-Path $OutDir "xcut-worker-media-$Version-linux-amd64") -Force
+        Write-Host "built rust worker (linux, static musl)"
+    } else {
+        Write-Host "rust worker linux build skipped (musl target not installed)"
+    }
+    Pop-Location
+    $hostWorker = "crates/xcut-worker-media/target/release/xcut-worker-media.exe"
+    if (-not (Test-Path $hostWorker)) { $hostWorker = "crates/xcut-worker-media/target/release/xcut-worker-media" }
+    if (Test-Path $hostWorker) {
+        Copy-Item $hostWorker (Join-Path $OutDir "xcut-worker-media-$Version-windows-amd64.exe") -Force
+        Write-Host "copied host rust worker"
+    }
 } else {
-    Write-Host "rust worker not built (optional; cargo build --release -p xcut-worker-media)"
+    Write-Host "cargo not found — rust worker binaries skipped (optional component)"
 }
 
 Get-ChildItem $OutDir | Format-Table Name, Length

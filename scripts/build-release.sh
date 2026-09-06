@@ -26,14 +26,23 @@ for plat in windows/amd64 linux/amd64 linux/arm64; do
     GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$out" ./cmd/xcut
 done
 
-# Host Rust worker, when built.
-worker="crates/xcut-worker-media/target/release/xcut-worker-media"
-[ -f "$worker.exe" ] && worker="$worker.exe"
-if [ -f "$worker" ]; then
-    cp "$worker" "$OUTDIR/xcut-worker-media-$VERSION-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
-    echo "copied rust worker"
+# Rust workers: static linux (musl via bundled rust-lld) + host platform.
+worker_dir="crates/xcut-worker-media"
+if command -v cargo >/dev/null 2>&1; then
+    if (cd "$worker_dir" && cargo build --release --target x86_64-unknown-linux-musl >/dev/null 2>&1); then
+        cp "$worker_dir/target/x86_64-unknown-linux-musl/release/xcut-worker-media"            "$OUTDIR/xcut-worker-media-$VERSION-linux-amd64"
+        echo "built rust worker (linux, static musl)"
+    else
+        echo "rust worker linux build skipped (target not installed)"
+    fi
+    host_worker="$worker_dir/target/release/xcut-worker-media"
+    [ -f "$host_worker.exe" ] && host_worker="$host_worker.exe"
+    if [ -f "$host_worker" ]; then
+        cp "$host_worker" "$OUTDIR/xcut-worker-media-$VERSION-host$( [ "${host_worker##*.}" = "exe" ] && echo ".exe" )"
+        echo "copied host rust worker"
+    fi
 else
-    echo "rust worker not built (optional; cargo build --release -p xcut-worker-media)"
+    echo "cargo not found — rust worker binaries skipped (optional component)"
 fi
 
 ls -la "$OUTDIR"

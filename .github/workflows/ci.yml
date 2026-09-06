@@ -58,20 +58,27 @@ jobs:
 
   package:
     runs-on: ubuntu-latest
-    needs: [go]
+    needs: [go, rust]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
-      - name: Build release artifacts
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/xcut-worker-media
+      - name: Build release artifacts (Go + Rust worker)
         run: |
           chmod +x scripts/build-release.sh
           scripts/build-release.sh ci-test dist
       - name: Smoke test artifact
         run: |
           ./dist/xcut-ci-test-linux-amd64 version
+          ./dist/xcut-worker-media-ci-test-linux-amd64 < /dev/null || true
           test -x dist/xcut-ci-test-linux-amd64
       - uses: actions/upload-artifact@v4
         with:

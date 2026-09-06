@@ -1,0 +1,4 @@
+# Cross-compiling the worker to static linux binaries using the bundled lld
+# (no external musl toolchain required).
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
