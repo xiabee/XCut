@@ -17,8 +17,12 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/xiabee/XCut/internal/config"
+	"github.com/xiabee/XCut/internal/job"
+	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -168,6 +172,29 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// Workspace builds the workspace handle from effective config.
+func (a *App) Workspace() *workspace.Workspace { return workspace.New(a.Cfg.Workspace) }
+
+// OpenDB ensures the workspace exists, opens the database, and reconciles
+// orphaned jobs left by previous dead processes.
+func (a *App) OpenDB() (*storage.DB, error) {
+	ws := a.Workspace()
+	if err := ws.Ensure(); err != nil {
+		return nil, err
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		return nil, err
+	}
+	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Log)
+	ctx, cancel := context.WithTimeout(a.Ctx, 15*time.Second)
+	defer cancel()
+	if _, err := q.ReconcileOrphans(ctx, a.Cfg.Job.StaleRunningAfter.Duration); err != nil {
+		a.Log.Warn("job reconciliation failed", "err", err)
+	}
+	return db, nil
 }
 
 func newLogger(w io.Writer, level slog.Level) *slog.Logger {
