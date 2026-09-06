@@ -1,0 +1,42 @@
+name: Release
+
+# Tag-triggered release: push a tag like v0.1.0 to build and attach binaries.
+# No official version is ever created automatically by CI.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/xcut-worker-media
+
+      - name: Build Rust worker (host)
+        run: cargo build --release -p xcut-worker-media
+
+      - name: Build release binaries
+        run: |
+          chmod +x scripts/build-release.sh
+          VERSION="${GITHUB_REF_NAME#v}" scripts/build-release.sh "${GITHUB_REF_NAME}" dist
+
+      - name: Smoke test artifact
+        run: ./dist/xcut-${GITHUB_REF_NAME}-linux-amd64 version
+
+      - name: Create GitHub release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

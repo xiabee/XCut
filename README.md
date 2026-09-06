@@ -97,6 +97,9 @@ local video path, and run analyze → timeline → render with live job progress
 the rendered MP4 plays right in the page. The UI is vanilla HTML/JS embedded
 in the binary (`go:embed`): no Node, no build step, no extra files.
 
+![xcut web UI: a project with imported asset, four succeeded jobs, and the
+rendered highlight playing in the result panel](docs/img/web-ui.png)
+
 HTTP API (`/api/v1`, loopback-only):
 
 ```sh
