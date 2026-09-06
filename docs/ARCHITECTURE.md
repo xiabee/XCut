@@ -43,8 +43,30 @@ core failure.
 
 ## Repository Layout
 
-Only directories with real code exist. See `docs/PROJECT_STATE.md` for the
-current list.
+Only directories with real code exist:
+
+```
+cmd/xcut                  CLI entry (thin)
+internal/cli              command wiring + presentation
+internal/pipeline         core operations shared by CLI and HTTP API
+internal/api              localhost HTTP API + embedded web UI (static/, vanilla JS)
+internal/analysis         analyzers + result cache (FFmpeg or Rust worker backends)
+internal/event            deterministic activity segmentation
+internal/style            style presets + selection (embedded + workspace overrides)
+internal/timeline         versioned timeline IR + validation
+internal/render           timeline → MP4 (normalize → concat → verify → publish)
+internal/media            ffprobe/ffmpeg exec, probe, fingerprint, process limiter
+internal/job              DB-backed queue (sync + async), orphan reconciliation
+internal/storage          SQLite (no CGO), migrations, typed stores
+internal/workspace        data dir layout, SafeJoin, temp lifecycle
+internal/config           defaults < file < env < flags, resource budgets
+internal/worker           worker-process client (JSON over stdin/stdout)
+internal/xcerr            typed error model
+internal/version          build identity
+internal/testmedia        lavfi fixture generator (tests only)
+crates/xcut-worker-media  Rust worker (describe + audio_rms)
+docs/, scripts/, .github/
+```
 
 ## Key Design Decisions
 

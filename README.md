@@ -154,11 +154,20 @@ log live in [`docs/`](docs/):
 ## Packaging
 
 ```sh
-scripts/build-release.ps1   # Windows (PowerShell)
+scripts/build-release.ps1   # Windows (PowerShell 5.1+)
 scripts/build-release.sh    # Linux/macOS (bash)
 ```
 
-produces versioned binaries under `dist/` (see `--help` inside the scripts).
+produces versioned binaries under `dist/`:
+
+| Artifact | Platforms |
+|---|---|
+| `xcut` (core + embedded web UI) | windows/amd64, linux/amd64, linux/arm64 |
+| `xcut-worker-media` (optional) | windows/amd64, linux/amd64 (static musl) |
+
+The Go binaries are fully static (no CGO) — drop-in executables. The Linux
+Rust worker is built with the bundled `rust-lld` against the musl target, so
+no platform toolchain is needed for the build.
 
 ## License
 
