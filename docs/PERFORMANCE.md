@@ -29,6 +29,7 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | Date | Stage | Input | Result | Ratio | Notes |
 |---|---|---|---|---|---|
 | 2026-09-07 | analyze (cold) | 60s 1080p30 testsrc2 | ~2.5–3.0 s wall | **0.05x realtime** | 2 analyzers (frame_diff @2fps/640w + audio RMS 0.5s), 241 samples |
+| 2026-09-07 | analyze (cold, soak) | **300s** 1080p30 | ~14.7 s wall incl. process starts | **0.05x realtime** | 5× input length: ratio unchanged, no degradation |
 | 2026-09-07 | analyze (cache hit) | same | <0.1 s | ~0x | fingerprint-keyed cache |
 | 2026-09-07 | render | 10s timeline from 1080p source | ~1.5 s | **0.15x** output duration | normalize×1 + concat copy, 2 threads/ffmpeg |
 | 2026-09-07 | audio RMS: rust worker | 60s mp3 | 0.127 s | — | release build, symphonia decode + DSP |
