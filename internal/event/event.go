@@ -1,0 +1,322 @@
+// Package event derives EventSegments from analysis feature tracks.
+//
+// A segment is a maximal run of "active" time: frame difference above a motion
+// floor, or audible audio above a silence floor. Scene cuts always split
+// segments; short gaps merge; tiny segments drop. Scores are a deterministic,
+// explainable heuristic — the Style Engine re-ranks segments with
+// style-specific weights on top.
+//
+// All functions are pure: identical tracks + config ⇒ identical segments
+// (property tested).
+package event
+
+import (
+	"math"
+	"sort"
+
+	"github.com/xiabee/XCut/internal/analysis"
+	"github.com/xiabee/XCut/internal/xcerr"
+)
+
+// Segment is a candidate highlight interval on the media timeline.
+type Segment struct {
+	Start       float64 `json:"start"`
+	End         float64 `json:"end"`
+	Score       float64 `json:"score"`         // 0..1 base quality
+	MeanMotion  float64 `json:"mean_motion"`   // mean frame_diff (0..1)
+	MeanAudioDB float64 `json:"mean_audio_db"` // mean RMS dBFS; silentDB when silent/no audio
+}
+
+// Duration of the segment in seconds.
+func (s Segment) Duration() float64 { return s.End - s.Start }
+
+// Config controls event extraction.
+type Config struct {
+	CutThreshold float64 // frame_diff above this ⇒ scene cut (0..1)
+	MotionFloor  float64 // frame_diff above this ⇒ visual activity (0..1)
+	SilenceDB    float64 // RMS above this ⇒ audible (dBFS)
+	MergeGap     float64 // inactive gaps shorter than this merge (seconds)
+	MinDuration  float64 // segments shorter than this drop (seconds)
+}
+
+// DefaultConfig is a conservative generic baseline.
+func DefaultConfig() Config {
+	return Config{
+		CutThreshold: 0.28,
+		MotionFloor:  0.06,
+		SilenceDB:    -42,
+		MergeGap:     0.8,
+		MinDuration:  1.0,
+	}
+}
+
+// Validate checks the config is internally consistent.
+func (c Config) Validate() error {
+	sane := c.CutThreshold > 0 && c.CutThreshold <= 1 &&
+		c.MotionFloor >= 0 && c.MotionFloor < c.CutThreshold &&
+		c.MergeGap >= 0 && c.MinDuration > 0 &&
+		!math.IsNaN(c.CutThreshold) && !math.IsNaN(c.MotionFloor) &&
+		!math.IsNaN(c.MergeGap) && !math.IsNaN(c.MinDuration)
+	if !sane {
+		return xcerr.E(xcerr.CodeValidation, "invalid event config", nil)
+	}
+	return nil
+}
+
+// silentDB stands in for -inf (digital silence) and no-audio assets.
+const silentDB = -120.0
+
+// cell is one position on the motion-sample time grid.
+type cell struct {
+	t       float64
+	motion  float64 // frame_diff, 0..1
+	db      float64 // audio RMS at this time (silentDB when absent)
+	audible bool    // db > cfg.SilenceDB
+	cut     bool    // motion > cfg.CutThreshold
+}
+
+// span accumulates a candidate interval and its statistics.
+type span struct {
+	start, end float64
+	motionSum  float64
+	motionN    int
+	audioSum   float64
+	audioN     int
+}
+
+// Build extracts segments from feature tracks over media of given duration.
+func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segment, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
+		return nil, xcerr.E(xcerr.CodeValidation, "media duration must be positive", nil)
+	}
+
+	var motion, audio *analysis.FeatureTrack
+	for i := range tracks {
+		switch tracks[i].Kind {
+		case "frame_diff":
+			motion = &tracks[i]
+		case "audio_rms_db":
+			audio = &tracks[i]
+		}
+	}
+	if motion == nil || len(motion.Samples) == 0 {
+		return nil, xcerr.E(xcerr.CodeValidation, "frame_diff feature track missing", nil)
+	}
+	sortSamples(motion.Samples)
+	if audio != nil {
+		sortSamples(audio.Samples)
+	}
+	window := estimateWindow(motion.Samples)
+
+	cells := buildCells(motion, audio, cfg, window)
+	runs := splitAtCuts(cells)
+
+	var segments []Segment
+	for _, r := range runs {
+		for _, s := range mergeSpans(activeSpans(r, cfg.MotionFloor, window), cfg.MergeGap) {
+			if s.end > duration {
+				s.end = duration
+			}
+			if s.start >= duration {
+				continue
+			}
+			if s.end-s.start < cfg.MinDuration {
+				continue
+			}
+			segments = append(segments, scoreSpan(s, cfg))
+		}
+	}
+	return segments, nil
+}
+
+// buildCells maps the motion grid to activity cells with nearest-window audio.
+func buildCells(motion, audio *analysis.FeatureTrack, cfg Config, window float64) []cell {
+	cells := make([]cell, 0, len(motion.Samples))
+	for _, smp := range motion.Samples {
+		c := cell{
+			t:      smp.T,
+			motion: smp.V,
+			db:     silentDB,
+			cut:    smp.V > cfg.CutThreshold,
+		}
+		if s, ok := nearestAudio(audio, smp.T, window); ok {
+			if math.IsNaN(s.V) {
+				s.V = silentDB
+			}
+			if math.IsInf(s.V, -1) {
+				s.V = silentDB
+			}
+			c.db = s.V
+			c.audible = s.V > cfg.SilenceDB
+		}
+		cells = append(cells, c)
+	}
+	return cells
+}
+
+// splitAtCuts breaks the cell grid at scene cuts; a cut cell starts new content.
+func splitAtCuts(cells []cell) [][]cell {
+	var runs [][]cell
+	var run []cell
+	for _, c := range cells {
+		if c.cut && len(run) > 0 {
+			runs = append(runs, run)
+			run = nil
+		}
+		run = append(run, c)
+	}
+	if len(run) > 0 {
+		runs = append(runs, run)
+	}
+	return runs
+}
+
+func isCellActive(c cell, motionFloor float64) bool {
+	return c.motion > motionFloor || c.audible
+}
+
+// activeSpans collects maximal runs of active cells within one cut-run.
+func activeSpans(run []cell, motionFloor, window float64) []span {
+	var out []span
+	var cur *span
+	closeSpan := func() {
+		if cur != nil {
+			out = append(out, *cur)
+			cur = nil
+		}
+	}
+	for _, c := range run {
+		if !isCellActive(c, motionFloor) {
+			closeSpan()
+			continue
+		}
+		if cur == nil {
+			s := span{start: c.t, end: c.t + window}
+			cur = &s
+		} else {
+			cur.end = c.t + window
+		}
+		cur.motionSum += c.motion
+		cur.motionN++
+		cur.audioSum += c.db
+		cur.audioN++
+	}
+	closeSpan()
+	return out
+}
+
+// mergeSpans merges adjacent spans separated by less than maxGap.
+func mergeSpans(spans []span, maxGap float64) []span {
+	if len(spans) == 0 {
+		return nil
+	}
+	out := []span{spans[0]}
+	for _, s := range spans[1:] {
+		prev := &out[len(out)-1]
+		if s.start-prev.end < maxGap {
+			prev.end = s.end
+			prev.motionSum += s.motionSum
+			prev.motionN += s.motionN
+			prev.audioSum += s.audioSum
+			prev.audioN += s.audioN
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// scoreSpan converts accumulated statistics into a deterministic 0..1 score.
+func scoreSpan(s span, cfg Config) Segment {
+	meanMotion := 0.0
+	if s.motionN > 0 {
+		meanMotion = s.motionSum / float64(s.motionN)
+	}
+	meanDB := silentDB
+	if s.audioN > 0 {
+		meanDB = s.audioSum / float64(s.audioN)
+	}
+	dur := s.end - s.start
+
+	motionN := clamp(meanMotion/0.30, 0, 1)
+	audioN := clamp((meanDB-cfg.SilenceDB)/36.0, 0, 1)
+	durN := clamp(dur/15.0, 0, 1)
+	sc := 0.45*motionN + 0.35*audioN + 0.20*durN
+	if math.IsNaN(sc) || math.IsInf(sc, 0) {
+		sc = 0
+	}
+	return Segment{
+		Start:       round4(s.start),
+		End:         round4(s.end),
+		Score:       round4(sc),
+		MeanMotion:  round4(meanMotion),
+		MeanAudioDB: round4(meanDB),
+	}
+}
+
+func sortSamples(s []analysis.Sample) {
+	sort.Slice(s, func(i, j int) bool { return s[i].T < s[j].T })
+}
+
+func estimateWindow(samples []analysis.Sample) float64 {
+	if len(samples) < 2 {
+		return 0.5
+	}
+	gaps, n := 0.0, 0
+	for i := 1; i < len(samples) && n < 32; i++ {
+		d := samples[i].T - samples[i-1].T
+		if d > 0 {
+			gaps += d
+			n++
+		}
+	}
+	if n == 0 {
+		return 0.5
+	}
+	if w := gaps / float64(n); w > 0 && !math.IsNaN(w) {
+		return w
+	}
+	return 0.5
+}
+
+func nearestAudio(t *analysis.FeatureTrack, at, tol float64) (analysis.Sample, bool) {
+	if t == nil || len(t.Samples) == 0 {
+		return analysis.Sample{}, false
+	}
+	i := sort.Search(len(t.Samples), func(i int) bool { return t.Samples[i].T >= at-tol/2 })
+	if i >= len(t.Samples) {
+		i = len(t.Samples) - 1
+	}
+	best := t.Samples[i]
+	if j := i - 1; j >= 0 && abs(t.Samples[j].T-at) < abs(best.T-at) {
+		best = t.Samples[j]
+	}
+	if abs(best.T-at) > tol {
+		return analysis.Sample{}, false
+	}
+	return best, true
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
+func clamp(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func round4(v float64) float64 {
+	return math.Round(v*10000) / 10000
+}
