@@ -1,0 +1,19 @@
+{
+	"name": "ktv_mv",
+	"title": "KTV Music Video",
+	"version": 1,
+	"canvas": { "width": 1920, "height": 1080, "fps": 30 },
+	"target_duration": 45,
+	"min_clip_duration": 2.0,
+	"max_clip_duration": 12.0,
+	"scoring": { "motion": 0.30, "audio": 0.55, "duration": 0.15 },
+	"event_config": {
+		"cut_threshold": 0.25,
+		"motion_floor": 0.04,
+		"silence_db": -48,
+		"merge_gap": 1.5,
+		"min_duration": 3.0
+	},
+	"transition": { "type": "cut", "duration": 0 },
+	"audio": { "gain": 1.0 }
+}

@@ -83,20 +83,34 @@ Styles are data, not code — validated JSON presets in
 `internal/style/presets/` (embedded) overridable from `<workspace>/styles/`:
 
 - `generic_highlight` — balanced motion/audio scoring
+- `ktv_mv` — audio-led (singing/energy), longer clips for music scenes
 - `badminton_highlight` — motion-heavy, longer rally windows
 
-## Serve (local HTTP API)
+## Serve (local web UI + HTTP API)
 
 ```sh
 ./xcut serve                # http://127.0.0.1:8619, ctrl+c to stop
+```
+
+Then open http://127.0.0.1:8619 in a browser: create a project, import a
+local video path, and run analyze → timeline → render with live job progress —
+the rendered MP4 plays right in the page. The UI is vanilla HTML/JS embedded
+in the binary (`go:embed`): no Node, no build step, no extra files.
+
+HTTP API (`/api/v1`, loopback-only):
+
+```sh
 curl http://127.0.0.1:8619/api/v1/health
 curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
 ```
 
+Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
 Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
-authentication exists (see `docs/SECURITY.md`). Endpoints: `/api/v1/health`,
-`/api/v1/projects[/{id}[/jobs]]`, `/api/v1/jobs`.
+authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
+measured 12 MB RAM, ~0% CPU (docs/PERFORMANCE.md).
 
 ## Optional Rust worker
 

@@ -33,6 +33,8 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-07 | render | 10s timeline from 1080p source | ~1.5 s | **0.15x** output duration | normalize×1 + concat copy, 2 threads/ffmpeg |
 | 2026-09-07 | audio RMS: rust worker | 60s mp3 | 0.127 s | — | release build, symphonia decode + DSP |
 | 2026-09-07 | audio RMS: ffmpeg astats | 60s mp3 | 0.143 s | — | same filter chain as AudioAnalyzer |
+| 2026-09-07 | **serve idle RAM** | — | **12.3 MB working set / 14.6 MB private** | — | goal <100 MB, stretch <50 MB: **met** |
+| 2026-09-07 | **serve idle CPU** | 30 s idle | **0.031 s total, unchanged** (~0%) | — | no background scanning loops: **met** |
 
 Rust vs FFmpeg audio baseline: parity on this workload (decode/IO bound).
 The Rust worker is therefore kept as *protocol + optionality* (D2), not as a
