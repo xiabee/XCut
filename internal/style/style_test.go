@@ -28,7 +28,7 @@ func testPreset() *Preset {
 }
 
 func TestParseEmbeddedPresets(t *testing.T) {
-	for _, name := range []string{"generic_highlight", "badminton_highlight"} {
+	for _, name := range []string{"generic_highlight", "badminton_highlight", "ktv_mv"} {
 		p, err := Load(name)
 		if err != nil {
 			t.Fatalf("load %s: %v", name, err)
