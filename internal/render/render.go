@@ -54,9 +54,11 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 		opts.OnProgress = func(int, int) {}
 	}
 
-	// Refuse unsupported transitions instead of silently dropping them.
+	// Validate transitions up front: "cut" joins hard, "fade" dissolves
+	// through black (fade-out on this clip + fade-in on the next). Anything
+	// else is refused rather than silently dropped.
 	for _, c := range clips {
-		if c.Transition != nil && c.Transition.Type != "cut" {
+		if c.Transition != nil && c.Transition.Type != "cut" && c.Transition.Type != "fade" {
 			return xcerr.E(xcerr.CodeRenderFailure,
 				fmt.Sprintf("transition %q not supported by renderer yet", c.Transition.Type), nil)
 		}
@@ -81,6 +83,7 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 	// 1. Normalize each clip. Sources are probed once so clips without an
 	// audio stream still produce a (silent) audio track — concat requires
 	// uniform stream layouts across parts.
+	fades := fadePlan(clips)
 	parts := make([]string, len(clips))
 	for i, c := range clips {
 		if err := ctx.Err(); err != nil {
@@ -90,7 +93,7 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 		if err != nil {
 			return xcerr.E(xcerr.CodeRenderFailure, "cannot probe source for clip "+c.ID, err)
 		}
-		part, err := normalizeClip(ctx, tl, c, i, probe.HasAudio, opts)
+		part, err := normalizeClip(ctx, tl, c, i, fades[i], probe.HasAudio, opts)
 		if err != nil {
 			return err
 		}
@@ -125,15 +128,55 @@ func collectClips(tl *timeline.Timeline) []timeline.Clip {
 	return out
 }
 
+// fadePlan computes per-clip [fadeIn, fadeOut] durations: a "fade" transition
+// on clip i dissolves through black — fade-out on clip i, fade-in on clip i+1,
+// each half the transition duration, clamped to the clip's own length.
+func fadePlan(clips []timeline.Clip) [][2]float64 {
+	fades := make([][2]float64, len(clips))
+	for i := range clips {
+		c := clips[i]
+		if c.Transition == nil || c.Transition.Type != "fade" || c.Transition.Duration <= 0 {
+			continue
+		}
+		d := c.Transition.Duration / 2
+		if max := c.Duration(); d > max {
+			d = max
+		}
+		fades[i][1] = d
+		if i+1 < len(clips) {
+			fades[i+1][0] = d
+		}
+	}
+	return fades
+}
+
 // normalizeClip re-encodes one clip onto the timeline canvas. sourceHasAudio
 // false injects a silent stereo track so every part concatenates uniformly.
-func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, idx int, sourceHasAudio bool, opts Options) (string, error) {
+// fade = [fadeIn, fadeOut] seconds (0 disables).
+func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, idx int, fade [2]float64, sourceHasAudio bool, opts Options) (string, error) {
 	out := filepath.Join(opts.TempDir, fmt.Sprintf("clip-%04d.mp4", idx))
 	dur := c.Duration()
 
 	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s,format=yuv420p",
 		tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.Width, tl.Canvas.Height,
 		strconv.FormatFloat(tl.Canvas.FPS, 'f', -1, 64))
+	af := "aresample=48000,volume=" + strconv.FormatFloat(c.Volume, 'f', 4, 64)
+
+	// "fade" transition halves: dissolve through black at the joined edges.
+	if fade[0] > 0 {
+		vf += ",fade=t=in:st=0:d=" + strconv.FormatFloat(fade[0], 'f', 3, 64)
+		af += ",afade=t=in:st=0:d=" + strconv.FormatFloat(fade[0], 'f', 3, 64)
+	}
+	if fade[1] > 0 {
+		outStart := dur - fade[1]
+		if outStart < 0 {
+			outStart = 0
+		}
+		vf += ",fade=t=out:st=" + strconv.FormatFloat(outStart, 'f', 3, 64) +
+			":d=" + strconv.FormatFloat(fade[1], 'f', 3, 64)
+		af += ",afade=t=out:st=" + strconv.FormatFloat(outStart, 'f', 3, 64) +
+			":d=" + strconv.FormatFloat(fade[1], 'f', 3, 64)
+	}
 
 	args := []string{
 		"-hide_banner", "-nostdin", "-v", "error", "-y",
@@ -153,7 +196,7 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 	)
 	// Volume 0 keeps the audio track (a muted clip stays uniform for concat).
 	args = append(args,
-		"-af", "aresample=48000,volume="+strconv.FormatFloat(c.Volume, 'f', 4, 64),
+		"-af", af,
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000",
 	)
 	args = append(args, audioArgs...)

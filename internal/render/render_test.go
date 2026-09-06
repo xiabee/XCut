@@ -117,6 +117,26 @@ func TestRenderRejectsUnsupportedTransition(t *testing.T) {
 	}
 }
 
+func TestRenderFadeTransition(t *testing.T) {
+	tools := requireTools(t)
+	src := fixture(t)
+	tl := twoClipTimeline(src)
+	// Fade between clip 1 and clip 2: fade-out end of c1, fade-in start of c2.
+	tl.Tracks[0].Clips[0].Transition = &timeline.Transition{Type: "fade", Duration: 0.6}
+	out := filepath.Join(t.TempDir(), "fade.mp4")
+	err := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir()}, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := media.ProbeFile(context.Background(), tools, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probe.DurationSec < 5.4 || probe.DurationSec > 6.6 {
+		t.Fatalf("fade render duration %.2f, want ~6", probe.DurationSec)
+	}
+}
+
 func TestRenderRespectsContextCancellation(t *testing.T) {
 	tools := requireTools(t)
 	src := fixture(t)
