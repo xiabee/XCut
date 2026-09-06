@@ -16,6 +16,15 @@ h2 { font-size: 14px; margin: 0 0 10px; color: var(--dim); text-transform: upper
 .health { font-size: 12px; color: var(--dim); }
 .health.ok { color: var(--acc); }
 .health.bad { color: var(--err); }
+.banner {
+  margin-left: auto; color: var(--err); font-size: 13px;
+  max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+button.danger {
+  background: transparent; color: var(--err); border: 1px solid var(--err);
+  margin-top: 10px; width: 100%; font-weight: 500;
+}
+button.danger:hover { background: var(--err); color: var(--bg); }
 
 main { display: grid; grid-template-columns: 260px 1fr; gap: 16px; padding: 16px; max-width: 1100px; margin: 0 auto; }
 aside, #detail fieldset {

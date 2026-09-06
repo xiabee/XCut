@@ -30,6 +30,15 @@ function busy(on) {
   }
 }
 
+function banner(msg) {
+  const el = $("banner");
+  if (!msg) { el.hidden = true; return; }
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(banner._t);
+  banner._t = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
 /* ---------- health ---------- */
 async function refreshHealth() {
   const el = $("health");
@@ -64,8 +73,34 @@ function selectProject(p) {
   const ph = document.querySelector("#detail .placeholder");
   if (ph) ph.style.display = "none";
   $("project-name").textContent = p.name;
+  $("delete-project").hidden = false;
   refreshAssets();
   refreshJobs();
+}
+
+async function deleteProject() {
+  if (!currentProject) return;
+  // Two-step confirm without confirm(): the button asks once more.
+  const btn = $("delete-project");
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = `Really delete "${currentProject.name}"? Click again`;
+    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Delete project"; }, 4000);
+    return;
+  }
+  btn.dataset.armed = "";
+  btn.textContent = "Delete project";
+  try {
+    await api(`/api/v1/projects/${currentProject.id}`, { method: "DELETE" });
+    currentProject = null;
+    $("project-view").hidden = true;
+    $("detail").classList.add("empty");
+    const ph = document.querySelector("#detail .placeholder");
+    if (ph) ph.style.display = "";
+    btn.hidden = true;
+    $("player").removeAttribute("src");
+    await refreshProjects();
+  } catch (e) { banner(`Delete failed: ${e.message}`); }
 }
 
 /* ---------- assets ---------- */
@@ -119,15 +154,15 @@ function schedulePoll(ms) {
 }
 
 /* ---------- actions ---------- */
-async function trigger(path, body, btn) {
+async function trigger(path, body) {
   busy(true);
   try {
     const { job_id } = await post(`/api/v1/projects/${currentProject.id}${path}`, body);
     await refreshJobs();
     watchUntilDone(jobIdOf(job_id));
   } catch (e) {
-    alert(`Failed: ${e.message}`);
     busy(false);
+    throw e; // caller renders the banner
   }
 }
 
@@ -155,14 +190,17 @@ function showPlayer() {
 }
 
 /* ---------- wiring ---------- */
+$("delete-project").addEventListener("click", deleteProject);
+
 $("new-project").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     const { project } = await post("/api/v1/projects", { name: $("np-name").value.trim() });
     $("np-name").value = "";
+    banner("");
     await refreshProjects();
     selectProject(project);
-  } catch (err) { alert(`Create failed: ${err.message}`); }
+  } catch (err) { banner(`Create failed: ${err.message}`); }
 });
 
 $("import-form").addEventListener("submit", async (e) => {
@@ -173,15 +211,20 @@ $("import-form").addEventListener("submit", async (e) => {
   try {
     await trigger("/assets", { path });
     $("import-path").value = "";
-  } catch (err) { alert(`Import failed: ${err.message}`); busy(false); }
+  } catch (err) { banner(`Import failed: ${err.message}`); busy(false); }
 });
 
-$("btn-analyze").addEventListener("click", () => trigger("/analyze", {}));
+$("btn-analyze").addEventListener("click", async () => {
+  try { await trigger("/analyze", {}); } catch (e) { banner(`Analyze failed: ${e.message}`); busy(false); }
+});
 $("btn-timeline").addEventListener("click", async () => {
-  trigger("/timeline", { style: $("style").value });
+  try { await trigger("/timeline", { style: $("style").value }); } catch (e) { banner(`Timeline failed: ${e.message}`); busy(false); }
 });
 $("btn-render").addEventListener("click", async () => {
-  try { await trigger("/render", {}); showPlayerSoon(); } catch (e) { alert(e.message); busy(false); }
+  try {
+    await trigger("/render", {});
+    showPlayerSoon();
+  } catch (e) { banner(`Render failed: ${e.message}`); busy(false); }
 });
 
 let playerTimer = null;
