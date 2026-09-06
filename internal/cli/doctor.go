@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
+	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -158,10 +158,13 @@ func cmdDoctor(a *App, args []string) error {
 		db.Close()
 	}
 
-	if path, err := exec.LookPath("xcut-worker-media"); err == nil {
-		add("Rust worker", "OPTIONAL", "found: "+path)
-	} else {
+	if bin := worker.ResolveBin(a.Cfg.Workers.MediaBin); bin == "" {
 		add("Rust worker", "OPTIONAL", "not installed (analysis falls back to Go/FFmpeg)")
+	} else if d, err := worker.Probe(ctx, bin); err != nil {
+		add("Rust worker", "WARN", "present but unusable: "+xcerr.UserMessage(err))
+	} else {
+		add("Rust worker", "OPTIONAL", fmt.Sprintf("%s v%s (protocol %d, ops: %s)",
+			d.Name, d.Version, d.Protocol, strings.Join(d.Ops, ",")))
 	}
 	add("AI worker", "OPTIONAL", "not installed (not required)")
 

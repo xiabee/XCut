@@ -59,6 +59,15 @@ type Log struct {
 	MaxFiles  int    `json:"max_files"`    // rotated files kept; 0 = 3
 }
 
+// Workers configures optional helper workers (never required).
+type Workers struct {
+	// MediaBin locates the Rust media worker; "" = PATH lookup of
+	// xcut-worker-media.
+	MediaBin string `json:"media_bin"`
+	// Audio selects the audio analyzer: auto | ffmpeg | rust.
+	Audio string `json:"audio"`
+}
+
 // Config is the full effective configuration.
 type Config struct {
 	Workspace string   `json:"workspace"`
@@ -67,6 +76,7 @@ type Config struct {
 	Resource  Resource `json:"resource"`
 	FFmpeg    FFmpeg   `json:"ffmpeg"`
 	Job       Job      `json:"job"`
+	Workers   Workers  `json:"workers"`
 }
 
 // Duration wraps time.Duration for JSON: accepts "2h", "30m", or seconds number.
@@ -118,6 +128,7 @@ func Default() *Config {
 		},
 		FFmpeg: FFmpeg{},
 		Job:    Job{StaleRunningAfter: Duration{2 * time.Hour}},
+		Workers: Workers{MediaBin: "", Audio: "auto"},
 	}
 }
 
@@ -220,6 +231,12 @@ func Resolve(cfg *Config) error {
 	}
 	if cfg.Job.StaleRunningAfter.Duration <= 0 {
 		cfg.Job.StaleRunningAfter = Duration{2 * time.Hour}
+	}
+	switch cfg.Workers.Audio {
+	case "", "auto", "ffmpeg", "rust":
+	default:
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("invalid workers.audio %q (want auto|ffmpeg|rust)", cfg.Workers.Audio), nil)
 	}
 	return nil
 }

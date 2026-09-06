@@ -58,7 +58,13 @@ func cmdAnalyze(a *App, args []string) error {
 
 	tools := media.ResolveTools(a.Cfg)
 	store := analysis.NewStore(a.Workspace().CacheDir())
-	analyzers := analysis.Baseline()
+	analyzers, err := analysis.ResolveAnalyzers(ctx, analysis.WorkerConfig{
+		MediaBin: a.Cfg.Workers.MediaBin,
+		Audio:    a.Cfg.Workers.Audio,
+	}, a.Log)
+	if err != nil {
+		return err
+	}
 	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Log)
 	opts := analysis.Options{
 		Tools:         tools,

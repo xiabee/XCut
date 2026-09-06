@@ -23,6 +23,14 @@ need. IPC overhead is accepted until measured as a bottleneck.
 Consequences: crash isolation, independent benchmarking, simple cross-platform
 builds; slightly more orchestration code; deferred (not avoided) FFI.
 
+Status (2026-09-07): protocol validated end-to-end. `crates/xcut-worker-media`
+(Rust, symphonia) implements `describe` + `audio_rms`; Go client
+(`internal/worker`) with timeouts + structured errors; `workers.audio` config
+(auto: worker-first with FFmpeg fallback, rust: strict, ffmpeg: builtin).
+Benchmark: parity with ffmpeg astats on 60s mp3 (0.127s vs 0.143s) — kept as
+optionality, no rewrites. Known gap: symphonia cannot decode ffmpeg-encoded
+AAC ("predictor data"); auto mode's fallback covers this until fixed upstream.
+
 ## D3: No Python in the core; AI as optional sidecar
 
 Context: AI ecosystems (Whisper/YOLO/SAM/Demucs) are Python; core must not

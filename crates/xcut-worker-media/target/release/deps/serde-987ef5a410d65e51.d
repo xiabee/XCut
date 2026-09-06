@@ -1,0 +1,14 @@
+D:\Projects\XCut\crates\xcut-worker-media\target\release\deps\serde-987ef5a410d65e51.d: C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs D:\Projects\XCut\crates\xcut-worker-media\target\release\build\serde-242c5fee1f2c58de\out/private.rs
+
+D:\Projects\XCut\crates\xcut-worker-media\target\release\deps\libserde-987ef5a410d65e51.rlib: C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs D:\Projects\XCut\crates\xcut-worker-media\target\release\build\serde-242c5fee1f2c58de\out/private.rs
+
+D:\Projects\XCut\crates\xcut-worker-media\target\release\deps\libserde-987ef5a410d65e51.rmeta: C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs D:\Projects\XCut\crates\xcut-worker-media\target\release\build\serde-242c5fee1f2c58de\out/private.rs
+
+C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\xiabee\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+D:\Projects\XCut\crates\xcut-worker-media\target\release\build\serde-242c5fee1f2c58de\out/private.rs:
+
+# env-dep:OUT_DIR=D:\\Projects\\XCut\\crates\\xcut-worker-media\\target\\release\\build\\serde-242c5fee1f2c58de\\out
