@@ -24,10 +24,10 @@ func NewID(prefix string) string {
 
 // Project is a user workspace unit grouping assets, analyses, and timelines.
 type Project struct {
-	ID        string
-	Name      string
-	CreatedAt int64
-	UpdatedAt int64
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 func scanProject(row interface{ Scan(...any) error }) (*Project, error) {

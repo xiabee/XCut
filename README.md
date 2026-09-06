@@ -85,6 +85,19 @@ Styles are data, not code — validated JSON presets in
 - `generic_highlight` — balanced motion/audio scoring
 - `badminton_highlight` — motion-heavy, longer rally windows
 
+## Serve (local HTTP API)
+
+```sh
+./xcut serve                # http://127.0.0.1:8619, ctrl+c to stop
+curl http://127.0.0.1:8619/api/v1/health
+curl http://127.0.0.1:8619/api/v1/projects
+curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
+```
+
+Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
+authentication exists (see `docs/SECURITY.md`). Endpoints: `/api/v1/health`,
+`/api/v1/projects[/{id}[/jobs]]`, `/api/v1/jobs`.
+
 ## Optional Rust worker
 
 The Rust worker accelerates audio analysis and validates the process-boundary
