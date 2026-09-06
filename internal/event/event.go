@@ -32,11 +32,11 @@ func (s Segment) Duration() float64 { return s.End - s.Start }
 
 // Config controls event extraction.
 type Config struct {
-	CutThreshold float64 // frame_diff above this ⇒ scene cut (0..1)
-	MotionFloor  float64 // frame_diff above this ⇒ visual activity (0..1)
-	SilenceDB    float64 // RMS above this ⇒ audible (dBFS)
-	MergeGap     float64 // inactive gaps shorter than this merge (seconds)
-	MinDuration  float64 // segments shorter than this drop (seconds)
+	CutThreshold float64 `json:"cut_threshold"` // frame_diff above this ⇒ scene cut (0..1)
+	MotionFloor  float64 `json:"motion_floor"`  // frame_diff above this ⇒ visual activity (0..1)
+	SilenceDB    float64 `json:"silence_db"`    // RMS above this ⇒ audible (dBFS)
+	MergeGap     float64 `json:"merge_gap"`     // inactive gaps shorter than this merge (seconds)
+	MinDuration  float64 `json:"min_duration"`  // segments shorter than this drop (seconds)
 }
 
 // DefaultConfig is a conservative generic baseline.

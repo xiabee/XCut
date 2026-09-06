@@ -177,6 +177,37 @@ func firstNonEmpty(vals ...string) string {
 // Workspace builds the workspace handle from effective config.
 func (a *App) Workspace() *workspace.Workspace { return workspace.New(a.Cfg.Workspace) }
 
+// parseCommandArgs splits command args into string flags and positionals.
+// Flags may appear anywhere: `xcut timeline proj --style x` and
+// `xcut timeline --style x proj` both work (Go's flag package stops at the
+// first positional, which would make the first form fail).
+// flags maps long names (--name) to destinations; unknown flags error.
+func parseCommandArgs(args []string, flags map[string]*string) ([]string, error) {
+	var pos []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-" || !strings.HasPrefix(arg, "--") {
+			pos = append(pos, arg)
+			continue
+		}
+		body := strings.TrimPrefix(arg, "--")
+		name, value, hasValue := strings.Cut(body, "=")
+		dst, ok := flags[name]
+		if !ok {
+			return nil, xcerr.E(xcerr.CodeValidation, "unknown flag --"+name, nil)
+		}
+		if !hasValue {
+			if i+1 >= len(args) {
+				return nil, xcerr.E(xcerr.CodeValidation, "flag --"+name+" needs a value", nil)
+			}
+			i++
+			value = args[i]
+		}
+		*dst = value
+	}
+	return pos, nil
+}
+
 // OpenDB ensures the workspace exists, opens the database, and reconciles
 // orphaned jobs left by previous dead processes.
 func (a *App) OpenDB() (*storage.DB, error) {
