@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -36,7 +37,12 @@ func cacheKey(fingerprint string, analyzers []Analyzer, cfg ConfigKey) string {
 }
 
 // Store is the on-disk analysis cache under <workspace>/cache/analysis.
-type Store struct{ dir string }
+// When MaxBytes > 0, every Save is followed by an eviction pass to keep the
+// cache within budget (resource.max_cache_gb).
+type Store struct {
+	dir      string
+	MaxBytes int64
+}
 
 // NewStore builds a cache rooted at the workspace cache dir.
 func NewStore(cacheDir string) *Store {
@@ -101,4 +107,73 @@ func (s *Store) Save(key string, r *Result) error {
 
 func (s *Store) path(key string) string {
 	return filepath.Join(s.dir, key+".json")
+}
+
+// Usage returns the number of cache entries and total bytes on disk.
+func (s *Store) Usage() (count int, bytes int64, err error) {
+	dirEntries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot read analysis cache dir", err)
+	}
+	var total int64
+	for _, e := range dirEntries {
+		if e.IsDir() {
+			continue
+		}
+		if fi, ierr := e.Info(); ierr == nil {
+			total += fi.Size()
+		}
+	}
+	return len(dirEntries), total, nil
+}
+
+// EvictTo prunes the cache down to at most maxBytes by removing
+// oldest-modified entries first (deterministic LRU approximation: entries are
+// immutable once written, so mtime = creation time).
+// Returns how many entries were removed and bytes reclaimed.
+func (s *Store) EvictTo(maxBytes int64) (removed int, freed int64, err error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot read analysis cache dir", err)
+	}
+	type item struct {
+		path  string
+		size  int64
+		mtime int64
+	}
+	items := make([]item, 0, len(entries))
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		fi, ierr := e.Info()
+		if ierr != nil {
+			continue
+		}
+		p := filepath.Join(s.dir, e.Name())
+		items = append(items, item{p, fi.Size(), fi.ModTime().UnixNano()})
+		total += fi.Size()
+	}
+	if total <= maxBytes {
+		return 0, 0, nil
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].mtime < items[j].mtime })
+	for _, it := range items {
+		if total <= maxBytes {
+			break
+		}
+		if rmErr := os.Remove(it.path); rmErr == nil {
+			removed++
+			freed += it.size
+			total -= it.size
+		}
+	}
+	return removed, freed, nil
 }

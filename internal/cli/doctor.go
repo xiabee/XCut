@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xiabee/XCut/internal/analysis"
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
@@ -21,7 +22,7 @@ import (
 func init() {
 	register("doctor", "check environment (ffmpeg, workspace, disk, db, optional workers)", cmdDoctor)
 	register("init", "create workspace layout and default config", cmdInit)
-	register("cleanup", "remove disposable temp files (cleanup [--dry-run])", cmdCleanup)
+	register("cleanup", "remove temp files and evict analysis cache to budget (cleanup [--dry-run])", cmdCleanup)
 }
 
 // check is one doctor report line.
@@ -71,7 +72,8 @@ func cmdCleanup(a *App, args []string) error {
 		}
 	}
 	ws := workspace.New(a.Cfg.Workspace)
-	removed, bytes, err := ws.CleanupTemp(dryRun)
+	// 1. Temp: disposable by definition, remove everything.
+	removed, tempBytes, err := ws.CleanupTemp(dryRun)
 	if err != nil {
 		return err
 	}
@@ -80,12 +82,34 @@ func cmdCleanup(a *App, args []string) error {
 		verb = "would remove"
 	}
 	for _, name := range removed {
-		fmt.Fprintf(a.Stdout, "%s %s\n", verb, name)
+		fmt.Fprintf(a.Stdout, "%s temp/%s\n", verb, name)
 	}
-	fmt.Fprintf(a.Stdout, "%s %d entries, %.1f MB%s\n",
-		verb, len(removed), float64(bytes)/(1024*1024), map[bool]string{true: " (dry run)", false: ""}[dryRun])
-	if !dryRun {
-		a.Log.Info("temp cleaned", "entries", len(removed), "bytes", bytes)
+	fmt.Fprintf(a.Stdout, "temp: %s %d entries, %.1f MB%s\n",
+		verb, len(removed), float64(tempBytes)/(1024*1024), map[bool]string{true: " (dry run)", false: ""}[dryRun])
+
+	// 2. Analysis cache: evict to the configured budget (oldest first).
+	store := analysis.NewStore(ws.CacheDir())
+	entries, cacheBytes, err := store.Usage()
+	if err != nil {
+		return err
+	}
+	budget := int64(a.Cfg.Resource.MaxCacheGB * (1 << 30))
+	evicted, evictedBytes, err := store.EvictTo(budget)
+	if err != nil {
+		return err
+	}
+	if dryRun {
+		fmt.Fprintf(a.Stdout, "cache: %d entries, %.1f MB; would evict %d entries (%.1f MB) to fit %.1f GB budget%s\n",
+			entries, float64(cacheBytes)/(1024*1024), evicted, float64(evictedBytes)/(1024*1024),
+			float64(budget)/(1<<30), " (dry run)")
+	} else {
+		fmt.Fprintf(a.Stdout, "cache: %d entries, %.1f MB; evicted %d entries (%.1f MB) to fit %.1f GB budget\n",
+			entries, float64(cacheBytes)/(1024*1024), evicted, float64(evictedBytes)/(1024*1024), float64(budget)/(1<<30))
+	}
+
+	if !dryRun && (len(removed) > 0 || evicted > 0) {
+		a.Log.Info("cleanup done", "temp_entries", len(removed), "temp_bytes", tempBytes,
+			"cache_evicted", evicted, "cache_bytes", evictedBytes)
 	}
 	return nil
 }

@@ -114,6 +114,14 @@ func Run(ctx context.Context, store *Store, opts Options, analyzers []Analyzer, 
 		if err := store.Save(key, result); err != nil {
 			log.Warn("analysis cache save failed", "err", err) // non-fatal
 		}
+		// Enforce the disk budget after growing the cache (config
+		// resource.max_cache_gb). Errors are non-fatal: eviction is
+		// housekeeping, not correctness.
+		if store.MaxBytes > 0 {
+			if _, _, err := store.EvictTo(store.MaxBytes); err != nil {
+				log.Warn("analysis cache eviction failed", "err", err)
+			}
+		}
 	}
 	return result, nil
 }
