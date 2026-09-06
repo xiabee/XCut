@@ -10,7 +10,7 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] M3 Storage & jobs: SQLite + migrations, project/asset/job model, crash reconciliation
 - [x] M4 Baseline analyzers: scene, motion, audio RMS/silence → FeatureTracks → EventSegments
 - [x] M5 Timeline IR: versioned JSON, validation, serialization
-- [x] M6 Style engine: presets, scoring, clip selection (generic_highlight, badminton_highlight)
+- [x] M6 Style engine: presets, scoring, clip selection (generic_highlight, badminton_highlight, ktv_mv)
 - [x] M7 Renderer: timeline → normalized clips → concat → verified MP4
 - [x] M8 E2E: `xcut auto` import→analyze→timeline→render on real FFmpeg fixtures
 - [ ] Nightly hardening: tests, benchmarks, security checks, packaging notes
@@ -24,7 +24,8 @@ Living document. Near-term milestones are concrete; far-term is directional.
 
 ## Phase 3 — Rust worker & vertical depth
 
-- [ ] `xcut-worker-media` (Rust): audio DSP (RMS/onset), frame diff — only if benchmark proves the Go/FFmpeg path is the bottleneck; protocol per docs/ARCHITECTURE.md
+- [x] `xcut-worker-media` (Rust): protocol v1 + audio RMS shipped (benchmark parity with ffmpeg — kept as optionality); frame diff / onset pending real need
+- [ ] Manual timeline editing polish: per-clip preview, drag reorder
 - [ ] Badminton pipeline v2: rally clustering, court ROI, quality/stability scoring
 - [ ] KTV pipeline: beat/onset-aware selection, chorus heuristics
 - [ ] AI sidecar protocol v1 (optional Python worker: Whisper/VLM), capability detection
