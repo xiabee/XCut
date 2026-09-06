@@ -17,8 +17,8 @@ type fakeAnalyzer struct {
 	calls   *int
 }
 
-func (f fakeAnalyzer) Name() string    { return f.name }
-func (f fakeAnalyzer) Version() int    { return f.version }
+func (f fakeAnalyzer) Name() string { return f.name }
+func (f fakeAnalyzer) Version() int { return f.version }
 func (f fakeAnalyzer) Analyze(context.Context, Options, string, bool, *slog.Logger) ([]FeatureTrack, error) {
 	if f.calls != nil {
 		*f.calls++

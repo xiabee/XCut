@@ -117,7 +117,8 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				if finite(d) && c.SourceEnd > d+eps {
 					errs = append(errs, fmt.Sprintf("track %q clip[%d] %q: source_end %g exceeds media duration %g",
 						tr.ID, ci, c.ID, c.SourceEnd, d))
-				}			}
+				}
+			}
 		}
 	}
 

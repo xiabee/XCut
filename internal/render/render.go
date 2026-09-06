@@ -27,9 +27,9 @@ import (
 
 // Options controls a render run.
 type Options struct {
-	Tools    media.Tools
-	TempDir  string // scratch dir for normalized clips (caller owns lifecycle)
-	CRF      int    // x264 quality; 0 → default 20
+	Tools      media.Tools
+	TempDir    string // scratch dir for normalized clips (caller owns lifecycle)
+	CRF        int    // x264 quality; 0 → default 20
 	OnProgress func(done, total int)
 }
 

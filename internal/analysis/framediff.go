@@ -16,12 +16,13 @@ import (
 // YDIF, normalized to 0..1). It doubles as:
 //   - a motion intensity signal (within-scene activity), and
 //   - a cut detector (spikes at scene changes),
+//
 // which is why it emits one track consumed by both roles (DECISIONS log:
 // single cheap pass instead of two overlapping filters).
 type FrameDiffAnalyzer struct{}
 
-func (FrameDiffAnalyzer) Name() string    { return "frame_diff" }
-func (FrameDiffAnalyzer) Version() int    { return 1 }
+func (FrameDiffAnalyzer) Name() string { return "frame_diff" }
+func (FrameDiffAnalyzer) Version() int { return 1 }
 
 func (a FrameDiffAnalyzer) Analyze(ctx context.Context, opts Options, path string, _ bool, log *slog.Logger) ([]FeatureTrack, error) {
 	filter := fmt.Sprintf("fps=%s,scale=%d:-2,signalstats,metadata=print:key=lavfi.signalstats.YDIF:file=-",

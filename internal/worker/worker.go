@@ -32,11 +32,11 @@ type Request struct {
 
 // response mirrors the worker's response envelope.
 type response struct {
-	Protocol int            `json:"protocol"`
-	OK       bool           `json:"ok"`
-	Op       string         `json:"op"`
+	Protocol int             `json:"protocol"`
+	OK       bool            `json:"ok"`
+	Op       string          `json:"op"`
 	Result   json.RawMessage `json:"result"`
-	Error    *responseError `json:"error"`
+	Error    *responseError  `json:"error"`
 }
 
 type responseError struct {

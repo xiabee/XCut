@@ -25,10 +25,10 @@ type Sample struct {
 
 // FeatureTrack is a named time series over media time.
 type FeatureTrack struct {
-	Analyzer string  `json:"analyzer"`
-	Version  int     `json:"version"`
-	Kind     string  `json:"kind"` // e.g. frame_diff, audio_rms_db
-	Unit     string  `json:"unit"`
+	Analyzer string   `json:"analyzer"`
+	Version  int      `json:"version"`
+	Kind     string   `json:"kind"` // e.g. frame_diff, audio_rms_db
+	Unit     string   `json:"unit"`
 	Samples  []Sample `json:"samples"`
 }
 

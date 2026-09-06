@@ -109,7 +109,7 @@ func cmdRender(a *App, args []string) error {
 					if total > 0 {
 						p := float64(done) / float64(total)
 						if int(p*100) > last {
-							last = int(p*100)
+							last = int(p * 100)
 							progress(p)
 						}
 					}

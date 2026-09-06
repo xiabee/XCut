@@ -54,9 +54,9 @@ type Job struct {
 
 // Log controls structured logging growth.
 type Log struct {
-	Level     string `json:"level"`        // debug|info|warn|error
-	MaxSizeMB int    `json:"max_size_mb"`  // rotate threshold; 0 = 50
-	MaxFiles  int    `json:"max_files"`    // rotated files kept; 0 = 3
+	Level     string `json:"level"`       // debug|info|warn|error
+	MaxSizeMB int    `json:"max_size_mb"` // rotate threshold; 0 = 50
+	MaxFiles  int    `json:"max_files"`   // rotated files kept; 0 = 3
 }
 
 // Workers configures optional helper workers (never required).
@@ -126,8 +126,8 @@ func Default() *Config {
 			FrameSampleFPS:     2.0,
 			AnalysisWidth:      640,
 		},
-		FFmpeg: FFmpeg{},
-		Job:    Job{StaleRunningAfter: Duration{2 * time.Hour}},
+		FFmpeg:  FFmpeg{},
+		Job:     Job{StaleRunningAfter: Duration{2 * time.Hour}},
 		Workers: Workers{MediaBin: "", Audio: "auto"},
 	}
 }

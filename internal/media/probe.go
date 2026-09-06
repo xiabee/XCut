@@ -31,18 +31,18 @@ type Probe struct {
 // probeOutput mirrors the subset of ffprobe JSON we consume.
 type probeOutput struct {
 	Streams []struct {
-		Index         int    `json:"index"`
-		CodecType     string `json:"codec_type"`
-		CodecName     string `json:"codec_name"`
-		Width         int    `json:"width"`
-		Height        int    `json:"height"`
-		AvgFrameRate  string `json:"avg_frame_rate"`
-		RFrameRate    string `json:"r_frame_rate"`
-		SampleRate    string `json:"sample_rate"`
-		Channels      int    `json:"channels"`
-		Duration      string `json:"duration"`
-		BitRate       string `json:"bit_rate"`
-		Disposition   struct {
+		Index        int    `json:"index"`
+		CodecType    string `json:"codec_type"`
+		CodecName    string `json:"codec_name"`
+		Width        int    `json:"width"`
+		Height       int    `json:"height"`
+		AvgFrameRate string `json:"avg_frame_rate"`
+		RFrameRate   string `json:"r_frame_rate"`
+		SampleRate   string `json:"sample_rate"`
+		Channels     int    `json:"channels"`
+		Duration     string `json:"duration"`
+		BitRate      string `json:"bit_rate"`
+		Disposition  struct {
 			Default int `json:"default"`
 		} `json:"disposition"`
 	} `json:"streams"`

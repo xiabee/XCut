@@ -19,19 +19,19 @@ const (
 
 // Job is a recorded unit of work (import, analyze, render, …).
 type Job struct {
-	ID            string   `json:"id"`
-	Type          string   `json:"type"`
-	ProjectID     string   `json:"project_id,omitempty"`
-	Status        string   `json:"status"`
-	Progress      float64  `json:"progress"`
-	ErrorCode     string   `json:"error_code,omitempty"`
-	ErrorMessage  string   `json:"error_message,omitempty"`
-	Attempt       int      `json:"attempt"`
-	ResourceClass string   `json:"resource_class"`
-	PayloadJSON   string   `json:"payload_json,omitempty"`
-	CreatedAt     int64    `json:"created_at"`
-	StartedAt     *int64   `json:"started_at,omitempty"`
-	FinishedAt    *int64   `json:"finished_at,omitempty"`
+	ID            string  `json:"id"`
+	Type          string  `json:"type"`
+	ProjectID     string  `json:"project_id,omitempty"`
+	Status        string  `json:"status"`
+	Progress      float64 `json:"progress"`
+	ErrorCode     string  `json:"error_code,omitempty"`
+	ErrorMessage  string  `json:"error_message,omitempty"`
+	Attempt       int     `json:"attempt"`
+	ResourceClass string  `json:"resource_class"`
+	PayloadJSON   string  `json:"payload_json,omitempty"`
+	CreatedAt     int64   `json:"created_at"`
+	StartedAt     *int64  `json:"started_at,omitempty"`
+	FinishedAt    *int64  `json:"finished_at,omitempty"`
 }
 
 const jobCols = `id, type, project_id, status, progress, error_code, error_message,

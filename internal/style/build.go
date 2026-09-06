@@ -38,9 +38,9 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	durations := map[string]float64{}
 
 	type candidate struct {
-		asset   AssetInfo
-		seg     event.Segment
-		score   float64
+		asset AssetInfo
+		seg   event.Segment
+		score float64
 	}
 	var cands []candidate
 	for _, it := range items {

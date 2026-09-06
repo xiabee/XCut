@@ -73,8 +73,8 @@ type FallbackAnalyzer struct {
 	Fallback Analyzer
 }
 
-func (f FallbackAnalyzer) Name() string    { return f.Primary.Name() }
-func (f FallbackAnalyzer) Version() int    { return f.Primary.Version() }
+func (f FallbackAnalyzer) Name() string { return f.Primary.Name() }
+func (f FallbackAnalyzer) Version() int { return f.Primary.Version() }
 
 func (f FallbackAnalyzer) Analyze(ctx context.Context, opts Options, path string, hasAudio bool, log *slog.Logger) ([]FeatureTrack, error) {
 	tracks, err := f.Primary.Analyze(ctx, opts, path, hasAudio, log)

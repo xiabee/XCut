@@ -55,9 +55,9 @@ func TestParseRejectsUnknownFields(t *testing.T) {
 func TestParseRejectsBadValues(t *testing.T) {
 	base := map[string]any{
 		"name": "x", "title": "X", "version": 1,
-		"canvas": map[string]any{"width": 640, "height": 360, "fps": 30.0},
+		"canvas":          map[string]any{"width": 640, "height": 360, "fps": 30.0},
 		"target_duration": 30.0, "min_clip_duration": 1.0, "max_clip_duration": 6.0,
-		"scoring":     map[string]any{"motion": 0.4, "audio": 0.4, "duration": 0.2},
+		"scoring":      map[string]any{"motion": 0.4, "audio": 0.4, "duration": 0.2},
 		"event_config": map[string]any{"cut_threshold": 0.3, "motion_floor": 0.05, "silence_db": -40.0, "merge_gap": 1.0, "min_duration": 1.0},
 		"transition":   map[string]any{"type": "cut", "duration": 0.0},
 		"audio":        map[string]any{"gain": 0.9},
