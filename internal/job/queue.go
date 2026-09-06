@@ -136,8 +136,13 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 	}
 	q.log.Info("job started", "job_id", id, "type", typ, "project_id", projectID)
 
+	var progressMu sync.Mutex
 	lastWrite := time.Now()
 	progress := func(p float64) {
+		// Job bodies may report progress from multiple goroutines (parallel
+		// per-asset analysis); the throttle state must be synchronized.
+		progressMu.Lock()
+		defer progressMu.Unlock()
 		now := time.Now()
 		if now.Sub(lastWrite) < 250*time.Millisecond && p < 1 {
 			return // throttle DB writes

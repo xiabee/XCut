@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xiabee/XCut/internal/analysis"
@@ -206,27 +208,69 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 		}
 		store := d.analysisStore()
 		opts := d.analysisOpts()
+
+		// Parallel across assets, bounded by max_analysis_workers: each asset
+		// is independent, and the cache makes repeats cheap. Errors and
+		// callbacks are marshalled back to this goroutine.
+		workers := d.Cfg.Resource.MaxAnalysisWorkers
+		if workers < 1 {
+			workers = 1
+		}
+		sem := make(chan struct{}, workers)
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(assets))
+		var completed int64
 		for i := range assets {
 			if err := jctx.Err(); err != nil {
-				return xcerr.E(xcerr.CodeCancelled, "cancelled", err)
+				break
 			}
 			asset := assets[i]
-			result, err := analysis.Run(jctx, store, opts, analyzers,
-				asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
-			if err != nil {
-				return err
-			}
-			segs, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
-			if err != nil {
-				return err
-			}
-			if onAsset != nil {
-				onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
-			}
-			progress(float64(i+1) / float64(len(assets)))
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				result, err := analysis.Run(jctx, store, opts, analyzers,
+					asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				segs, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if onAsset != nil {
+					onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
+				}
+				n := atomic.AddInt64(&completed, 1)
+				progress(float64(n) / float64(len(assets)))
+			}()
+		}
+		wg.Wait()
+		close(errCh)
+		if err := jctx.Err(); err != nil {
+			return xcerr.E(xcerr.CodeCancelled, "cancelled", err)
+		}
+		if first := firstErr(errCh); first != nil {
+			return first
 		}
 		return nil
 	}
+}
+
+// errChOn drains the buffered error channel and returns the first error
+// (nil when empty). Errors after the first are logged by the caller's logger
+// upstream — jobs record a single failure cause.
+func firstErr(ch chan error) error {
+	var first error
+	for e := range ch {
+		if first == nil {
+			first = e
+		}
+	}
+	return first
 }
 
 // BuildTimeline generates the project timeline with the given style and
