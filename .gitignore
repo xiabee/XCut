@@ -17,3 +17,7 @@ secrets*.json
 .env
 .env.*
 .smoketest/
+
+# Rust build artifacts
+crates/*/target/
+target/
