@@ -76,6 +76,7 @@ function selectProject(p) {
   $("delete-project").hidden = false;
   refreshAssets();
   refreshJobs();
+  refreshTimeline();
 }
 
 async function deleteProject() {
@@ -175,7 +176,8 @@ async function watchUntilDone(jobID) {
       const { job } = await api(`/api/v1/jobs/${jobID}`);
       if (["succeeded", "failed", "cancelled"].includes(job.status)) {
         clearInterval(timer);
-        if (job.type === "render" && job.status === "succeeded") showPlayer();
+        if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
+        if (job.status === "succeeded" && job.type === "render") showPlayer();
         busy(false);
         refreshJobs();
       }
@@ -188,6 +190,88 @@ function showPlayer() {
   $("player").src = `/api/v1/projects/${currentProject.id}/render?t=${Date.now()}`;
   $("download").href = `/api/v1/projects/${currentProject.id}/render`;
 }
+
+/* ---------- timeline editing ---------- */
+let timelineDoc = null; // last fetched timeline JSON
+let clipEdits = null;   // working copy of timelineDoc.tracks[0].clips
+
+async function refreshTimeline() {
+  timelineDoc = null;
+  clipEdits = null;
+  renderClips();
+  if (!currentProject) return;
+  try {
+    const { timeline } = await api(`/api/v1/projects/${currentProject.id}/timeline`);
+    timelineDoc = timeline;
+    clipEdits = JSON.parse(JSON.stringify(timeline.tracks[0].clips));
+  } catch (_) { /* no timeline yet — expected before first generation */ }
+  renderClips();
+}
+
+function renderClips() {
+  const tbody = document.querySelector("#clips tbody");
+  tbody.innerHTML = "";
+  const has = Array.isArray(clipEdits);
+  $("btn-tl-save").disabled = !has;
+  $("btn-tl-reset").disabled = !has;
+  if (!has) {
+    $("tl-status").textContent = timelineDoc === null ? "generate a timeline first" : "";
+    return;
+  }
+  $("tl-status").textContent = `${clipEdits.filter(c => !c._removed).length} clips · ` +
+    `${(clipEdits.filter(c => !c._removed).reduce((s, c) => s + (c.source_end - c.source_start), 0)).toFixed(1)}s`;
+  clipEdits.forEach((c, i) => {
+    const tr = document.createElement("tr");
+    if (c._removed) tr.className = "removed";
+    const dur = (c.source_end - c.source_start).toFixed(1) + "s";
+    tr.innerHTML = `<td>${i + 1}</td>` +
+      `<td>${c.source_start.toFixed(1)}s – ${c.source_end.toFixed(1)}s</td>` +
+      `<td>${dur}</td>` +
+      `<td>
+         <button data-act="up" title="move up">↑</button>
+         <button data-act="down" title="move down">↓</button>
+         <button data-act="del" title="remove">${c._removed ? "undo" : "✕"}</button>
+       </td>`;
+    tr.addEventListener("click", (e) => {
+      const act = e.target.dataset && e.target.dataset.act;
+      if (!act) return;
+      if (act === "del") c._removed = !c._removed;
+      if (act === "up" && i > 0) [clipEdits[i - 1], clipEdits[i]] = [clipEdits[i], clipEdits[i - 1]];
+      if (act === "down" && i < clipEdits.length - 1) [clipEdits[i + 1], clipEdits[i]] = [clipEdits[i], clipEdits[i + 1]];
+      renderClips();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function saveTimeline() {
+  if (!currentProject || !timelineDoc) return;
+  const kept = clipEdits.filter(c => !c._removed);
+  if (kept.length === 0) { banner("Cannot save: every clip is removed"); return; }
+  const doc = JSON.parse(JSON.stringify(timelineDoc));
+  doc.tracks[0].clips = kept.map((c, i) => {
+    const copy = { ...c };
+    delete copy._removed;
+    copy.id = `clip_${i + 1}`;
+    copy.timeline_start = kept.slice(0, i).reduce((s, x) => s + (x.source_end - x.source_start), 0);
+    copy.transition = undefined;
+    return copy;
+  });
+  try {
+    const resp = await fetch(`/api/v1/projects/${currentProject.id}/timeline`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(doc),
+    });
+    const body = await resp.json();
+    if (!resp.ok) { banner(`Save rejected: ${body.message || resp.statusText}`); return; }
+    banner(`Timeline saved (${body.clips} clips)`);
+    await refreshTimeline();
+  } catch (e) { banner(`Save failed: ${e.message}`); }
+}
+
+$("btn-tl-save").addEventListener("click", saveTimeline);
+$("btn-tl-reset").addEventListener("click", refreshTimeline);
 
 /* ---------- wiring ---------- */
 $("delete-project").addEventListener("click", deleteProject);

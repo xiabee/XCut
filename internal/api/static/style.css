@@ -72,3 +72,5 @@ td { padding: 4px 6px; border-top: 1px solid var(--line); }
 
 video { width: 100%; max-height: 360px; border-radius: 6px; background: #000; }
 a { color: var(--acc); }
+#clips button { padding: 2px 8px; font-weight: 400; }
+#clips .removed td { text-decoration: line-through; opacity: .45; }

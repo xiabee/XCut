@@ -80,6 +80,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/projects/{id}/timeline", s.handleTimeline)
 	mux.HandleFunc("POST /api/v1/projects/{id}/render", s.handleRender)
 
+	// Timeline inspection and manual editing.
+	mux.HandleFunc("GET /api/v1/projects/{id}/timeline", s.handleTimelineGet)
+	mux.HandleFunc("PUT /api/v1/projects/{id}/timeline", s.handleTimelinePut)
+
 	s.RegisterExtensionEndpoints(mux)
 	registerStatic(mux)
 
