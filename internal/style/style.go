@@ -126,6 +126,9 @@ func Parse(b []byte) (*Preset, error) {
 	return p, nil
 }
 
+// maxPresetBytes caps preset file size (a preset is <10 KB by design).
+const maxPresetBytes = 256 << 10
+
 // Load reads a preset by name from search paths (dir first, then embedded).
 func Load(name string, extraDirs ...string) (*Preset, error) {
 	if !validName(name) {
@@ -134,6 +137,10 @@ func Load(name string, extraDirs ...string) (*Preset, error) {
 	fname := name + ".json"
 	for _, dir := range extraDirs {
 		p := filepath.Join(dir, fname)
+		if fi, err := os.Stat(p); err == nil && fi.Size() > maxPresetBytes {
+			return nil, xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("style preset too large (%d bytes)", fi.Size()), nil)
+		}
 		b, err := os.ReadFile(p)
 		if err == nil {
 			preset, perr := Parse(b)

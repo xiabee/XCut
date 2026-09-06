@@ -132,9 +132,17 @@ func Default() *Config {
 	}
 }
 
+// maxConfigBytes caps config file size (cheap DoS guard: a config is a few
+// KB by design).
+const maxConfigBytes = 1 << 20 // 1 MiB
+
 // Load reads the config file if present. Missing file is not an error.
 func Load(path string) (*Config, error) {
 	cfg := Default()
+	if fi, err := os.Stat(path); err == nil && fi.Size() > maxConfigBytes {
+		return nil, xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("config file too large (%d bytes)", fi.Size()), nil)
+	}
 	b, err := os.ReadFile(path)
 	switch {
 	case err == nil:

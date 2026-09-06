@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,16 +46,12 @@ func cmdRender(a *App, args []string) error {
 	if err != nil {
 		return err
 	}
-	b, err := os.ReadFile(tlPath)
+	tl, err := timeline.LoadFile(tlPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if xcerr.IsCode(err, xcerr.CodeNotFound) {
 			return xcerr.E(xcerr.CodeNotFound, "no timeline for project (run xcut timeline first)", err)
 		}
-		return xcerr.E(xcerr.CodeInternal, "cannot read timeline", err)
-	}
-	tl := &timeline.Timeline{}
-	if err := json.Unmarshal(b, tl); err != nil {
-		return xcerr.E(xcerr.CodeValidation, "corrupt timeline file", err)
+		return err
 	}
 	assets, err := db.ListAssets(ctx, p.ID)
 	if err != nil {

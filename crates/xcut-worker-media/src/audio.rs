@@ -33,12 +33,20 @@ pub fn audio_rms(path: &str, params: &AudioRmsParams) -> Result<AudioRmsResult, 
     let mut hint = Hint::new();
     // Extension hint helps the probe pick the demuxer for extensionless stdin
     // cases later; harmless for files.
-    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+    if let Some(ext) = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
         hint.with_extension(ext);
     }
 
     let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .map_err(|e| WorkerError::Decode(format!("probe failed: {e}")))?;
 
     let mut format = probed.format;
@@ -48,9 +56,10 @@ pub fn audio_rms(path: &str, params: &AudioRmsParams) -> Result<AudioRmsResult, 
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
         .ok_or(WorkerError::NoAudio)?;
 
-    let sample_rate = track.codec_params.sample_rate.ok_or(WorkerError::Decode(
-        "audio track has no sample rate".into(),
-    ))?;
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or(WorkerError::Decode("audio track has no sample rate".into()))?;
     let channels: usize = track
         .codec_params
         .channels
@@ -64,7 +73,9 @@ pub fn audio_rms(path: &str, params: &AudioRmsParams) -> Result<AudioRmsResult, 
 
     let window_samples = (params.window_sec * sample_rate as f64).round() as usize;
     if window_samples == 0 {
-        return Err(WorkerError::Params("window_sec too small for sample rate".into()));
+        return Err(WorkerError::Params(
+            "window_sec too small for sample rate".into(),
+        ));
     }
 
     let mut result = AudioRmsResult {
@@ -89,7 +100,11 @@ pub fn audio_rms(path: &str, params: &AudioRmsParams) -> Result<AudioRmsResult, 
                     SILENT_DB
                 } else {
                     let v = 10.0 * mean_sq.log10();
-                    if v < SILENT_DB { SILENT_DB } else { v }
+                    if v < SILENT_DB {
+                        SILENT_DB
+                    } else {
+                        v
+                    }
                 };
                 result.samples.push(Sample {
                     t: window_start,
@@ -112,11 +127,9 @@ pub fn audio_rms(path: &str, params: &AudioRmsParams) -> Result<AudioRmsResult, 
             Err(SymphoniaError::ResetRequired) => {
                 return Err(WorkerError::Decode("stream reset required".into()))
             }
-            Err(SymphoniaError::IoError(ref e))
-                if e.kind() == std::io::ErrorKind::InvalidData =>
-            {
+            Err(SymphoniaError::IoError(ref e)) if e.kind() == std::io::ErrorKind::InvalidData => {
                 // Tolerate a malformed final packet: stop decoding here.
-                break
+                break;
             }
             Err(e) => return Err(WorkerError::Decode(format!("packet read failed: {e}"))),
         };
@@ -169,7 +182,13 @@ mod tests {
     #[test]
     fn rejects_bad_window() {
         assert!(audio_rms("x", &AudioRmsParams { window_sec: 0.0 }).is_err());
-        assert!(audio_rms("x", &AudioRmsParams { window_sec: f64::NAN }).is_err());
+        assert!(audio_rms(
+            "x",
+            &AudioRmsParams {
+                window_sec: f64::NAN
+            }
+        )
+        .is_err());
     }
 
     #[test]

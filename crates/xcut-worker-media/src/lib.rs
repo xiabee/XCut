@@ -5,8 +5,8 @@
 //! no ambient state — so the Go core can treat it as an optional, crash-
 //! isolated accelerator (DECISIONS D2).
 
+pub mod audio;
 pub mod error;
 pub mod protocol;
-pub mod audio;
 
 pub use error::WorkerError;

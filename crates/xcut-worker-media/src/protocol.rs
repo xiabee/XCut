@@ -35,7 +35,13 @@ pub struct ErrorBody {
 
 impl Response {
     pub fn success(op: &str, result: serde_json::Value) -> Self {
-        Response { protocol: PROTOCOL, ok: true, op: op.to_string(), result: Some(result), error: None }
+        Response {
+            protocol: PROTOCOL,
+            ok: true,
+            op: op.to_string(),
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn failure(op: &str, err: &crate::WorkerError) -> Self {
@@ -44,7 +50,10 @@ impl Response {
             ok: false,
             op: op.to_string(),
             result: None,
-            error: Some(ErrorBody { code: err.code().to_string(), message: err.to_string() }),
+            error: Some(ErrorBody {
+                code: err.code().to_string(),
+                message: err.to_string(),
+            }),
         }
     }
 }
@@ -71,7 +80,9 @@ fn default_window() -> f64 {
 
 impl Default for AudioRmsParams {
     fn default() -> Self {
-        AudioRmsParams { window_sec: default_window() }
+        AudioRmsParams {
+            window_sec: default_window(),
+        }
     }
 }
 
