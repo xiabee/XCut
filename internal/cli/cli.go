@@ -22,6 +22,7 @@ import (
 	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -178,6 +179,11 @@ func firstNonEmpty(vals ...string) string {
 
 // Workspace builds the workspace handle from effective config.
 func (a *App) Workspace() *workspace.Workspace { return workspace.New(a.Cfg.Workspace) }
+
+// Pipeline builds the shared pipeline operations bound to an open DB.
+func (a *App) Pipeline(db *storage.DB) pipeline.Deps {
+	return pipeline.NewDeps(a.Ctx, db, a.Workspace(), a.Cfg, a.Log)
+}
 
 // parseCommandArgs splits command args into string flags and positionals.
 // Flags may appear anywhere: `xcut timeline proj --style x` and

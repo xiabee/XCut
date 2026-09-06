@@ -1,9 +1,10 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"time"
+
+	"context"
 
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/storage"
