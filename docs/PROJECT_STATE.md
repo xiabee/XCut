@@ -68,7 +68,8 @@ Updated: 2026-09-07 02:55 (+08:00) — nightly session #1, end of feature work
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
   ffmpeg fallback covers it (mp3/flac/wav work).
 - Luma-based cut detection misses chroma-only cuts (e.g. red→green).
-- Renderer supports `cut` transitions only; others rejected loudly.
+- Renderer transitions: `cut` and `fade` (through black); true crossfade
+  (xfade) pending.
 - Concurrent xcut processes on one workspace unsupported (file lock pending).
 - serve has no auth: loopback-only by construction; remote bind refused.
 - Manual timeline edits live outside style regenerations (regenerate
@@ -83,10 +84,14 @@ Updated: 2026-09-07 02:55 (+08:00) — nightly session #1, end of feature work
 
 ## Next Priorities
 
-1. Check GitHub Actions billing; re-run CI on HEAD.
-2. Fade transitions in renderer (xfade) — style presets already carry the
-   intent; renderer rejects non-cut today.
-3. Per-asset analysis parallelism inside a single job (queue-level for now).
-4. AI sidecar protocol v1 implementation (spec exists in ARCHITECTURE.md).
-5. Badminton preset tuning on real footage; court-ROI analyzer sketch.
+1. Check GitHub Actions billing; re-run CI on HEAD (everything after the
+   blocker was locally verified: build/vet/race-tests/fmt/artifact runs).
+2. True crossfade (xfade) as a renderer option — per-clip fade-through-black
+   ships today; xfade needs a combine-stage redesign.
+3. AI sidecar protocol v1 implementation (spec exists in ARCHITECTURE.md;
+   the same worker client serves it).
+4. Multi-process workspace lock; log rotation parity for CLI runs.
+5. Badminton/KTV preset tuning on real footage; court-ROI analyzer sketch.
+6. Analysis proxy files for very long sources (single-pass sampling is
+   already 0.05x realtime; proxies only pay off for multi-pass workloads).
 
