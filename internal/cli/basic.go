@@ -11,7 +11,7 @@ import (
 func versionShort() string { return version.Version }
 
 func init() {
-	register("version", "print build information", cmdVersion)
+	register("version", "print build information", usageSyntax("xcut version"), cmdVersion)
 }
 
 func cmdVersion(a *App, _ []string) error {
@@ -20,7 +20,7 @@ func cmdVersion(a *App, _ []string) error {
 }
 
 func init() {
-	register("config", "show or validate configuration (config show)", cmdConfig)
+	register("config", "show or validate configuration", usageSyntax("xcut config show|path"), cmdConfig)
 }
 
 func cmdConfig(a *App, args []string) error {

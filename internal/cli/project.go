@@ -12,8 +12,8 @@ import (
 )
 
 func init() {
-	register("project", "manage projects (project create|list|show|delete)", cmdProject)
-	register("jobs", "list jobs of a project (jobs <project>)", cmdJobs)
+	register("project", "manage projects", usageSyntax("xcut project create|list|show|delete <name>"), cmdProject)
+	register("jobs", "list jobs of a project", usageSyntax("xcut jobs <project>"), cmdJobs)
 }
 
 func cmdProject(a *App, args []string) error {

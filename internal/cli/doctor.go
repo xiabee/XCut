@@ -20,9 +20,9 @@ import (
 )
 
 func init() {
-	register("doctor", "check environment (ffmpeg, workspace, disk, db, optional workers)", cmdDoctor)
-	register("init", "create workspace layout and default config", cmdInit)
-	register("cleanup", "remove temp files and evict analysis cache to budget (cleanup [--dry-run])", cmdCleanup)
+	register("doctor", "check environment (ffmpeg, workspace, disk, db, optional workers)", usageSyntax("xcut doctor"), cmdDoctor)
+	register("init", "create workspace layout and default config", usageSyntax("xcut init"), cmdInit)
+	register("cleanup", "remove temp files and evict analysis cache to budget", usageSyntax("xcut cleanup [--dry-run]"), cmdCleanup)
 }
 
 // check is one doctor report line.

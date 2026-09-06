@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	register("timeline", "generate a timeline for a project (timeline <project> [--style name])", cmdTimeline)
+	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name]"), cmdTimeline)
 }
 
 func cmdTimeline(a *App, args []string) error {

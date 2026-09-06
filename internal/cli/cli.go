@@ -45,13 +45,23 @@ type CommandFunc func(a *App, args []string) error
 type command struct {
 	name    string
 	summary string
+	usage   string // one-line syntax: "xcut timeline <project> [--style name]"
 	fn      CommandFunc
 }
 
 var commands []command
 
-func register(name, summary string, fn CommandFunc) {
-	commands = append(commands, command{name: name, summary: summary, fn: fn})
+func register(name, summary, usage string, fn CommandFunc) {
+	commands = append(commands, command{name: name, summary: summary, usage: usage, fn: fn})
+}
+
+// helpFor prints a command's syntax line. Supports `xcut <cmd> -h/--help`.
+func helpFor(w io.Writer, c command) {
+	if c.usage != "" {
+		fmt.Fprintf(w, "usage: %s\n\n%s\n", c.usage, c.summary)
+		return
+	}
+	fmt.Fprintf(w, "usage: xcut %s\n\n%s\n", c.name, c.summary)
 }
 
 const exitOK = 0
@@ -72,6 +82,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	verbose := gfs.Bool("v", false, "verbose (debug) logging")
 	quiet := gfs.Bool("q", false, "quiet (warn) logging")
 	if err := gfs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			usage(stdout)
+			return exitOK
+		}
 		fmt.Fprintf(stderr, "xcut: %v\n", err)
 		return exitUsage
 	}
@@ -87,6 +101,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "xcut: unknown command %q\n\n", name)
 		usage(stderr)
 		return exitUsage
+	}
+
+	// Per-command help: `xcut <cmd> -h|--help|help` never executes the
+	// command (side-effect-free by construction).
+	if len(cmdArgs) == 1 {
+		switch cmdArgs[0] {
+		case "-h", "--help", "help":
+			helpFor(stdout, cmd)
+			return exitOK
+		}
 	}
 
 	// Context: cancelled on first Ctrl+C / SIGTERM.
@@ -293,3 +317,7 @@ func usage(w io.Writer) {
 	}
 	fmt.Fprintf(w, "\nxcut %s on %s/%s\n", versionShort(), runtime.GOOS, runtime.GOARCH)
 }
+
+// usageSyntax marks a command's syntax line (identity helper; keeps call
+// sites readable: register(name, summary, usageSyntax("xcut …"), fn)).
+func usageSyntax(s string) string { return s }

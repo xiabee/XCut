@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("analyze", "run baseline analyzers over project assets (analyze <project> [assetID...])", cmdAnalyze)
+	register("analyze", "run baseline analyzers over project assets", usageSyntax("xcut analyze <project> [assetID...]"), cmdAnalyze)
 }
 
 func cmdAnalyze(a *App, args []string) error {

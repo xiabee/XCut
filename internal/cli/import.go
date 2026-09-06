@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("import", "probe media files into a project (import <project> <file...>)", cmdImport)
+	register("import", "probe media files into a project", usageSyntax("xcut import <project> <file...>"), cmdImport)
 }
 
 func cmdImport(a *App, args []string) error {

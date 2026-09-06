@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render (auto <file> [--style s] [--project name] [--out path])", cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--project name] [--out path]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the

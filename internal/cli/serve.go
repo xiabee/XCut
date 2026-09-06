@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	register("serve", "run the local HTTP API (serve [--addr host:port])", cmdServe)
+	register("serve", "run the local HTTP API", usageSyntax("xcut serve [--addr host:port]"), cmdServe)
 }
 
 // cmdServe runs the localhost API. Remote listening is refused outright:

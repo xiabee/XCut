@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("render", "render a project timeline to MP4 (render <project> [--out path])", cmdRender)
+	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path]"), cmdRender)
 }
 
 func cmdRender(a *App, args []string) error {
