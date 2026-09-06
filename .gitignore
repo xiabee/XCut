@@ -1,0 +1,18 @@
+# Build artifacts
+/bin/
+/dist/
+*.test
+*.out
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
+# Partial render outputs
+*.partial
+
+# Local secrets
+secrets*.json
+.env
+.env.*

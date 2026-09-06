@@ -1,0 +1,41 @@
+# XCut Performance & Resource Policy
+
+## Resource Goals (targets, not achievements)
+
+| Metric | Target |
+|---|---|
+| Core idle RAM (serve mode) | < 100 MB (stretch < 50 MB) |
+| Core idle CPU | ~0% — no background scanning loops |
+| Analysis CPU | bounded by `resource.max_analysis_workers × ffmpeg_threads` |
+| Temp disk | bounded by `resource.max_temp_gb`, cleaned on job exit |
+| Cache disk | bounded by `resource.max_cache_gb`, LRU eviction |
+| Log growth | bounded (size-based rotation) |
+
+Numbers below are marked **measured** only when actually measured on this
+machine (Windows 11, 32 cores, 32 GB RAM). Otherwise "Not measured".
+
+## Method
+
+- **Analysis ratio** = analysis wall time ÷ video duration (lower is better;
+  0.3x means a 10-min video analyzes in 3 min).
+- **Render ratio** = render wall time ÷ output timeline duration.
+- Benchmarks live in Go tests (`-bench=.`) and `scripts/`; results recorded in
+  this file with date + machine context.
+
+## Baseline (measured)
+
+Date | Stage | Ratio | Notes
+---|---|---|---
+(loading…) | | |
+
+## Known Hotspots / Policy
+
+- Video analysis never decodes every frame at full resolution: sampling at
+  `frame_sample_fps` (default 2) with a downscaled proxy (`analysis_width`,
+  default 640) is the first-order cost control. Coarse-to-fine: cheap full-video
+  pass → refined analysis only on candidate segments.
+- No whole-video-in-memory anywhere. Streaming/pipe only; frames are consumed
+  and discarded.
+- Optimization requires evidence: benchmark → profile (pprof / cargo flamegraph)
+  → hotspot → optimize → benchmark again. No rewrites on vibes; Rust ports must
+  beat the Go baseline measurably.
