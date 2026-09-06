@@ -27,9 +27,7 @@ func cmdAnalyze(a *App, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Optional asset filter: currently AnalyzeProject covers the whole
-	// project; positional asset IDs select what to report. (Filtering lands
-	// with per-asset job granularity.)
+	// Positional asset IDs (optional) restrict the run to those assets.
 	d := a.Pipeline(db)
 
 	started := time.Now()
@@ -44,7 +42,7 @@ func cmdAnalyze(a *App, args []string) error {
 			fmt.Fprintf(a.Stdout, "  event %6.2fs–%6.2fs  score %.2f  (motion %.2f, audio %.1f dB)\n",
 				s.Start, s.End, s.Score, s.MeanMotion, s.MeanAudioDB)
 		}
-	})
+	}, args[1:]...)
 	if err != nil {
 		return err
 	}

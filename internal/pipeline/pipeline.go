@@ -160,25 +160,42 @@ func (d Deps) latestAssetByName(projectID, filename string) (*storage.Asset, err
 	return latest, nil
 }
 
-// AnalyzeProject runs the analyzer set over every asset of the project as a
-// single recorded job (blocking). onAsset (optional) fires after each asset.
-func (d Deps) AnalyzeProject(project *storage.Project, onAsset func(AnalyzedAsset)) error {
+// AnalyzeProject runs the analyzer set over the project's assets as a single
+// recorded job (blocking). onAsset (optional) fires after each asset. When
+// onlyIDs is non-empty, only those asset IDs are analyzed.
+func (d Deps) AnalyzeProject(project *storage.Project, onAsset func(AnalyzedAsset), onlyIDs ...string) error {
 	_, jerr := d.Queue.RunInline(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
-		map[string]any{}, d.analyzeBody(project, onAsset))
+		map[string]any{"assets": len(onlyIDs)}, d.analyzeBody(project, onAsset, onlyIDs))
 	return jerr
 }
 
 // AnalyzeProjectAsync is the non-blocking variant.
-func (d Deps) AnalyzeProjectAsync(project *storage.Project, onAsset func(AnalyzedAsset)) (string, error) {
+func (d Deps) AnalyzeProjectAsync(project *storage.Project, onAsset func(AnalyzedAsset), onlyIDs ...string) (string, error) {
 	return d.Queue.RunAsync(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
-		map[string]any{}, d.analyzeBody(project, onAsset))
+		map[string]any{"assets": len(onlyIDs)}, d.analyzeBody(project, onAsset, onlyIDs))
 }
 
-func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset)) job.Runner {
+func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset), onlyIDs []string) job.Runner {
 	return func(jctx context.Context, progress func(float64)) error {
 		assets, err := d.DB.ListAssets(jctx, project.ID)
 		if err != nil {
 			return err
+		}
+		if len(onlyIDs) > 0 {
+			want := make(map[string]bool, len(onlyIDs))
+			for _, id := range onlyIDs {
+				want[id] = true
+			}
+			filtered := assets[:0:0]
+			for _, a := range assets {
+				if want[a.ID] {
+					filtered = append(filtered, a)
+				}
+			}
+			if len(filtered) == 0 {
+				return xcerr.E(xcerr.CodeNotFound, "no matching assets in project", nil)
+			}
+			assets = filtered
 		}
 		if len(assets) == 0 {
 			return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
