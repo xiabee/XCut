@@ -44,6 +44,12 @@ func cmdServe(a *App, args []string) error {
 	}
 	defer db.Close()
 
+	// Serve mode logs to stderr AND a rotated file in the workspace so a
+	// long-running instance stays diagnosable without unbounded log growth.
+	slogSvc, closeLog := newServeLogger(a, a.Cfg.Workspace)
+	defer closeLog()
+	a.Log = slogSvc
+
 	srv := &api.Server{DB: db, Pipe: a.Pipeline(db)}
 	httpServer := &http.Server{
 		Addr:              addr,
