@@ -160,5 +160,9 @@ func (m *MultiError) Error() string {
 	return fmt.Sprintf("%d validation errors", len(m.Errors))
 }
 
+// Unwrap exposes the underlying *xcerr.Error so errors.As/xcerr.CodeOf see
+// the real code (validation) instead of falling back to internal.
+func (m *MultiError) Unwrap() error { return m.Err }
+
 // Details returns the individual violation strings (for logs/UI lists).
 func (m *MultiError) Details() []string { return m.Errors }

@@ -1,24 +1,45 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/xiabee/XCut/internal/config"
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	db, err := storage.Open(t.TempDir() + "/t.db")
+	root := t.TempDir()
+	db, err := storage.Open(root + "/t.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return &Server{DB: db}
+
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return &Server{
+		DB:   db,
+		Pipe: pipeline.NewDeps(context.Background(), db, ws, cfg, logger),
+	}
 }
 
 func do(t *testing.T, s *Server, method, path, body string) (*httptest.ResponseRecorder, map[string]any) {
