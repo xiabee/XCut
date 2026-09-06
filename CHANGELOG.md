@@ -41,3 +41,20 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 
 ### Known gaps
 - see docs/PROJECT_STATE.md "Known Issues".
+
+### Added (late session)
+- Embedded web UI (`go:embed` vanilla JS): project CRUD, local-path import,
+  analyze→timeline→render with live job progress, in-browser MP4 playback;
+  timeline clip editor (remove/reorder) with server-side validation.
+- `xcut serve`: rotated file logging (`log.max_size_mb`/`max_files`).
+- `ktv_mv` style preset (audio-led scoring).
+- Tag-triggered release workflow (`v*` → build + binaries attached).
+- Measured idle footprint: 12.3 MB RAM, ~0% idle CPU (PERFORMANCE.md).
+
+### Fixed
+- `--workspace X` now honors `X/config.json` (two-layer config with
+  MergeLayer); previously silently ignored.
+- `xcut analyze <project> [assetID...]` positional filters actually filter.
+- Rust worker: all `presets/*.json` embedded via glob (ktv_mv initially
+  missing from binary).
+- SafeJoin rejects backslash-rooted paths on all platforms (CI-found).
