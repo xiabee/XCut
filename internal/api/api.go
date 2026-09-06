@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -17,7 +18,13 @@ import (
 
 // Server carries the API dependencies.
 type Server struct {
-	DB *storage.DB
+	DB   *storage.DB
+	Pipe pipeline.Deps
+}
+
+// Shutdown waits for in-flight async jobs (bounded by the caller's timeout).
+func (s *Server) Shutdown() {
+	s.Pipe.Queue.Wait()
 }
 
 // statusFor maps xcerr codes to HTTP statuses.
@@ -65,6 +72,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/projects/{id}", s.handleProjectDelete)
 	mux.HandleFunc("GET /api/v1/projects/{id}/jobs", s.handleProjectJobs)
 	mux.HandleFunc("GET /api/v1/jobs", s.handleJobsList)
+	mux.HandleFunc("GET /api/v1/jobs/{id}", s.handleJobGet)
+
+	// Async job triggers (202 Accepted; poll /api/v1/jobs/{id}).
+	mux.HandleFunc("POST /api/v1/projects/{id}/assets", s.handleAssetImport)
+	mux.HandleFunc("POST /api/v1/projects/{id}/analyze", s.handleAnalyze)
+	mux.HandleFunc("POST /api/v1/projects/{id}/timeline", s.handleTimeline)
+	mux.HandleFunc("POST /api/v1/projects/{id}/render", s.handleRender)
 
 	return mux
 }

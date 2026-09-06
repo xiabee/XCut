@@ -44,7 +44,7 @@ func cmdServe(a *App, args []string) error {
 	}
 	defer db.Close()
 
-	srv := &api.Server{DB: db}
+	srv := &api.Server{DB: db, Pipe: a.Pipeline(db)}
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),
@@ -76,6 +76,7 @@ func cmdServe(a *App, args []string) error {
 		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shCtx)
+		srv.Shutdown() // wait for in-flight async jobs
 		fmt.Fprintln(a.Stdout, "server stopped")
 		return nil
 	}

@@ -72,28 +72,41 @@ func (d Deps) analysisOpts() analysis.Options {
 
 // AnalyzedAsset is the per-asset payload of AnalyzeProject's callback.
 type AnalyzedAsset struct {
-	Asset   *storage.Asset
-	Result  *analysis.Result
+	Asset    *storage.Asset
+	Result   *analysis.Result
 	Segments []event.Segment
 }
 
 // ImportAsset probes one media file and upserts it into the project as a
-// recorded job. The file may live anywhere on disk (user media is external).
+// recorded job (blocking). The file may live anywhere on disk.
 func (d Deps) ImportAsset(project *storage.Project, path string) (*storage.Asset, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
 	}
-
 	_, jerr := d.Queue.RunInline(d.Ctx, "import", project.ID, job.ClassIOHeavy,
-		map[string]any{"path": abs}, func(jctx context.Context, progress func(float64)) error {
-			return d.importInto(jctx, project, abs, progress)
-		})
+		map[string]any{"path": abs}, d.importBody(project, abs))
 	if jerr != nil {
 		return nil, jerr
 	}
-	// Re-read the stored row so callers see the canonical record.
 	return d.latestAssetByName(project.ID, filepath.Base(abs))
+}
+
+// ImportAssetAsync is the non-blocking variant; it returns the job id
+// immediately (poll GET /api/v1/jobs/{id}).
+func (d Deps) ImportAssetAsync(project *storage.Project, path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
+	}
+	return d.Queue.RunAsync(d.Ctx, "import", project.ID, job.ClassIOHeavy,
+		map[string]any{"path": abs}, d.importBody(project, abs))
+}
+
+func (d Deps) importBody(project *storage.Project, path string) job.Runner {
+	return func(ctx context.Context, progress func(float64)) error {
+		return d.importInto(ctx, project, path, progress)
+	}
 }
 
 func (d Deps) importInto(ctx context.Context, project *storage.Project, path string, progress func(float64)) error {
@@ -148,117 +161,136 @@ func (d Deps) latestAssetByName(projectID, filename string) (*storage.Asset, err
 }
 
 // AnalyzeProject runs the analyzer set over every asset of the project as a
-// single recorded job. onAsset (optional) fires after each asset.
+// single recorded job (blocking). onAsset (optional) fires after each asset.
 func (d Deps) AnalyzeProject(project *storage.Project, onAsset func(AnalyzedAsset)) error {
-	assets, err := d.DB.ListAssets(d.Ctx, project.ID)
-	if err != nil {
-		return err
-	}
-	if len(assets) == 0 {
-		return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
-	}
-	analyzers, err := d.analyzers()
-	if err != nil {
-		return err
-	}
-	store := d.analysisStore()
-	opts := d.analysisOpts()
-
 	_, jerr := d.Queue.RunInline(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
-		map[string]any{"assets": len(assets)}, func(jctx context.Context, progress func(float64)) error {
-			for i := range assets {
-				if err := jctx.Err(); err != nil {
-					return xcerr.E(xcerr.CodeCancelled, "cancelled", err)
-				}
-				asset := assets[i]
-				result, err := analysis.Run(jctx, store, opts, analyzers,
-					asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
-				if err != nil {
-					return err
-				}
-				segs, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
-				if err != nil {
-					return err
-				}
-				if onAsset != nil {
-					onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
-				}
-				progress(float64(i+1) / float64(len(assets)))
-			}
-			return nil
-		})
+		map[string]any{}, d.analyzeBody(project, onAsset))
 	return jerr
 }
 
-// BuildTimeline generates the project timeline with the given style and
-// writes it to the project directory atomically (recorded job).
-func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeline.Timeline, error) {
-	assets, err := d.DB.ListAssets(d.Ctx, project.ID)
-	if err != nil {
-		return nil, err
-	}
-	if len(assets) == 0 {
-		return nil, xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
-	}
-	preset, err := style.Load(styleName, filepath.Join(d.WS.Root, "styles"))
-	if err != nil {
-		return nil, err
-	}
-	analyzers, err := d.analyzers()
-	if err != nil {
-		return nil, err
-	}
-	store := d.analysisStore()
-	opts := d.analysisOpts()
+// AnalyzeProjectAsync is the non-blocking variant.
+func (d Deps) AnalyzeProjectAsync(project *storage.Project, onAsset func(AnalyzedAsset)) (string, error) {
+	return d.Queue.RunAsync(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
+		map[string]any{}, d.analyzeBody(project, onAsset))
+}
 
-	var result *timeline.Timeline
+func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset)) job.Runner {
+	return func(jctx context.Context, progress func(float64)) error {
+		assets, err := d.DB.ListAssets(jctx, project.ID)
+		if err != nil {
+			return err
+		}
+		if len(assets) == 0 {
+			return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
+		}
+		analyzers, err := d.analyzers()
+		if err != nil {
+			return err
+		}
+		store := d.analysisStore()
+		opts := d.analysisOpts()
+		for i := range assets {
+			if err := jctx.Err(); err != nil {
+				return xcerr.E(xcerr.CodeCancelled, "cancelled", err)
+			}
+			asset := assets[i]
+			result, err := analysis.Run(jctx, store, opts, analyzers,
+				asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
+			if err != nil {
+				return err
+			}
+			segs, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
+			if err != nil {
+				return err
+			}
+			if onAsset != nil {
+				onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
+			}
+			progress(float64(i+1) / float64(len(assets)))
+		}
+		return nil
+	}
+}
+
+// BuildTimeline generates the project timeline with the given style and
+// writes it to the project directory atomically (recorded job, blocking).
+func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeline.Timeline, error) {
+	result := &timeline.Timeline{}
 	_, jerr := d.Queue.RunInline(d.Ctx, "timeline", project.ID, job.ClassCPULight,
-		map[string]any{"style": preset.Name}, func(jctx context.Context, progress func(float64)) error {
-			var items []style.AssetEvents
-			for i := range assets {
-				asset := assets[i]
-				res, err := analysis.Run(jctx, store, opts, analyzers,
-					asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
-				if err != nil {
-					return err
-				}
-				segs, err := event.Build(res.Tracks, asset.DurationSec, preset.EventConfig)
-				if err != nil {
-					return err
-				}
-				items = append(items, style.AssetEvents{
-					Asset: style.AssetInfo{
-						ID:          asset.ID,
-						Path:        asset.Path,
-						DurationSec: asset.DurationSec,
-					},
-					Segments: segs,
-				})
-				progress(float64(i+1) / float64(len(assets)+1))
-			}
-			tl, err := style.Build(preset, project.ID, items)
-			if err != nil {
-				return err
-			}
-			b, err := json.MarshalIndent(tl, "", "  ")
-			if err != nil {
-				return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
-			}
-			outPath, err := d.WS.SafeJoin(filepath.Join("projects", project.ID, "timeline.json"))
-			if err != nil {
-				return err
-			}
-			if err := WriteAtomic(outPath, b); err != nil {
-				return err
-			}
-			progress(1.0)
-			result = tl
-			return nil
-		})
+		map[string]any{"style": styleName}, d.timelineBody(project, styleName, result))
 	if jerr != nil {
 		return nil, jerr
 	}
 	return result, nil
+}
+
+// BuildTimelineAsync is the non-blocking variant.
+func (d Deps) BuildTimelineAsync(project *storage.Project, styleName string) (string, error) {
+	return d.Queue.RunAsync(d.Ctx, "timeline", project.ID, job.ClassCPULight,
+		map[string]any{"style": styleName}, d.timelineBody(project, styleName, &timeline.Timeline{}))
+}
+
+func (d Deps) timelineBody(project *storage.Project, styleName string, result *timeline.Timeline) job.Runner {
+	return func(jctx context.Context, progress func(float64)) error {
+		assets, err := d.DB.ListAssets(jctx, project.ID)
+		if err != nil {
+			return err
+		}
+		if len(assets) == 0 {
+			return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
+		}
+		preset, err := style.Load(styleName, filepath.Join(d.WS.Root, "styles"))
+		if err != nil {
+			return err
+		}
+		analyzers, err := d.analyzers()
+		if err != nil {
+			return err
+		}
+		store := d.analysisStore()
+		opts := d.analysisOpts()
+
+		var items []style.AssetEvents
+		for i := range assets {
+			asset := assets[i]
+			res, err := analysis.Run(jctx, store, opts, analyzers,
+				asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
+			if err != nil {
+				return err
+			}
+			segs, err := event.Build(res.Tracks, asset.DurationSec, preset.EventConfig)
+			if err != nil {
+				return err
+			}
+			items = append(items, style.AssetEvents{
+				Asset: style.AssetInfo{
+					ID:          asset.ID,
+					Path:        asset.Path,
+					DurationSec: asset.DurationSec,
+				},
+				Segments: segs,
+			})
+			progress(float64(i+1) / float64(len(assets)+1))
+		}
+		tl, err := style.Build(preset, project.ID, items)
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(tl, "", "  ")
+		if err != nil {
+			return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
+		}
+		outPath, err := d.WS.SafeJoin(filepath.Join("projects", project.ID, "timeline.json"))
+		if err != nil {
+			return err
+		}
+		if err := WriteAtomic(outPath, b); err != nil {
+			return err
+		}
+		progress(1.0)
+		*result = *tl
+		return nil
+	}
 }
 
 // TimelinePath is where a project's timeline document lives.
@@ -272,71 +304,81 @@ func (d Deps) DefaultRenderPath(projectID string) (string, error) {
 }
 
 // RenderProject renders the project's stored timeline to outPath (recorded
-// job; temp scratch removed on success, kept on failure for debugging).
+// job, blocking; temp scratch removed on success, kept on failure).
 func (d Deps) RenderProject(project *storage.Project, outPath string, onProgress func(pct int)) error {
-	tlPath, err := d.TimelinePath(project.ID)
-	if err != nil {
-		return err
-	}
-	tl, err := timeline.LoadFile(tlPath)
-	if err != nil {
-		if xcerr.IsCode(err, xcerr.CodeNotFound) {
-			return xcerr.E(xcerr.CodeNotFound, "no timeline for project (generate one first)", err)
-		}
-		return err
-	}
-	assets, err := d.DB.ListAssets(d.Ctx, project.ID)
-	if err != nil {
-		return err
-	}
-	durations := make(map[string]float64, len(assets))
-	for i := range assets {
-		durations[assets[i].ID] = assets[i].DurationSec
-	}
-	if err := tl.Validate(func(id string) (float64, bool) {
-		v, ok := durations[id]
-		return v, ok
-	}); err != nil {
-		return err
-	}
-
-	started := time.Now()
 	_, jerr := d.Queue.RunInline(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
-		map[string]any{"out": outPath, "clips": countClips(tl)}, func(jctx context.Context, progress func(float64)) error {
-			tempDir, err := d.WS.NewTempDir("render")
-			if err != nil {
-				return err
-			}
-			defer func() {
-				if jctx.Err() == nil {
-					_ = os.RemoveAll(tempDir)
-				}
-			}()
-
-			last := 0
-			err = render.Render(jctx, tl, render.Options{
-				Tools:   d.tools(),
-				TempDir: tempDir,
-				OnProgress: func(done, total int) {
-					if total > 0 && onProgress != nil {
-						pct := done * 100 / total
-						if pct > last {
-							last = pct
-							onProgress(pct)
-							progress(float64(pct) / 100)
-						}
-					}
-				},
-			}, outPath)
-			if err != nil {
-				return err
-			}
-			progress(1.0)
-			fi, _ := os.Stat(outPath)
-			d.Log.Debug("render done", "out", outPath, "bytes", fileSize(fi), "duration_ms", time.Since(started).Milliseconds())
-			return nil
-		})
+		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
 	return jerr
+}
+
+// RenderProjectAsync is the non-blocking variant.
+func (d Deps) RenderProjectAsync(project *storage.Project, outPath string, onProgress func(pct int)) (string, error) {
+	return d.Queue.RunAsync(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
+		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
+}
+
+func (d Deps) renderBody(project *storage.Project, outPath string, onProgress func(pct int)) job.Runner {
+	started := time.Now()
+	return func(jctx context.Context, progress func(float64)) error {
+		tlPath, err := d.TimelinePath(project.ID)
+		if err != nil {
+			return err
+		}
+		tl, err := timeline.LoadFile(tlPath)
+		if err != nil {
+			if xcerr.IsCode(err, xcerr.CodeNotFound) {
+				return xcerr.E(xcerr.CodeNotFound, "no timeline for project (generate one first)", err)
+			}
+			return err
+		}
+		assets, err := d.DB.ListAssets(jctx, project.ID)
+		if err != nil {
+			return err
+		}
+		durations := make(map[string]float64, len(assets))
+		for i := range assets {
+			durations[assets[i].ID] = assets[i].DurationSec
+		}
+		if err := tl.Validate(func(id string) (float64, bool) {
+			v, ok := durations[id]
+			return v, ok
+		}); err != nil {
+			return err
+		}
+
+		tempDir, err := d.WS.NewTempDir("render")
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if jctx.Err() == nil {
+				_ = os.RemoveAll(tempDir)
+			}
+		}()
+
+		last := 0
+		err = render.Render(jctx, tl, render.Options{
+			Tools:   d.tools(),
+			TempDir: tempDir,
+			OnProgress: func(done, total int) {
+				if total > 0 && onProgress != nil {
+					pct := done * 100 / total
+					if pct > last {
+						last = pct
+						onProgress(pct)
+						progress(float64(pct) / 100)
+					}
+				}
+			},
+		}, outPath)
+		if err != nil {
+			return err
+		}
+		progress(1.0)
+		fi, _ := os.Stat(outPath)
+		d.Log.Debug("render done", "out", outPath, "bytes", fileSize(fi), "duration_ms", time.Since(started).Milliseconds())
+		return nil
+	}
 }
 
 func countClips(tl *timeline.Timeline) int {
