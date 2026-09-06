@@ -140,13 +140,19 @@ func lookup(name string) (command, bool) {
 	return command{}, false
 }
 
+// loadConfig resolves effective configuration in two layers: a bootstrap
+// config (explicit path, XCUT_CONFIG, or ~/.xcut/config.json) determines the
+// workspace; when the effective workspace has its own config.json and no
+// explicit config path was given, that file is layered on top (workspace
+// config wins for keys it sets). Env vars apply to both layers; the resolved
+// path returned is the most specific file used ("" when defaults only).
 func loadConfig(flagPath, flagWorkspace string) (*config.Config, string, error) {
+	explicit := flagPath != "" || os.Getenv("XCUT_CONFIG") != ""
 	path := flagPath
 	if path == "" {
 		path = os.Getenv("XCUT_CONFIG")
 	}
 	if path == "" {
-		// Default lives inside the default workspace so `xcut init` owns it.
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, "", xcerr.E(xcerr.CodeInternal, "cannot locate home directory", err)
@@ -165,7 +171,40 @@ func loadConfig(flagPath, flagWorkspace string) (*config.Config, string, error) 
 	if err := config.Resolve(cfg); err != nil {
 		return nil, "", err
 	}
+
+	// Layer 2: the effective workspace's own config (when it differs from the
+	// bootstrap file's location).
+	if !explicit {
+		wsCfgPath := filepath.Join(cfg.Workspace, "config.json")
+		if sameFile(wsCfgPath, path) {
+			return cfg, path, nil
+		}
+		if _, err := os.Stat(wsCfgPath); err == nil {
+			wsCfg, err := config.Load(wsCfgPath)
+			if err != nil {
+				return nil, "", err
+			}
+			merged := config.MergeLayer(cfg, wsCfg)
+			config.Env(merged)
+			if ws := firstNonEmpty(flagWorkspace, os.Getenv("XCUT_WORKSPACE")); ws != "" {
+				merged.Workspace = ws
+			}
+			if err := config.Resolve(merged); err != nil {
+				return nil, "", err
+			}
+			return merged, wsCfgPath, nil
+		}
+	}
 	return cfg, path, nil
+}
+
+func sameFile(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	fa, err1 := os.Stat(a)
+	fb, err2 := os.Stat(b)
+	return err1 == nil && err2 == nil && os.SameFile(fa, fb)
 }
 
 func firstNonEmpty(vals ...string) string {
