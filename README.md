@@ -150,6 +150,7 @@ log live in [`docs/`](docs/):
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — measured baselines
 - [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — what actually works right now
 - [docs/ROADMAP.md](docs/ROADMAP.md) — where this is going
+- [docs/USAGE.md](docs/USAGE.md) — per-command reference
 
 ## Packaging
 

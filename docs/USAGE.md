@@ -1,6 +1,6 @@
 # XCut Command Reference
 
-_Generated from `xcut <command> --help` output (commit 4fff305)._
+_Generated from `xcut <command> --help` output (commit b27138a)._
 
 Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
 
