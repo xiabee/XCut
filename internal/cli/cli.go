@@ -21,6 +21,7 @@ import (
 
 	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/job"
+	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -105,6 +106,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		level = slog.LevelWarn
 	}
 	log := newLogger(stderr, level)
+	media.SetProcessLimit(cfg.Resource.MaxFFmpegProcesses)
 
 	a := &App{
 		Ctx:     ctx,

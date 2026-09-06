@@ -1,0 +1,131 @@
+package render
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/testmedia"
+	"github.com/xiabee/XCut/internal/timeline"
+)
+
+func requireTools(t *testing.T) media.Tools {
+	t.Helper()
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	return media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe", Threads: 2}
+}
+
+func fixture(t *testing.T) string {
+	t.Helper()
+	p, err := testmedia.Generate(t.TempDir(), "src.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func twoClipTimeline(src string) *timeline.Timeline {
+	return &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 320, Height: 240, FPS: 15},
+		Tracks: []timeline.Track{
+			{ID: "v1", Kind: "video", Clips: []timeline.Clip{
+				{ID: "c1", AssetID: "a", SourcePath: src, SourceStart: 0, SourceEnd: 3, TimelineStart: 0, Speed: 1, Volume: 1},
+				{ID: "c2", AssetID: "a", SourcePath: src, SourceStart: 4, SourceEnd: 7, TimelineStart: 3, Speed: 1, Volume: 0.5},
+			}},
+		},
+	}
+}
+
+func TestRenderProducesVerifiedMP4(t *testing.T) {
+	tools := requireTools(t)
+	src := fixture(t)
+	tl := twoClipTimeline(src)
+	outDir := t.TempDir()
+	out := filepath.Join(outDir, "out.mp4")
+
+	tmp := t.TempDir()
+	err := Render(context.Background(), tl, Options{Tools: tools, TempDir: tmp}, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("output missing: %v", err)
+	}
+	// Independent verification (not the renderer's own).
+	probe, err := media.ProbeFile(context.Background(), tools, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probe.VideoCodec == "" || !probe.HasAudio {
+		t.Fatalf("streams missing: %+v", probe)
+	}
+	if probe.DurationSec < 5.4 || probe.DurationSec > 6.6 {
+		t.Fatalf("duration %.2f, want ~6", probe.DurationSec)
+	}
+	if probe.Width != 320 || probe.Height != 240 {
+		t.Fatalf("size %dx%d", probe.Width, probe.Height)
+	}
+	// Temp scratch must not be required anymore (caller cleans; we just check
+	// partial never leaked into the output dir).
+	if _, err := os.Stat(out + ".partial"); !os.IsNotExist(err) {
+		t.Fatal("partial file left behind after success")
+	}
+}
+
+func TestRenderFailureLeavesNoFinalFile(t *testing.T) {
+	tools := requireTools(t)
+	outDir := t.TempDir()
+	out := filepath.Join(outDir, "out.mp4")
+
+	// Missing source.
+	tl := twoClipTimeline(filepath.Join(outDir, "missing.mp4"))
+	err := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir()}, out)
+	if err == nil {
+		t.Fatal("expected error for missing source")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("final file must not exist after failure")
+	}
+
+	// Corrupt source.
+	bad := filepath.Join(t.TempDir(), "bad.mp4")
+	_ = os.WriteFile(bad, []byte("garbage"), 0o644)
+	tl2 := twoClipTimeline(bad)
+	err = Render(context.Background(), tl2, Options{Tools: tools, TempDir: t.TempDir()}, out)
+	if err == nil {
+		t.Fatal("expected error for corrupt source")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("final file must not exist after failure")
+	}
+}
+
+func TestRenderRejectsUnsupportedTransition(t *testing.T) {
+	tools := requireTools(t)
+	src := fixture(t)
+	tl := twoClipTimeline(src)
+	tl.Tracks[0].Clips[1].Transition = &timeline.Transition{Type: "swirl", Duration: 0.5}
+	err := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir()}, filepath.Join(t.TempDir(), "o.mp4"))
+	if err == nil {
+		t.Fatal("expected unsupported transition error")
+	}
+}
+
+func TestRenderRespectsContextCancellation(t *testing.T) {
+	tools := requireTools(t)
+	src := fixture(t)
+	tl := twoClipTimeline(src)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := Render(ctx, tl, Options{Tools: tools, TempDir: t.TempDir()}, filepath.Join(t.TempDir(), "o.mp4"))
+	if err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	_ = time.Millisecond
+}
