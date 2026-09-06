@@ -74,6 +74,9 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 
 	partial := outPath + ".partial"
 	_ = os.Remove(partial)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		return xcerr.E(xcerr.CodeRenderFailure, "cannot create output directory", err)
+	}
 
 	// 1. Normalize each clip. Sources are probed once so clips without an
 	// audio stream still produce a (silent) audio track — concat requires
