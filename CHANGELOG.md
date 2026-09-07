@@ -31,6 +31,10 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   response/stderr caps, per-call timeouts, .py sidecar interpreter
   probing, config `workers.ai_bin` + `XCUT_AI_BIN`, doctor discovery;
   reference sidecar `scripts/xcut-ai-sidecar.py` (stdlib, no models).
+- True crossfade: `xfade` transition type with overlapping timeline
+  placement (duration semantics Σ − transitions), chained
+  xfade+acrossfade render combine using probed part durations;
+  `generic_xfade` preset.
 - Local quality gate `scripts/check.sh|ps1` (fast/full) +
   `scripts/race-docker.sh` (linux race in container).
 

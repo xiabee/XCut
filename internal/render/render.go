@@ -55,10 +55,11 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 	}
 
 	// Validate transitions up front: "cut" joins hard, "fade" dissolves
-	// through black (fade-out on this clip + fade-in on the next). Anything
-	// else is refused rather than silently dropped.
+	// through black (fade-out on this clip + fade-in on the next), "xfade"
+	// blends the two clips inside their shared window (needs the xfade
+	// combine stage). Anything else is refused rather than silently dropped.
 	for _, c := range clips {
-		if c.Transition != nil && c.Transition.Type != "cut" && c.Transition.Type != "fade" {
+		if c.Transition != nil && c.Transition.Type != "cut" && c.Transition.Type != "fade" && c.Transition.Type != "xfade" {
 			return xcerr.E(xcerr.CodeRenderFailure,
 				fmt.Sprintf("transition %q not supported by renderer yet", c.Transition.Type), nil)
 		}
@@ -101,9 +102,15 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 		opts.OnProgress(i+1, len(clips)+1)
 	}
 
-	// 2. Concat (stream copy) directly to <out>.partial so the final rename
-	// stays on one volume.
-	if err := concat(ctx, parts, opts, partial); err != nil {
+	// 2. Combine. Timelines containing xfade transitions need a filtergraph
+	// (xfade + acrossfade chains); plain timelines use the concat demuxer
+	// (stream copy). Both write directly to <out>.partial so the final
+	// rename stays on one volume.
+	if hasXfade(clips) {
+		if err := xfadeCombine(ctx, clips, parts, opts, partial); err != nil {
+			return err
+		}
+	} else if err := concat(ctx, parts, opts, partial); err != nil {
 		return err
 	}
 	opts.OnProgress(len(clips)+1, len(clips)+1)
@@ -306,3 +313,92 @@ func tail(b []byte, n int) string {
 	}
 	return string(b)
 }
+
+// hasXfade reports whether any clip joins its successor with an xfade.
+func hasXfade(clips []timeline.Clip) bool {
+	for i, c := range clips {
+		if i < len(clips)-1 && c.Transition != nil && c.Transition.Type == "xfade" && c.Transition.Duration > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// xfadeCombine blends normalized clips with chained xfade (video) and
+// acrossfade (audio) filters. All parts share the normalized canvas and
+// audio layout, which is exactly what xfade requires. Offsets are computed
+// from the *probed* part durations so encoder round-off cannot accumulate.
+//
+// Duration semantics: total = Σ clip durations − Σ transition durations
+// (each xfade consumes part of both neighbors; the timeline placement in
+// style.Build mirrors this by overlapping TimelineStart).
+func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, opts Options, outPath string) error {
+	durs := make([]float64, len(parts))
+	for i, p := range parts {
+		probe, err := media.ProbeFile(ctx, opts.Tools, p)
+		if err != nil {
+			return xcerr.E(xcerr.CodeRenderFailure, fmt.Sprintf("cannot probe normalized clip %d", i), err)
+		}
+		durs[i] = probe.DurationSec
+	}
+
+	var v, a []string
+	var lastV, lastA string
+	for i := 0; i < len(parts); i++ {
+		inV, inA := fmt.Sprintf("[%d:v]", i), fmt.Sprintf("[%d:a]", i)
+		outV, outA := fmt.Sprintf("[vx%d]", i), fmt.Sprintf("[ax%d]", i)
+		if i == 0 {
+			lastV, lastA = inV, inA
+			continue
+		}
+		d := transitionBetween(clips, i-1)
+		if d <= 0 {
+			return xcerr.E(xcerr.CodeRenderFailure,
+				"mixing xfade with hard cuts in one timeline is not supported yet", nil)
+		}
+		// Offset relative to the chained result: its duration minus the
+		// transition window itself.
+		offset := durs[i-1] - d
+		for j := 0; j < i-1; j++ {
+			offset += durs[j] - transitionBetween(clips, j)
+		}
+		if offset < 0 {
+			offset = 0
+		}
+		v = append(v, fmt.Sprintf("%s%sxfade=transition=fade:duration=%s:offset=%s%s",
+			lastV, inV, f3(d), f3(offset), outV))
+		a = append(a, fmt.Sprintf("%s%sacrossfade=d=%s%s", lastA, inA, f3(d), outA))
+		lastV, lastA = outV, outA
+	}
+
+	filter := strings.Join(append(v, a...), ";")
+	args := []string{
+		"-hide_banner", "-nostdin", "-v", "error", "-y",
+		"-threads", strconv.Itoa(threadCap(opts.Tools.Threads)),
+	}
+	for _, p := range parts {
+		args = append(args, "-i", p)
+	}
+	args = append(args,
+		"-filter_complex", filter,
+		"-map", lastV, "-map", lastA,
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", strconv.Itoa(opts.CRF),
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "128k",
+		"-movflags", "+faststart",
+		"-f", "mp4",
+		outPath,
+	)
+	return runFFmpeg(ctx, opts.Tools.FFmpeg, args)
+}
+
+// transitionBetween returns the xfade duration between clips i and i+1 (0 if
+// none).
+func transitionBetween(clips []timeline.Clip, i int) float64 {
+	if i < len(clips) && clips[i].Transition != nil && clips[i].Transition.Type == "xfade" {
+		return clips[i].Transition.Duration
+	}
+	return 0
+}
+
+func f3(f float64) string { return strconv.FormatFloat(f, 'f', 3, 64) }

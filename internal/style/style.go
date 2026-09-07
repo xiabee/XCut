@@ -138,8 +138,11 @@ func (p *Preset) Validate() error {
 	if w.Motion+w.Audio+w.Duration+w.Hits+w.Density <= 0 {
 		add("scoring weights must not all be zero")
 	}
-	if p.Transition.Type != "cut" && p.Transition.Type != "fade" {
-		add("transition.type %q unsupported (cut|fade)", p.Transition.Type)
+	if p.Transition.Type != "cut" && p.Transition.Type != "fade" && p.Transition.Type != "xfade" {
+		add("transition.type %q unsupported (cut|fade|xfade)", p.Transition.Type)
+	}
+	if p.Transition.Type == "xfade" && p.Transition.Duration <= 0 {
+		add("transition.duration must be > 0 for xfade")
 	}
 	if p.Transition.Duration < 0 {
 		add("transition.duration must be >= 0")

@@ -1,0 +1,20 @@
+{
+	"name": "generic_xfade",
+	"title": "Generic Highlight with Crossfades",
+	"version": 1,
+	"canvas": { "width": 1920, "height": 1080, "fps": 30 },
+	"target_duration": 45,
+	"min_clip_duration": 2.0,
+	"max_clip_duration": 10.0,
+	"scoring": { "motion": 0.45, "audio": 0.35, "duration": 0.20 },
+	"event_config": {
+		"cut_threshold": 0.28,
+		"motion_floor": 0.06,
+		"silence_db": -42,
+		"merge_gap": 0.8,
+		"min_duration": 1.0
+	},
+	"transition": { "type": "xfade", "duration": 1.0 },
+	"audio": { "gain": 1.0 },
+	"diversity": { "min_gap": 3.0, "max_overlap_iou": 0.4 }
+}

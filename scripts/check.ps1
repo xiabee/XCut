@@ -24,6 +24,10 @@ if (-not $hasFfmpeg) {
         }
     }
 }
+# Repo-local go tools (govulncheck etc.) installed via GOBIN=.tools/bin.
+if (Test-Path ".tools/bin") {
+    $env:PATH = (Resolve-Path ".tools/bin").Path + ";" + $env:PATH
+}
 if ($hasFfmpeg) {
     Write-Host "== ffmpeg: $((ffmpeg -version 2>$null | Select-Object -First 1))"
 }

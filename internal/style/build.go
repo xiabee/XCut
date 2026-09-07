@@ -230,17 +230,29 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		return clips[i].SourceStart < clips[j].SourceStart
 	})
 
-	// Back-to-back placement.
+	// Back-to-back placement; an xfade makes clips share the transition
+	// window (timeline duration = Σ durations − Σ transitions).
 	cursor := 0.0
 	for i := range clips {
 		clips[i].TimelineStart = round4(cursor)
-		if i < len(clips)-1 && preset.Transition.Type != "cut" {
-			clips[i].Transition = &timeline.Transition{
-				Type:     preset.Transition.Type,
-				Duration: math.Min(preset.Transition.Duration, clips[i].Duration()),
-			}
+		if i >= len(clips)-1 || preset.Transition.Type == "cut" {
+			cursor = round4(cursor + clips[i].Duration())
+			continue
 		}
-		cursor = round4(cursor + clips[i].Duration())
+		// Transition between clip i and i+1 (attached to the outgoing clip,
+		// same convention as "fade"). xfade consumes part of both clips, so
+		// it may not exceed the shorter of the two.
+		d := math.Min(preset.Transition.Duration, clips[i].Duration())
+		d = math.Min(d, clips[i+1].Duration())
+		clips[i].Transition = &timeline.Transition{
+			Type:     preset.Transition.Type,
+			Duration: round4(d),
+		}
+		step := clips[i].Duration()
+		if preset.Transition.Type == "xfade" {
+			step -= d // the next clip starts inside this one's window
+		}
+		cursor = round4(cursor + step)
 	}
 
 	tl := &timeline.Timeline{

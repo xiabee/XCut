@@ -30,7 +30,7 @@ func testPreset() *Preset {
 }
 
 func TestParseEmbeddedPresets(t *testing.T) {
-	for _, name := range []string{"generic_highlight", "badminton_highlight", "ktv_mv"} {
+	for _, name := range []string{"generic_highlight", "generic_xfade", "badminton_highlight", "ktv_mv"} {
 		p, err := Load(name)
 		if err != nil {
 			t.Fatalf("load %s: %v", name, err)
@@ -393,5 +393,41 @@ func TestPresetMotionROIParseAndAutoWire(t *testing.T) {
 	bad.MotionROI = &MotionROI{X: 0.8, Y: 0, W: 0.5, H: 0.5}
 	if err := bad.Validate(); err == nil {
 		t.Fatal("x+w>1 ROI must be rejected")
+	}
+}
+
+func TestBuildXfadePlacement(t *testing.T) {
+	p := testPreset()
+	p.TargetDuration = 30
+	p.Transition = Transition{Type: "xfade", Duration: 1}
+	asset := AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 60}
+	items := []AssetEvents{{Asset: asset, Segments: []event.Segment{
+		seg(0, 4, 0.20, -10),
+		seg(10, 14, 0.21, -10),
+		seg(20, 24, 0.22, -10),
+	}}}
+	tl, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips := tl.Tracks[0].Clips
+	if len(clips) != 3 {
+		t.Fatalf("clips %d, want 3", len(clips))
+	}
+	// xfade 1s: starts at 0, 3, 6 → timeline duration 10 (Σ 12 − 2).
+	for i, want := range []float64{0, 3, 6} {
+		if clips[i].TimelineStart != want {
+			t.Errorf("clip %d starts %g, want %g", i, clips[i].TimelineStart, want)
+		}
+	}
+	if math.Abs(tl.Duration()-10) > 1e-9 {
+		t.Errorf("timeline duration %g, want 10", tl.Duration())
+	}
+	// The last clip carries no outgoing transition.
+	if clips[2].Transition != nil {
+		t.Error("last clip must not carry a transition")
+	}
+	if clips[0].Transition.Type != "xfade" || clips[0].Transition.Duration != 1 {
+		t.Errorf("unexpected transition: %+v", clips[0].Transition)
 	}
 }

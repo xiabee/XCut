@@ -43,6 +43,7 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			errs = append(errs, fmt.Sprintf("track %q: invalid kind %q", tr.ID, tr.Kind))
 		}
 		var prevEnd float64
+		var prev *Clip
 		for ci, c := range tr.Clips {
 			ctx := fmt.Sprintf("track %q clip[%d] %q", tr.ID, ci, c.ID)
 			if c.ID == "" {
@@ -80,18 +81,31 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			if c.TimelineStart < 0 {
 				errs = append(errs, fmt.Sprintf("%s: timeline_start %g < 0", ctx, c.TimelineStart))
 			}
-			// Overlap check on the same track (clips must be ordered).
+			// Overlap check on the same track (clips must be ordered). An
+			// xfade transition on the *previous* clip means the two clips
+			// intentionally share the transition window: the overlap must
+			// match the transition duration exactly (within eps).
 			end := c.TimelineStart + c.Duration()
 			if ci > 0 && c.TimelineStart < prevEnd-eps {
-				errs = append(errs, fmt.Sprintf("%s: overlaps previous clip (starts %g, previous ends %g)", ctx, c.TimelineStart, prevEnd))
+				xfade := prev != nil && prev.Transition != nil &&
+					prev.Transition.Type == "xfade" && prev.Transition.Duration > 0
+				overlap := prevEnd - c.TimelineStart
+				if !xfade {
+					errs = append(errs, fmt.Sprintf("%s: overlaps previous clip (starts %g, previous ends %g)", ctx, c.TimelineStart, prevEnd))
+				} else if diff := overlap - prev.Transition.Duration; diff > eps || diff < -eps {
+					errs = append(errs, fmt.Sprintf("%s: xfade overlap %g does not match transition duration %g", ctx, overlap, prev.Transition.Duration))
+				} else if xfade && prev.Transition.Duration > c.Duration()+eps {
+					errs = append(errs, fmt.Sprintf("%s: xfade duration %g exceeds this clip's length %g", ctx, prev.Transition.Duration, c.Duration()))
+				}
 			}
 			if end > prevEnd {
 				prevEnd = end
 			}
+			prev = &tr.Clips[ci]
 
 			if c.Transition != nil {
 				tt := c.Transition
-				if tt.Type != "cut" && tt.Type != "fade" {
+				if tt.Type != "cut" && tt.Type != "fade" && tt.Type != "xfade" {
 					errs = append(errs, fmt.Sprintf("%s: transition type %q unsupported", ctx, tt.Type))
 				}
 				if !finite(tt.Duration) || tt.Duration < 0 || tt.Duration > c.Duration() {
