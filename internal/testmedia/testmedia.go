@@ -96,6 +96,26 @@ func (e constErr) Error() string { return string(e) }
 
 const errNoScenes = constErr("testmedia: no scenes given")
 
+// GenerateAudio writes an audio-only AAC fixture from one lavfi audio
+// source expression (used for analyzer tests: bursts, transients, tones).
+func GenerateAudio(dir, name, lavfi string) (string, error) {
+	out := filepath.Join(dir, name)
+	args := []string{
+		"-hide_banner", "-v", "error",
+		"-f", "lavfi", "-i", lavfi,
+		"-c:a", "aac", "-b:a", "96k",
+		"-y", out,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}
+
 func errFFmpeg(out []byte, err error) error {
 	snippet := string(out)
 	if len(snippet) > 2000 {

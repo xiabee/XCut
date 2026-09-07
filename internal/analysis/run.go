@@ -9,10 +9,13 @@ import (
 )
 
 // Baseline returns the phase-1 analyzer set (deterministic, FFmpeg-only).
+// The onset analyzer decodes audio once more than audio_rms (~0.1× realtime
+// extra, measured in PERFORMANCE.md); hit detection earns that pass.
 func Baseline() []Analyzer {
 	return []Analyzer{
 		FrameDiffAnalyzer{},
 		AudioAnalyzer{},
+		AudioOnsetAnalyzer{},
 	}
 }
 
@@ -40,7 +43,7 @@ func ResolveAnalyzers(ctx context.Context, wc WorkerConfig, log *slog.Logger) ([
 		if bin == "" {
 			return nil, xcerr.E(xcerr.CodeNotFound, "audio=rust but xcut-worker-media is not installed", nil)
 		}
-		return []Analyzer{FrameDiffAnalyzer{}, RustAudioAnalyzer{Bin: bin}}, nil
+		return []Analyzer{FrameDiffAnalyzer{}, RustAudioAnalyzer{Bin: bin}, AudioOnsetAnalyzer{}}, nil
 	case "auto":
 		bin := worker.ResolveBin(wc.MediaBin)
 		if bin == "" {
@@ -57,6 +60,7 @@ func ResolveAnalyzers(ctx context.Context, wc WorkerConfig, log *slog.Logger) ([
 				Primary:  RustAudioAnalyzer{Bin: bin},
 				Fallback: AudioAnalyzer{},
 			},
+			AudioOnsetAnalyzer{},
 		}, nil
 	default:
 		return nil, xcerr.E(xcerr.CodeValidation,

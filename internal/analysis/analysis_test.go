@@ -71,7 +71,7 @@ func TestResolveAnalyzersModes(t *testing.T) {
 	ctx := context.Background()
 
 	a, err := ResolveAnalyzers(ctx, WorkerConfig{Audio: "ffmpeg"}, log)
-	if err != nil || len(a) != 2 {
+	if err != nil || len(a) != 3 {
 		t.Fatalf("ffmpeg mode: %v (%d analyzers)", err, len(a))
 	}
 
@@ -91,7 +91,7 @@ func TestResolveAnalyzersModes(t *testing.T) {
 	// this branch is only deterministic when it is absent).
 	if worker.ResolveBin("") == "" {
 		a, err = ResolveAnalyzers(ctx, WorkerConfig{Audio: "auto"}, log)
-		if err != nil || len(a) != 2 {
+		if err != nil || len(a) != 3 {
 			t.Fatalf("auto mode without worker: %v", err)
 		}
 	}
