@@ -3,95 +3,125 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-07 02:55 (+08:00) — nightly session #1, end of feature work
+Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: fbe87b4+ (pushed; CI green through 1169a0f — see blocker below)
+- HEAD: 9d474ec+ (local commits; not pushed this session — CI is
+  workflow_dispatch-only now, D11; push decision for the maintainer)
 - Branch: main
-- ⚠️ CI blocker (external): GitHub Actions stopped starting jobs mid-night
-  with "recent account payments have failed or your spending limit needs to
-  be increased". All pushes after ~18:21Z are locally verified (build/vet/
-  full tests/gofmt/JS check) but have no CI run. First morning task: check
-  Actions billing, then re-run the latest workflow.
+- CI: quota-constrained (D11). `ci.yml` is workflow_dispatch-only;
+  `release.yml` stays tag-triggered. All validation this session was local
+  (scripts/check.sh full + docker race gate).
 
 ## Working Architecture
 
 - **Go core** (`cmd/xcut`): CLI + localhost web UI + HTTP API; typed error
-  model (10 codes → HTTP mapping); two-layer config (bootstrap +
-  `<workspace>/config.json` overlay); loopback-forced listen; resource
-  budgets (jobs/ffmpeg/threads/cache/temp/log rotation).
+  model (11 codes incl. conflict → 409); two-layer config; loopback-forced
+  listen; resource budgets (jobs/ffmpeg/threads/cache/temp/log rotation).
+- **Workspace lock** (`xcut.lock`, O_EXCL): writer commands serialize;
+  readers lock-free; stale locks of dead PIDs auto-reclaimed (crash-safe);
+  E2E verified with serve + CLI + forced kill.
 - **Storage**: SQLite (modernc, no CGO), WAL, migrations v1, FK, cascade.
-- **Jobs**: DB-backed queue; bounded concurrency; sync (CLI) + async (API,
-  wg-tracked) execution; panic→failed; startup orphan reconciliation.
+- **Jobs**: DB-backed queue; bounded concurrency; sync (CLI) + async (API);
+  panic→failed; startup orphan reconciliation.
 - **Pipeline** (`internal/pipeline`): import/analyze/timeline/render shared
-  by CLI and API; sync + async variants per operation.
-- **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process limiter.
-- **Analysis**: frame_diff + audio RMS analyzers; fingerprint-keyed cache
-  with budget eviction; optional Rust worker (auto: worker-first with ffmpeg
-  fallback; rust: strict; ffmpeg: builtin).
-- **Events → Style → Timeline → Render**: deterministic segmentation,
-  schema-validated presets (generic_highlight / badminton_highlight /
-  ktv_mv), versioned timeline IR with strict validation + manual editing
-  (GET/PUT API, UI editor), renderer with ffprobe verify + atomic publish.
-- **Web UI** (`internal/api/static`, go:embed vanilla JS): project CRUD,
-  local-path import, analyze→timeline→render with live job progress,
-  timeline clip editor (remove/reorder/save), in-browser MP4 playback +
-  download. Zero npm dependencies.
-- **Rust worker** (`crates/xcut-worker-media`): protocol v1 (describe,
-  audio_rms); optional by design.
+  by CLI and API. Timeline builds append style-driven analyzers (court ROI).
+- **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
+  limiter; `StreamStdout` for bounded streaming passes.
+- **Analysis** (`internal/analysis`): frame_diff (motion + cuts), audio RMS
+  (astats), **audio onsets** (PCM pipe → Go DSP: 20 ms peak envelope → flux
+  → median+k·MAD adaptive threshold → local-max peaks), **court-ROI motion**
+  (crop before signalstats; ROI in the analyzer name = cache-safe).
+  Fingerprint-keyed cache with budget eviction; optional Rust worker
+  (auto: worker-first with ffmpeg fallback; rust: strict; ffmpeg: builtin).
+- **Events** (`internal/event`): activity segmentation (default) and rally
+  mode (`mode: "rally"`: transient clustering → gap split → padding →
+  min-hits + motion gating). Segments carry hit_count/hit_density (activity
+  segments too, as onset density).
+- **Style** (`internal/style`): presets are data (embedded + workspace
+  overrides); explainable selection — every clip carries score,
+  score_breakdown and reason in its metadata; diversity block
+  (min_gap / max_overlap_iou) suppresses near-duplicates; hits/density
+  scoring weights (zero = legacy).
+- **Presets**: generic_highlight, badminton_highlight v2 (rally mode),
+  ktv_mv v2 (onset-density weighted). Optional motion_roi block.
+- **Timeline → Render**: versioned timeline IR, strict validation, manual
+  editing (GET/PUT + UI editor), renderer with trim/normalize/concat,
+  cut/fade transitions, ffprobe verify, atomic publish.
+- **Eval** (`internal/eval` + `xcut eval`): annotated manifests → temporal
+  IoU / precision / recall / F1 / range hits / duplicate rate; JSON
+  results; isolated throwaway workspace per run. docs/EVAL.md.
+- **Web UI** (go:embed, zero deps): project CRUD, import, analyze →
+  timeline → render with job progress, clip editor with per-clip score +
+  why, MP4 playback/download. Untrusted text rendered textContent-only.
+- **Workers**: Rust media worker (protocol v1, audio_rms) optional;
+  AI sidecar protocol v1 (capabilities/health/analyze; bounded response
+  caps, per-call timeouts, .py sidecar support); reference sidecar in
+  `scripts/xcut-ai-sidecar.py` (stdlib, no models — honest baseline).
 
-## Implemented & Working (all browser- or CLI-verified)
+## Implemented & Working (browser- or CLI-verified)
 
 - CLI: `version|config show|init|doctor|cleanup [--dry-run]|project
   create|list|show|delete|jobs|import|analyze [assetIDs]|timeline|render|
-  auto|serve`
-- HTTP: health, projects CRUD, jobs, async triggers, timeline GET/PUT,
-  styles list, render download (range-capable playback)
-- Full E2E verified four ways: CLI steps, `xcut auto`, HTTP-only flow
-  (Go test), and real-browser session (create → import → analyze → timeline
-  → edit → render → playback, output probed at each step)
+  auto|serve|eval`
+- HTTP `/api/v1`: health, projects CRUD, jobs, async triggers, timeline
+  GET/PUT, styles list, render download (range-capable playback)
+- Full E2E paths re-verified this session: `xcut auto` (generic), eval
+  integration (generic + badminton v2), two-process lock scenarios
 
 ## Actually Tested
 
-- `go test ./...` all packages green (CI ran with `-race` until the billing
-  blocker), including: HTTP async flow, CLI E2E, artifact smoke in CI,
-  timeline property tests, safejoin security matrix, hostile filenames,
-  cache eviction ordering, orphan recovery, log rotation, config layering
-- `cargo test`/`clippy -D warnings`/`fmt --check` green
-- `govulncheck`: 0 vulnerabilities affecting code
+- `go test ./...` all packages green (full suite re-run at end of session;
+  integration tests run against `.tools` ffmpeg 9.0.1)
+- Race detector: all packages green under linux in docker
+  (scripts/race-docker.sh); Windows-local race unavailable (no cgo/C
+  toolchain) and skipped loudly by the gate
+- `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
+  toolchain fallback — no MSVC Build Tools on this machine)
+- govulncheck: installed (repo-local .tools/bin); run in the full gate
+- Cross-compile checks: linux amd64+arm64 (compile-verified; linux also
+  runtime-verified in session #1 via WSL)
 
 ## Known Issues
 
-- **CI billing blocker** (see above) — external, needs account owner.
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
-  ffmpeg fallback covers it (mp3/flac/wav work).
+  ffmpeg fallback covers it.
 - Luma-based cut detection misses chroma-only cuts (e.g. red→green).
 - Renderer transitions: `cut` and `fade` (through black); true crossfade
-  (xfade) pending.
-- Concurrent xcut processes on one workspace unsupported (file lock pending).
+  (xfade) pending (needs combine-stage redesign).
+- Badminton v2's rally detection is validated on synthetic fixtures only —
+  real annotated match footage is the missing ingredient (use
+  `xcut eval` + docs/EVAL.md workflow; court ROI needs per-source manual
+  rects).
+- Race detector on Windows hosts requires the docker runner or a cgo
+  toolchain; the local gate skips it loudly rather than silently.
 - serve has no auth: loopback-only by construction; remote bind refused.
-- Manual timeline edits live outside style regenerations (regenerate
-  overwrites manual edits — by design, documented in UI copy? NO: not yet
-  surfaced; minor UX note).
+- Manual timeline edits are overwritten by style regeneration (by design,
+  still to be surfaced in UI copy).
+- This machine's WDAC policy intermittently blocks freshly built test
+  binaries in %TEMP% (`go test -c -o <path>` + direct run works around it;
+  go run may fail) — environmental, not a product issue.
 
 ## Performance (measured — docs/PERFORMANCE.md)
 
-- serve idle: **12.3 MB RAM / ~0% CPU** (goals <100 MB / ~0%: met)
-- analyze ≈ 0.05x realtime (60s 1080p); render ≈ 0.15x output duration
-- audio RMS rust vs ffmpeg: parity (0.127s vs 0.143s on 60s mp3)
+- serve idle: 12.3 MB RAM / ~0% CPU (session #1; goals met)
+- analyze 30-min 720p30: **0.035x realtime**, ffmpeg child peak RSS ~33 MB
+- audio onset 0.121 s / RMS 0.176 s per 60 s audio (decode-bound)
 
 ## Next Priorities
 
-1. Check GitHub Actions billing; re-run CI on HEAD (everything after the
-   blocker was locally verified: build/vet/race-tests/fmt/artifact runs).
-2. True crossfade (xfade) as a renderer option — per-clip fade-through-black
-   ships today; xfade needs a combine-stage redesign.
-3. AI sidecar protocol v1 implementation (spec exists in ARCHITECTURE.md;
-   the same worker client serves it).
-4. Multi-process workspace lock; log rotation parity for CLI runs.
-5. Badminton/KTV preset tuning on real footage; court-ROI analyzer sketch.
-6. Analysis proxy files for very long sources (single-pass sampling is
-   already 0.05x realtime; proxies only pay off for multi-pass workloads).
-
+1. Real-footage evaluation: annotate a few real badminton/KTV clips, run
+   `xcut eval`, tune badminton v2 (rally_gap/pad/min_hits, ROI rect) on
+   measurements — the harness exists, it needs real data.
+2. True crossfade (xfade) as a renderer option — per-clip fade ships;
+   xfade needs a combine-stage redesign (duration semantics
+   d1+d2−transition).
+3. AI sidecar: first real analyzer (Whisper transcript → event labels) on
+   top of protocol v1 if a local Whisper exists; else capability remains
+   honestly absent.
+4. Timeline UX: per-clip preview + trim handles (manual editing is the
+   fallback when algorithms disagree).
+5. Optional: re-enable push/PR CI when quota recovers (restore notes in
+   ci.yml; consider concurrency cancel + docs-only paths-ignore).

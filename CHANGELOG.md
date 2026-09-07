@@ -3,6 +3,59 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-07/08 nightly session #2
+
+### Added
+- Evaluation harness: `internal/eval` metrics (temporal IoU, precision/
+  recall/F1, range hits, duplicate rate) + `xcut eval` command driven by
+  annotated manifests; runs in an isolated throwaway workspace; JSON
+  results; docs/EVAL.md.
+- Audio onset/transient analyzer (`audio_onset` track): streamed PCM
+  decode -> Go DSP (peak envelope, positive flux, median+k*MAD adaptive
+  threshold, local-max picking); deterministic, bounded memory.
+- Rally segmentation mode (`event_config.mode = "rally"`): clusters audio
+  transients into rally candidates with gap split, padding, min-hits and
+  motion gating; segments carry hit_count/hit_density.
+- Explainable selection: every clip's metadata carries score,
+  score_breakdown and dominant-factor reason; web UI shows score + why.
+- Diversity selection: preset `diversity` (min_gap, max_overlap_iou)
+  suppresses near-duplicate picks; enabled in badminton v2 and ktv v2.
+- Court ROI: preset `motion_roi` -> cropped motion analyzer
+  (`frame_diff_roi`), cache-safe; event `motion_track` auto-wired.
+- Presets: badminton_highlight v2 (rally mode, hit-driven scoring),
+  ktv_mv v2 (onset-density weighted).
+- Cross-process workspace lock (`xcut.lock`): writers serialize, readers
+  lock-free, stale locks of dead owners auto-reclaimed; CodeConflict ->
+  HTTP 409.
+- AI sidecar protocol v1: capabilities/health/analyze ops, bounded
+  response/stderr caps, per-call timeouts, .py sidecar interpreter
+  probing, config `workers.ai_bin` + `XCUT_AI_BIN`, doctor discovery;
+  reference sidecar `scripts/xcut-ai-sidecar.py` (stdlib, no models).
+- Local quality gate `scripts/check.sh|ps1` (fast/full) +
+  `scripts/race-docker.sh` (linux race in container).
+
+### Changed
+- CI: `ci.yml` now workflow_dispatch-only (Actions quota policy, D11);
+  validation moved local-first (DECISIONS D11).
+- style scoring accepts hits/density weights (zero = legacy behavior).
+- analyze CLI output includes onset track in track/sample counts.
+
+### Fixed
+- testmedia formatFloat stripped integer trailing zeros (10s fixtures
+  silently became 1s).
+- audio analyzer: astats `-inf` (digital silence) broke analysis-cache
+  JSON serialization; mapped to -120 dBFS.
+- rally heuristic removed (cut-inside-window no longer drops rallies);
+  diversity gates trimmed clip windows (padded segments over-suppressed).
+- web UI: asset filenames and job error messages rendered via
+  textContent (XSS via hostile filenames no longer possible).
+- check scripts: race step skipped loudly without cgo; rust falls back to
+  windows-gnu when the msvc linker is missing; docker path mangling fixed.
+
+### Measured
+- 30-min 720p analyze: 0.035x realtime, ffmpeg child ~33 MB peak RSS.
+- onset 0.121s vs astats RMS 0.176s per 60s audio (decode-bound).
+
 ## [Unreleased] — 2026-09-06/07 nightly session #1
 
 ### Added
