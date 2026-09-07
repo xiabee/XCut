@@ -26,6 +26,11 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
         fi
     done
 fi
+# Repo-local go tools (govulncheck etc.) installed via GOBIN=.tools/bin.
+if [ -d .tools/bin ]; then
+    PATH="$(pwd)/.tools/bin:$PATH"
+    export PATH
+fi
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "== ffmpeg: $(ffmpeg -version 2>/dev/null | head -1)"
 else
@@ -83,8 +88,16 @@ if [ "$mode" = "full" ]; then
     fi
 
     if command -v govulncheck >/dev/null 2>&1; then
-        echo "== govulncheck"
-        govulncheck ./...
+        if ! govulncheck ./...; then
+            rc=$?
+            if [ "$rc" = 126 ]; then
+                # Blocked by an Application Control policy: loud skip, use
+                # scripts/vuln-docker.sh for the scan instead.
+                echo "== govulncheck: SKIPPED (execution blocked by policy; use scripts/vuln-docker.sh)" >&2
+            else
+                exit "$rc"
+            fi
+        fi
     else
         echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped" >&2
     fi
