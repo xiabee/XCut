@@ -15,10 +15,26 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/xiabee/XCut/internal/analysis"
 	"github.com/xiabee/XCut/internal/event"
 	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
+
+// roiRect converts the preset's ROI block to the analysis type.
+func roiRect(r *MotionROI) analysis.ROI {
+	return analysis.ROI{X: r.X, Y: r.Y, W: r.W, H: r.H}
+}
+
+// Analyzers returns the extra analyzers this preset requires (a cropped
+// motion pass when a motion ROI is configured). Append them to the baseline
+// set before analysis; empty when the preset is plain.
+func (p *Preset) Analyzers() []analysis.Analyzer {
+	if p.MotionROI == nil {
+		return nil
+	}
+	return []analysis.Analyzer{analysis.FrameDiffROIAnalyzer{ROI: roiRect(p.MotionROI)}}
+}
 
 // Scoring weights (each applied to a 0..1 normalized factor). Hits and
 // Density apply to rally-mode segments (hit_count / hit_density); zero
@@ -48,6 +64,18 @@ type Diversity struct {
 	MaxOverlapIoU float64 `json:"max_overlap_iou,omitempty"`
 }
 
+// MotionROI is a normalized region of interest (0..1) for motion analysis
+// (a court area). When set and event_config.motion_track is empty, the
+// builder analyzes "frame_diff_roi" instead of full-frame motion — a
+// court-confined signal that crowd movement cannot dominate. nil = full
+// frame (default).
+type MotionROI struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
 // Transition applied between selected clips.
 type Transition struct {
 	Type     string  `json:"type"` // cut | fade
@@ -68,6 +96,7 @@ type Preset struct {
 	Transition      Transition      `json:"transition"`
 	Audio           Audio           `json:"audio"`
 	Diversity       Diversity       `json:"diversity,omitempty"`
+	MotionROI       *MotionROI      `json:"motion_roi,omitempty"`
 
 	// Source records where the preset was loaded from (not serialized).
 	Source string `json:"-"`
@@ -127,6 +156,17 @@ func (p *Preset) Validate() error {
 	}
 	if err := p.EventConfig.Validate(); err != nil {
 		add("event_config: %v", err)
+	}
+	if p.MotionROI != nil {
+		r := roiRect(p.MotionROI)
+		if !r.Valid() {
+			add("motion_roi must satisfy 0<=x,y and w,h>0 and x+w,y+h<=1")
+		}
+		// The ROI is meaningless unless analysis consumes the ROI motion
+		// track; auto-wire when the preset did not pick a track itself.
+		if p.EventConfig.MotionTrack == "" {
+			p.EventConfig.MotionTrack = "frame_diff_roi"
+		}
 	}
 	if len(errs) > 0 {
 		return xcerr.E(xcerr.CodeValidation,

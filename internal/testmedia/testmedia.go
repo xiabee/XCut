@@ -6,6 +6,7 @@ package testmedia
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,6 +105,32 @@ func GenerateAudio(dir, name, lavfi string) (string, error) {
 		"-hide_banner", "-v", "error",
 		"-f", "lavfi", "-i", lavfi,
 		"-c:a", "aac", "-b:a", "96k",
+		"-y", out,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}
+
+// GenerateMotionCorner builds a silent fixture whose only motion is a
+// testsrc2 patch in the top-left quadrant over a still black canvas — the
+// synthetic shape for ROI motion isolation tests.
+func GenerateMotionCorner(dir, name string, width, height, fps, seconds int) (string, error) {
+	out := filepath.Join(dir, name)
+	d := formatFloat(float64(seconds))
+	filter := "[0:v][1:v]overlay=0:0[v]"
+	args := []string{
+		"-hide_banner", "-v", "error",
+		"-f", "lavfi", "-i", fmt.Sprintf("color=c=black:s=%dx%d:r=%d:d=%s", width, height, fps, d),
+		"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=s=%dx%d:r=%d:d=%s", width/2, height/2, fps, d),
+		"-filter_complex", filter,
+		"-map", "[v]",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
 		"-y", out,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)

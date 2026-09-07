@@ -308,6 +308,9 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		if err != nil {
 			return err
 		}
+		// Style-driven analyzers (e.g. a court-ROI motion pass) extend the
+		// baseline set; the cache keys keep them separate from plain runs.
+		analyzers = append(analyzers, preset.Analyzers()...)
 		store := d.analysisStore()
 		opts := d.analysisOpts()
 

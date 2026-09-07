@@ -344,3 +344,54 @@ func TestPresetDiversityValidation(t *testing.T) {
 		t.Errorf("valid diversity rejected: %v", err)
 	}
 }
+
+func TestPresetMotionROIParseAndAutoWire(t *testing.T) {
+	b, err := Parse([]byte(`{
+		"name": "roi_style", "title": "ROI", "version": 1,
+		"canvas": {"width": 640, "height": 360, "fps": 30},
+		"target_duration": 30, "min_clip_duration": 1, "max_clip_duration": 6,
+		"scoring": {"motion": 0.5, "audio": 0.3, "duration": 0.2},
+		"event_config": {"cut_threshold": 0.3, "motion_floor": 0.05, "silence_db": -40, "merge_gap": 1, "min_duration": 1},
+		"transition": {"type": "cut", "duration": 0},
+		"audio": {"gain": 1},
+		"motion_roi": {"x": 0.1, "y": 0.1, "w": 0.6, "h": 0.6}
+	}`))
+	if err != nil {
+		t.Fatalf("roi preset: %v", err)
+	}
+	if b.EventConfig.MotionTrack != "frame_diff_roi" {
+		t.Fatalf("motion_track not auto-wired: %q", b.EventConfig.MotionTrack)
+	}
+	extra := b.Analyzers()
+	if len(extra) != 1 {
+		t.Fatalf("expected 1 style analyzer, got %d", len(extra))
+	}
+	if got := extra[0].Name(); got != "frame_diff_roi[x0.1000_y0.1000_w0.6000_h0.6000]" {
+		t.Fatalf("analyzer name %q", got)
+	}
+
+	// Explicit motion_track is respected, not overwritten.
+	c, err := Parse([]byte(`{
+		"name": "roi_style2", "title": "ROI2", "version": 1,
+		"canvas": {"width": 640, "height": 360, "fps": 30},
+		"target_duration": 30, "min_clip_duration": 1, "max_clip_duration": 6,
+		"scoring": {"motion": 0.5, "audio": 0.3, "duration": 0.2},
+		"event_config": {"cut_threshold": 0.3, "motion_floor": 0.05, "silence_db": -40, "merge_gap": 1, "min_duration": 1, "motion_track": "frame_diff"},
+		"transition": {"type": "cut", "duration": 0},
+		"audio": {"gain": 1},
+		"motion_roi": {"x": 0, "y": 0, "w": 0.5, "h": 0.5}
+	}`))
+	if err != nil {
+		t.Fatalf("roi preset 2: %v", err)
+	}
+	if c.EventConfig.MotionTrack != "frame_diff" {
+		t.Fatalf("explicit motion_track overwritten: %q", c.EventConfig.MotionTrack)
+	}
+
+	// Out-of-range ROI rejected.
+	bad := testPreset()
+	bad.MotionROI = &MotionROI{X: 0.8, Y: 0, W: 0.5, H: 0.5}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("x+w>1 ROI must be rejected")
+	}
+}
