@@ -114,8 +114,17 @@ async function refreshAssets() {
     const tr = document.createElement("tr");
     const dur = `${Math.floor(a.duration_s / 60)}:${String(Math.round(a.duration_s % 60)).padStart(2, "0")}`;
     const mb = (a.size_bytes / 1048576).toFixed(1) + " MB";
-    tr.innerHTML = `<td>${a.filename}</td><td>${dur}</td><td>${mb}</td>` +
-      `<td>${a.video_codec}${a.has_audio ? " +" + a.audio_codec : ""}</td>`;
+    // Untrusted by policy: filenames are user input, textContent only.
+    const tdName = document.createElement("td");
+    tdName.textContent = a.filename;
+    tdName.title = a.filename;
+    const tdDur = document.createElement("td");
+    tdDur.textContent = dur;
+    const tdSize = document.createElement("td");
+    tdSize.textContent = mb;
+    const tdCodec = document.createElement("td");
+    tdCodec.textContent = a.video_codec + (a.has_audio ? " +" + a.audio_codec : "");
+    tr.append(tdName, tdDur, tdSize, tdCodec);
     tbody.appendChild(tr);
   }
 }
@@ -131,9 +140,16 @@ async function refreshJobs() {
     const li = document.createElement("li");
     li.className = j.status;
     const pct = j.status === "running" ? ` ${Math.round((j.progress || 0) * 100)}%` : "";
-    li.innerHTML = `<span class="status">${j.status}${pct}</span>` +
-      `<span>${j.type}</span>` +
-      `<span class="meta">${j.error_message || j.id}</span>`;
+    // error_message may echo hostile input (e.g. filenames): textContent only.
+    const status = document.createElement("span");
+    status.className = "status";
+    status.textContent = `${j.status}${pct}`;
+    const type = document.createElement("span");
+    type.textContent = j.type;
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = j.error_message || j.id;
+    li.append(status, type, meta);
     ul.appendChild(li);
     if (j.status === "running" || j.status === "queued") running = true;
   }
