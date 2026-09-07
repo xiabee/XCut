@@ -25,6 +25,13 @@ type Segment struct {
 	Score       float64 `json:"score"`         // 0..1 base quality
 	MeanMotion  float64 `json:"mean_motion"`   // mean frame_diff (0..1)
 	MeanAudioDB float64 `json:"mean_audio_db"` // mean RMS dBFS; silentDB when silent/no audio
+
+	// Rally-mode extras (empty in plain activity mode): the transient count
+	// inside the segment and its per-second density — the explainable hit
+	// story behind the score.
+	Kind       string  `json:"kind,omitempty"`      // "" (activity) | "rally"
+	HitCount   int     `json:"hit_count,omitempty"` // audio transients in segment
+	HitDensity float64 `json:"hit_density,omitempty"`
 }
 
 // Duration of the segment in seconds.
@@ -37,6 +44,20 @@ type Config struct {
 	SilenceDB    float64 `json:"silence_db"`    // RMS above this ⇒ audible (dBFS)
 	MergeGap     float64 `json:"merge_gap"`     // inactive gaps shorter than this merge (seconds)
 	MinDuration  float64 `json:"min_duration"`  // segments shorter than this drop (seconds)
+
+	// Mode selects the segmentation strategy: "" / "activity" (default:
+	// runs of motion+audio) or "rally" (cluster audio transients into
+	// rally candidates — the generic hit-sport shape, not style-specific).
+	Mode string `json:"mode,omitempty"`
+	// MotionTrack names the feature kind used as the motion signal
+	// (default "frame_diff"; a court-ROI analysis produces
+	// "frame_diff_roi" and presets opt in by name).
+	MotionTrack string `json:"motion_track,omitempty"`
+
+	// Rally parameters (rally mode only; zero = documented defaults).
+	RallyGap float64 `json:"rally_gap,omitempty"` // quiet seconds that split rallies
+	RallyPad float64 `json:"rally_pad,omitempty"` // padding after first/last hit
+	MinHits  int     `json:"min_hits,omitempty"`  // transients required per rally
 }
 
 // DefaultConfig is a conservative generic baseline.
@@ -59,6 +80,16 @@ func (c Config) Validate() error {
 		!math.IsNaN(c.MergeGap) && !math.IsNaN(c.MinDuration)
 	if !sane {
 		return xcerr.E(xcerr.CodeValidation, "invalid event config", nil)
+	}
+	switch c.Mode {
+	case "", ModeActivity, ModeRally:
+	default:
+		return xcerr.E(xcerr.CodeValidation,
+			"invalid event mode "+c.Mode+" (activity|rally)", nil)
+	}
+	if c.RallyGap < 0 || c.RallyPad < 0 || c.MinHits < 0 ||
+		math.IsNaN(c.RallyGap) || math.IsNaN(c.RallyPad) {
+		return xcerr.E(xcerr.CodeValidation, "invalid rally parameters", nil)
 	}
 	return nil
 }
@@ -93,13 +124,23 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 		return nil, xcerr.E(xcerr.CodeValidation, "media duration must be positive", nil)
 	}
 
-	var motion, audio *analysis.FeatureTrack
+	var motion, audio, onsets *analysis.FeatureTrack
+	wantMotion := cfg.MotionTrack
+	if wantMotion == "" {
+		wantMotion = "frame_diff"
+	}
 	for i := range tracks {
 		switch tracks[i].Kind {
-		case "frame_diff":
+		case wantMotion:
 			motion = &tracks[i]
+		case "frame_diff":
+			if motion == nil {
+				motion = &tracks[i] // graceful fallback when the preferred kind is absent
+			}
 		case "audio_rms_db":
 			audio = &tracks[i]
+		case "audio_onset":
+			onsets = &tracks[i]
 		}
 	}
 	if motion == nil || len(motion.Samples) == 0 {
@@ -108,6 +149,13 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 	sortSamples(motion.Samples)
 	if audio != nil {
 		sortSamples(audio.Samples)
+	}
+	if onsets != nil {
+		sortSamples(onsets.Samples)
+	}
+
+	if cfg.Mode == ModeRally {
+		return buildRallies(motion, audio, onsets, duration, cfg)
 	}
 	window := estimateWindow(motion.Samples)
 

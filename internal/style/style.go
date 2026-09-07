@@ -20,11 +20,15 @@ import (
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
-// Scoring weights (each applied to a 0..1 normalized factor).
+// Scoring weights (each applied to a 0..1 normalized factor). Hits and
+// Density apply to rally-mode segments (hit_count / hit_density); zero
+// weights keep plain activity presets behaving exactly as before.
 type Scoring struct {
 	Motion   float64 `json:"motion"`
 	Audio    float64 `json:"audio"`
 	Duration float64 `json:"duration"`
+	Hits     float64 `json:"hits,omitempty"`
+	Density  float64 `json:"density,omitempty"`
 }
 
 // AudioGain linear loudness multiplier applied to clip volume.
@@ -99,10 +103,10 @@ func (p *Preset) Validate() error {
 		add("max_clip_duration %g exceeds target_duration %g", p.MaxClipDuration, p.TargetDuration)
 	}
 	w := p.Scoring
-	if w.Motion < 0 || w.Audio < 0 || w.Duration < 0 {
+	if w.Motion < 0 || w.Audio < 0 || w.Duration < 0 || w.Hits < 0 || w.Density < 0 {
 		add("scoring weights must be >= 0")
 	}
-	if w.Motion+w.Audio+w.Duration <= 0 {
+	if w.Motion+w.Audio+w.Duration+w.Hits+w.Density <= 0 {
 		add("scoring weights must not all be zero")
 	}
 	if p.Transition.Type != "cut" && p.Transition.Type != "fade" {

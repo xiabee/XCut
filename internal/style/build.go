@@ -36,11 +36,14 @@ type selInterval struct {
 // factors is one segment's normalized (0..1) score components.
 type factors struct {
 	motion, audio, duration float64
+	hits, density           float64
 }
 
 // weighted returns the preset-weighted total.
 func (f factors) weighted(p *Preset) float64 {
-	return p.Scoring.Motion*f.motion + p.Scoring.Audio*f.audio + p.Scoring.Duration*f.duration
+	return p.Scoring.Motion*f.motion + p.Scoring.Audio*f.audio +
+		p.Scoring.Duration*f.duration + p.Scoring.Hits*f.hits +
+		p.Scoring.Density*f.density
 }
 
 // reason names the dominant weighted factors (share of the total), e.g.
@@ -58,6 +61,8 @@ func (f factors) reason(p *Preset) string {
 		{"motion", p.Scoring.Motion * f.motion},
 		{"audio", p.Scoring.Audio * f.audio},
 		{"duration", p.Scoring.Duration * f.duration},
+		{"hits", p.Scoring.Hits * f.hits},
+		{"density", p.Scoring.Density * f.density},
 	}
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].value > parts[j].value })
 
@@ -80,16 +85,28 @@ func (f factors) reason(p *Preset) string {
 
 // breakdown renders the explainable score line stored on the clip, e.g.
 // "motion 0.82x0.55=0.45; audio 0.55x0.30=0.17; duration 0.53x0.20=0.11; total 0.72".
+// Factors with zero weight are omitted.
 func (f factors) breakdown(p *Preset) string {
-	line := func(name string, n float64, w float64) string {
+	line := func(name string, n, w float64) string {
+		if w == 0 {
+			return ""
+		}
 		return fmt.Sprintf("%s %.2fx%.2f=%.2f", name, n, w, n*w)
 	}
-	return strings.Join([]string{
+	parts := []string{
 		line("motion", f.motion, p.Scoring.Motion),
 		line("audio", f.audio, p.Scoring.Audio),
 		line("duration", f.duration, p.Scoring.Duration),
-		fmt.Sprintf("total %.4f", f.weighted(p)),
-	}, "; ")
+		line("hits", f.hits, p.Scoring.Hits),
+		line("density", f.density, p.Scoring.Density),
+	}
+	var kept []string
+	for _, s := range parts {
+		if s != "" {
+			kept = append(kept, s)
+		}
+	}
+	return fmt.Sprintf("%s; total %.4f", strings.Join(kept, "; "), f.weighted(p))
 }
 
 // Build constructs a deterministic Timeline from per-asset events and a
@@ -177,6 +194,15 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		}
 		n++
 		chosen = append(chosen, cand)
+		md := map[string]string{
+			"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
+			"score_breakdown": c.f.breakdown(preset),
+			"reason":          c.f.reason(preset),
+		}
+		if c.seg.HitCount > 0 {
+			md["hit_count"] = strconv.Itoa(c.seg.HitCount)
+			md["hit_density"] = strconv.FormatFloat(c.seg.HitDensity, 'f', -1, 64)
+		}
 		clips = append(clips, timeline.Clip{
 			ID:          "clip_" + strconv.Itoa(n),
 			AssetID:     c.asset.ID,
@@ -185,11 +211,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			SourceEnd:   srcEnd,
 			Speed:       1,
 			Volume:      preset.Audio.Gain,
-			Metadata: map[string]string{
-				"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
-				"score_breakdown": c.f.breakdown(preset),
-				"reason":          c.f.reason(preset),
-			},
+			Metadata:    md,
 		})
 		total += srcEnd - srcStart
 	}
@@ -273,13 +295,16 @@ func diverse(p *Preset, chosen []selInterval, cand selInterval) bool {
 }
 
 // segmentFactors normalizes a segment into 0..1 score components. The
-// normalization constants match event scoring (0.30 full-scale motion, 36 dB
-// dynamic range, 15 s "long" segment) and are intentionally shared.
+// motion/audio/duration constants match event scoring (0.30 full-scale
+// motion, 36 dB dynamic range, 15 s "long" segment) and are intentionally
+// shared; hits use 12-per-segment and 1.5 hits/s as full scale.
 func segmentFactors(p *Preset, s event.Segment) factors {
 	return factors{
 		motion:   clamp(s.MeanMotion/0.30, 0, 1),
 		audio:    clamp((s.MeanAudioDB-p.EventConfig.SilenceDB)/36.0, 0, 1),
 		duration: clamp(s.Duration()/15.0, 0, 1),
+		hits:     clamp(float64(s.HitCount)/12.0, 0, 1),
+		density:  clamp(s.HitDensity/1.5, 0, 1),
 	}
 }
 

@@ -6,13 +6,23 @@
 	"target_duration": 60,
 	"min_clip_duration": 1.5,
 	"max_clip_duration": 8.0,
-	"scoring": { "motion": 0.55, "audio": 0.30, "duration": 0.15 },
+	"scoring": {
+		"motion": 0.20,
+		"audio": 0.10,
+		"duration": 0.05,
+		"hits": 0.40,
+		"density": 0.25
+	},
 	"event_config": {
 		"cut_threshold": 0.25,
 		"motion_floor": 0.05,
 		"silence_db": -45,
 		"merge_gap": 1.2,
-		"min_duration": 2.0
+		"min_duration": 2.0,
+		"mode": "rally",
+		"rally_gap": 2.5,
+		"rally_pad": 1.2,
+		"min_hits": 4
 	},
 	"transition": { "type": "cut", "duration": 0 },
 	"audio": { "gain": 1.0 },

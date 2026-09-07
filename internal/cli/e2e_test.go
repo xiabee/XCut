@@ -42,7 +42,10 @@ func TestE2EAutoPipeline(t *testing.T) {
 	}
 
 	run("init")
-	run("auto", fixture, "--project", "e2e", "--style", "badminton_highlight", "--out", out)
+	// generic_highlight: renders on any audio. badminton_highlight v2 is
+	// rally-mode — it correctly yields nothing on this tone-only fixture
+	// (no transients); the rally pipeline has its own fixture-based test.
+	run("auto", fixture, "--project", "e2e", "--style", "generic_highlight", "--out", out)
 
 	// Output must exist (and was ffprobe-verified inside the renderer).
 	if _, err := os.Stat(out); err != nil {
