@@ -81,6 +81,13 @@ usage: xcut auto <file...> [--style name] [--project name] [--out path]
 one-shot: import → analyze → timeline → render
 ```
 
+## xcut eval
+```
+usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
+
+score pipeline selection quality against an annotated manifest
+```
+
 ## xcut serve
 ```
 usage: xcut serve [--addr host:port]
