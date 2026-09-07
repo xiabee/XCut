@@ -11,9 +11,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -80,10 +84,25 @@ func Probe(ctx context.Context, bin string) (*Describe, error) {
 	return &d, nil
 }
 
-// Call executes one request against the worker binary with a timeout.
-// The worker receives the request on stdin and answers once on stdout.
+// Call executes one request against the worker binary with the default
+// timeout. The worker receives the request on stdin and answers once on
+// stdout.
 func Call(ctx context.Context, bin string, req Request) (json.RawMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	return callBounded(ctx, bin, req, 10*time.Minute, MaxResponseBytes)
+}
+
+// MaxResponseBytes caps one worker response (worker output security: a
+// worker must never be able to OOM the host through its stdout).
+const MaxResponseBytes = 32 << 20
+
+// maxStderrBytes caps captured worker stderr for error reporting.
+const maxStderrBytes = 64 << 10
+
+// callBounded executes one request with an explicit deadline and response
+// caps. The response is streamed with a hard byte limit — oversized output
+// aborts the worker instead of exhausting memory.
+func callBounded(ctx context.Context, bin string, req Request, timeout time.Duration, maxResp int64) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	payload, err := json.Marshal(req)
@@ -91,15 +110,41 @@ func Call(ctx context.Context, bin string, req Request) (json.RawMessage, error)
 		return nil, xcerr.E(xcerr.CodeInternal, "cannot encode worker request", err)
 	}
 
-	cmd := exec.CommandContext(ctx, bin)
-	var stderr bytes.Buffer
+	cmd := buildWorkerCmd(ctx, bin)
+	cmd.Stderr = &limitedBuffer{max: maxStderrBytes}
 	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		return nil, xcerr.E(xcerr.CodeInternal, "cannot create worker pipe", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot start worker "+bin, err)
+	}
+
+	raw, readErr := io.ReadAll(io.LimitReader(stdout, maxResp+1))
+	if readErr == nil && int64(len(raw)) > maxResp {
+		readErr = errResponseTooLarge{max: maxResp}
+	}
+	if readErr != nil {
+		// Abort the worker immediately: a worker blocked writing into a full
+		// pipe would otherwise stall until the deadline.
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}
+	waitErr := cmd.Wait()
+	if readErr != nil {
+		var tooLarge errResponseTooLarge
+		if errors.As(readErr, &tooLarge) {
+			return nil, xcerr.E(xcerr.CodeResourceLimit,
+				fmt.Sprintf("worker response exceeded %d bytes (refusing to buffer it)", maxResp), nil)
+		}
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot read worker response", readErr)
+	}
+	if waitErr != nil {
 		// Workers answer with a structured envelope even on failure (exit 1);
 		// prefer that over the bare exec error.
-		if resp, perr := parseResponse(out); perr == nil && resp.Error != nil {
+		if resp, perr := parseResponse(raw); perr == nil && resp.Error != nil {
 			return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
 				fmt.Sprintf("%s (%s)", resp.Error.Message, resp.Error.Code), nil)
 		}
@@ -107,10 +152,10 @@ func Call(ctx context.Context, bin string, req Request) (json.RawMessage, error)
 			return nil, xcerr.E(xcerr.CodeResourceLimit, "worker call timed out", ctx.Err())
 		}
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "worker failed",
-			fmt.Errorf("%v: %s", err, tail(stderr.String(), 300)))
+			fmt.Errorf("%v: %s", waitErr, stderrTail(cmd.Stderr)))
 	}
 
-	resp, err := parseResponse(out)
+	resp, err := parseResponse(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +171,70 @@ func Call(ctx context.Context, bin string, req Request) (json.RawMessage, error)
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, fmt.Sprintf("%s (%s)", msg, code), nil)
 	}
 	return resp.Result, nil
+}
+
+// buildWorkerCmd wraps bin into an exec command. A single-file Python
+// sidecar (".py") is run through the first working python interpreter —
+// sidecar scripts are the documented distribution form and must not require
+// a compile step. Windows ships a non-functional "python3" Store alias, so
+// candidates are probed once and the winner cached.
+func buildWorkerCmd(ctx context.Context, bin string) *exec.Cmd {
+	if strings.EqualFold(filepath.Ext(bin), ".py") {
+		if py := pythonInterpreter(); py != "" {
+			return exec.CommandContext(ctx, py, bin)
+		}
+	}
+	return exec.CommandContext(ctx, bin)
+}
+
+var pythonInterpreter = sync.OnceValue(func() string {
+	for _, py := range []string{"python3", "python"} {
+		p, err := exec.LookPath(py)
+		if err != nil {
+			continue
+		}
+		probe := exec.Command(p, "-c", "print(1)")
+		if err := probe.Run(); err == nil {
+			return p
+		}
+	}
+	return ""
+})
+
+// errResponseTooLarge marks an oversized worker response.
+type errResponseTooLarge struct{ max int64 }
+
+func (e errResponseTooLarge) Error() string {
+	return fmt.Sprintf("response exceeds %d bytes", e.max)
+}
+
+// limitedBuffer is a fixed-capacity buffer that silently discards overflow
+// (stderr is diagnostics only — the cap exists so a runaway worker cannot
+// grow host memory through it either).
+type limitedBuffer struct {
+	buf  bytes.Buffer
+	max  int
+	full bool
+}
+
+func (l *limitedBuffer) Write(p []byte) (int, error) {
+	if l.buf.Len()+len(p) > l.max {
+		if !l.full {
+			l.buf.Write(p[:max(0, l.max-l.buf.Len())])
+			l.full = true
+		}
+		return len(p), nil // pretend success; diagnostics are best-effort
+	}
+	return l.buf.Write(p)
+}
+
+func (l *limitedBuffer) String() string { return l.buf.String() }
+
+func stderrTail(w io.Writer) string {
+	if lb, ok := w.(*limitedBuffer); ok {
+		return tail(lb.String(), 300)
+	}
+	return ""
 }
 
 func parseResponse(out []byte) (*response, error) {

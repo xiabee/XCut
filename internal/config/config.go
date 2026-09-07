@@ -66,6 +66,9 @@ type Workers struct {
 	MediaBin string `json:"media_bin"`
 	// Audio selects the audio analyzer: auto | ffmpeg | rust.
 	Audio string `json:"audio"`
+	// AIBin locates an optional AI sidecar (script or binary); "" = PATH
+	// lookup of xcut-ai. Missing sidecar = AI capabilities absent.
+	AIBin string `json:"ai_bin,omitempty"`
 }
 
 // Config is the full effective configuration.
@@ -175,6 +178,9 @@ func Env(cfg *Config) {
 	}
 	if v := os.Getenv("XCUT_LISTEN"); v != "" {
 		cfg.Server.Listen = v
+	}
+	if v := os.Getenv("XCUT_AI_BIN"); v != "" {
+		cfg.Workers.AIBin = v
 	}
 }
 

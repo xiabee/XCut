@@ -190,7 +190,25 @@ func cmdDoctor(a *App, args []string) error {
 		add("Rust worker", "OPTIONAL", fmt.Sprintf("%s v%s (protocol %d, ops: %s)",
 			d.Name, d.Version, d.Protocol, strings.Join(d.Ops, ",")))
 	}
-	add("AI worker", "OPTIONAL", "not installed (not required)")
+	if aibin := worker.ResolveAIBin(a.Cfg.Workers.AIBin); aibin == "" {
+		add("AI sidecar", "OPTIONAL", "not installed (optional; set workers.ai_bin, e.g. scripts/xcut-ai-sidecar.py)")
+	} else {
+		ad, err := worker.Probe(ctx, aibin)
+		if err != nil {
+			add("AI sidecar", "WARN", "present but unusable: "+xcerr.UserMessage(err))
+		} else {
+			caps, cerr := worker.Capabilities(ctx, aibin)
+			health, herr := worker.Health(ctx, aibin)
+			detail := fmt.Sprintf("%s v%s (ops: %s)", ad.Name, ad.Version, strings.Join(ad.Ops, ","))
+			if cerr == nil && len(caps.Models) > 0 {
+				detail += fmt.Sprintf(", models: %d advertised", len(caps.Models))
+			}
+			if herr == nil && health.Ready {
+				detail += ", ready"
+			}
+			add("AI sidecar", "OPTIONAL", detail)
+		}
+	}
 
 	if gpu := detectGPU(ctx); gpu != "" {
 		add("GPU", "OPTIONAL", gpu)
