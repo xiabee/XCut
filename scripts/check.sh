@@ -49,14 +49,29 @@ echo "== go test"
 go test ./...
 
 if [ "$mode" = "full" ]; then
-    echo "== go test -race"
-    go test -race ./...
+    # The race detector needs cgo + a C toolchain (absent on this Windows
+    # setup). Skip loudly rather than silently; run the linux container race
+    # gate (scripts/race-docker.sh) or a CI dispatch for race coverage.
+    if go env CGO_ENABLED | grep -q '^1$' && command -v gcc >/dev/null 2>&1; then
+        echo "== go test -race"
+        go test -race ./...
+    else
+        echo "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
+    fi
 
     echo "== cross-compile checks (compile-verified only, not runtime-verified)"
     GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/xcut
     GOOS=linux GOARCH=arm64 go build -o /dev/null ./cmd/xcut
 
     if command -v cargo >/dev/null 2>&1; then
+        # Windows hosts without MSVC Build Tools cannot link under the default
+        # msvc toolchain; an installed windows-gnu toolchain links fine (and
+        # keeps the gate native). Probe once, stick with what works.
+        probe=$(cd crates/xcut-worker-media && cargo check -q >/dev/null 2>&1 && echo ok) || probe=""
+        if [ -z "$probe" ] && rustup toolchain list 2>/dev/null | grep -q windows-gnu; then
+            export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu
+            echo "== rust: msvc linker unavailable, using windows-gnu toolchain"
+        fi
         echo "== cargo fmt --check"
         (cd crates/xcut-worker-media && cargo fmt --check)
         echo "== cargo clippy"

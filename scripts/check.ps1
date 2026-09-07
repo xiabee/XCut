@@ -46,7 +46,17 @@ Invoke-Step "go build" { go build ./... }
 Invoke-Step "go test" { go test ./... }
 
 if ($Mode -eq "full") {
-    Invoke-Step "go test -race" { go test -race ./... }
+    # The race detector needs cgo + a C toolchain (absent on this Windows
+    # setup). Skip loudly rather than silently; run scripts/race-docker.sh
+    # (WSL/docker) or a CI dispatch for race coverage.
+    $cgoOn = (go env CGO_ENABLED).Trim() -eq "1"
+    $hasGcc = $null -ne (Get-Command gcc -ErrorAction SilentlyContinue)
+    if ($cgoOn -and $hasGcc) {
+        Invoke-Step "go test -race" { go test -race ./... }
+    }
+    else {
+        Write-Host "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
+    }
 
     Write-Host "== cross-compile checks (compile-verified only, not runtime-verified)"
     $env:GOOS = "linux"; $env:GOARCH = "amd64"
@@ -58,8 +68,15 @@ if ($Mode -eq "full") {
     Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
 
     if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        # Windows hosts without MSVC Build Tools cannot link under the default
+        # msvc toolchain; fall back to an installed windows-gnu toolchain.
         Push-Location crates/xcut-worker-media
         try {
+            $probe = cargo check -q 2>$null; if ($LASTEXITCODE -ne 0) { $probe = $null }
+            if (-not $probe -and (rustup toolchain list | Select-String "windows-gnu")) {
+                $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-gnu"
+                Write-Host "== rust: msvc linker unavailable, using windows-gnu toolchain"
+            }
             Invoke-Step "cargo fmt --check" { cargo fmt --check }
             Invoke-Step "cargo clippy" { cargo clippy --all-targets -- -D warnings }
             Invoke-Step "cargo test" { cargo test }
