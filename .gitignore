@@ -21,3 +21,7 @@ secrets*.json
 # Rust build artifacts
 crates/*/target/
 target/
+
+# Local-only tooling and evaluation data (never commit binaries or media)
+/.tools/
+/eval/

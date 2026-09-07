@@ -103,3 +103,25 @@ fast mux. `<tmp>/<job>/*.partial` output, ffprobe-verified, then atomic rename.
 Consequences: robust to heterogeneous inputs, no fancy filter graphs yet;
 slightly slower than a single-pass smart filter graph — optimize later with
 benchmarks.
+
+## D11: Local-first validation; CI becomes explicit, manual dispatch
+
+Context: the GitHub Actions quota ran out mid-night 2026-09-07 (billing
+blocker recorded in PROJECT_STATE). `ci.yml` triggered on every push to main
+and every PR, running a 2-OS Go matrix + Rust + packaging job (4 jobs/push,
+Windows billed at 2×). Push-triggered CI turns GitHub Actions into a remote
+debugger and burns quota on docs-only commits.
+Decision (2026-09-07, nightly #2): regular development validates locally via
+the local quality gate (`scripts/check.ps1` / `scripts/check.sh`: gofmt, vet,
+build, test, race, cross-compile, Rust fmt/clippy/test, optional govulncheck,
+FFmpeg integration). `.github/workflows/ci.yml` now triggers only on
+`workflow_dispatch` — run it explicitly before a release, after large
+cross-platform changes, or when quota recovers. `release.yml` stays
+tag-triggered (already explicit). Commits stay frequent; pushes stay batched
+(0–2 per night) since they no longer trigger anything.
+Consequences: no per-push quota spend; CI returns to its role as independent
+cross-platform verification. Acceptance criteria say "Local Quality Gate
+Green; CI not run (quota policy)" instead of "CI green". When quota recovers,
+re-add push/PR triggers (comment in ci.yml shows how) and consider
+`concurrency: cancel-in-progress` plus docs-only `paths-ignore`.
+

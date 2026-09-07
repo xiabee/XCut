@@ -1,9 +1,18 @@
 name: CI
 
+# CI is an explicit validation tool, not an every-commit tax (Actions quota
+# constraint, see docs/DECISIONS.md D11):
+#   - regular development is validated by the local quality gate
+#     (scripts/check.ps1 / scripts/check.sh);
+#   - run this workflow manually (gh workflow run ci) before a release,
+#     after large cross-platform changes, or when quota allows a re-check.
+# To restore push/PR CI when quota recovers, add back:
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
