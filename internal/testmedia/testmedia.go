@@ -155,6 +155,9 @@ func itoa(n int) string { return fmtInt(n) }
 
 func formatFloat(f float64) string {
 	s := fmtFloat(f)
+	if !strings.Contains(s, ".") {
+		return s // integers ("10") must never lose their trailing zero
+	}
 	// lavfi accepts decimals; trim trailing zeros for tidy args.
 	for len(s) > 1 && s[len(s)-1] == '0' {
 		s = s[:len(s)-1]
@@ -163,4 +166,98 @@ func formatFloat(f float64) string {
 		s += "0"
 	}
 	return s
+}
+
+// RallySpec is one synthetic rally window: active video + periodic hit
+// bursts, embedded in an otherwise still and silent timeline.
+type RallySpec struct {
+	Start, End float64 // seconds on the output timeline
+	HitEvery   float64 // seconds between hit transients inside the rally
+}
+
+// GenerateRally builds a badminton-like synthetic fixture: testsrc2 motion
+// and hit-burst audio during rallies, stillness and silence between them.
+// Ground truth (the rally windows) is known by construction — the eval
+// harness scores the pipeline against it.
+func GenerateRally(dir, name string, width, height, fps int, duration float64, rallies []RallySpec) (string, error) {
+	if len(rallies) == 0 || duration <= 0 {
+		return "", errNoScenes
+	}
+	isRally := func(t float64) bool {
+		for _, r := range rallies {
+			if t >= r.Start-1e-9 && t < r.End-1e-9 {
+				return true
+			}
+		}
+		return false
+	}
+
+	var args []string
+	var vlabels, alabels []string
+	idx := 0
+	segments := 0
+	for t := 0.0; t < duration-1e-9; {
+		// Find the next boundary: nearest rally edge after t.
+		next := duration
+		for _, r := range rallies {
+			if r.Start > t+1e-9 && r.Start < next {
+				next = r.Start
+			}
+			if r.End > t+1e-9 && r.End < next {
+				next = r.End
+			}
+		}
+		if next > duration {
+			next = duration
+		}
+		len := formatFloat(next - t)
+		hitEvery := 0.7
+		for _, r := range rallies {
+			if t >= r.Start-1e-9 && t < r.End-1e-9 && r.HitEvery > 0 {
+				hitEvery = r.HitEvery
+			}
+		}
+		if isRally(t) {
+			args = append(args, "-f", "lavfi", "-i",
+				"testsrc2=s="+itoa(width)+"x"+itoa(height)+":r="+itoa(fps)+":d="+len)
+			args = append(args, "-f", "lavfi", "-i",
+				"sine=frequency=1000:duration="+len+
+					",volume=volume='if(lt(mod(t\\,"+formatFloat(hitEvery)+")\\,0.05)\\,1\\,0.003)':eval=frame")
+		} else {
+			args = append(args, "-f", "lavfi", "-i",
+				"color=c=black:s="+itoa(width)+"x"+itoa(height)+":r="+itoa(fps)+":d="+len)
+			args = append(args, "-f", "lavfi", "-i",
+				"aevalsrc=0:d="+len+":s=44100")
+		}
+		vlabels = append(vlabels, "["+itoa(idx)+":v]setsar=1[v"+itoa(segments)+"]")
+		alabels = append(alabels, "["+itoa(idx+1)+":a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a"+itoa(segments)+"]")
+		idx += 2
+		segments++
+		t = next
+	}
+	var vrefs, arefs []string
+	for i := 0; i < segments; i++ {
+		vrefs = append(vrefs, "[v"+itoa(i)+"]")
+		arefs = append(arefs, "[a"+itoa(i)+"]")
+	}
+	filter := strings.Join(vlabels, ";") + ";" + strings.Join(alabels, ";") + ";" +
+		strings.Join(vrefs, "") + "concat=n=" + itoa(segments) + ":v=1:a=0[vout];" +
+		strings.Join(arefs, "") + "concat=n=" + itoa(segments) + ":v=0:a=1[aout]"
+
+	out := filepath.Join(dir, name)
+	args = append(args,
+		"-filter_complex", filter,
+		"-map", "[vout]", "-map", "[aout]",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "96k",
+		"-y", out,
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
 }

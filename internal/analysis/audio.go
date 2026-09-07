@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 
 	"github.com/xiabee/XCut/internal/media"
@@ -47,6 +48,13 @@ func (a AudioAnalyzer) Analyze(ctx context.Context, opts Options, path string, h
 	samples, err := parseMetadataPrint(out, "lavfi.astats.Overall.RMS_level")
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot parse audio analysis output", err)
+	}
+	// astats reports -inf for digital silence; JSON cannot carry it (cache
+	// serialization) and -120 dBFS is the documented stand-in.
+	for i := range samples {
+		if math.IsInf(samples[i].V, -1) || math.IsNaN(samples[i].V) {
+			samples[i].V = -120
+		}
 	}
 	track := FeatureTrack{
 		Analyzer: a.Name(),

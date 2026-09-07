@@ -176,10 +176,6 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		if remaining <= 0 {
 			break
 		}
-		cand := selInterval{assetID: c.asset.ID, start: c.seg.Start, end: c.seg.End}
-		if !diverse(preset, chosen, cand) {
-			continue
-		}
 		srcStart, srcEnd, ok := trimSegment(preset, c.seg, remaining)
 		if !ok {
 			continue
@@ -190,6 +186,12 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			srcEnd = c.asset.DurationSec
 		}
 		if srcEnd-srcStart < preset.MinClipDuration {
+			continue
+		}
+		// Diversity operates on the trimmed window — what the reel will
+		// actually show — not on the wider source segment.
+		cand := selInterval{assetID: c.asset.ID, start: srcStart, end: srcEnd}
+		if !diverse(preset, chosen, cand) {
 			continue
 		}
 		n++

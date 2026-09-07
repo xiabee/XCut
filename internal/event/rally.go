@@ -23,11 +23,10 @@ const (
 // Rally defaults applied when Config selects rally mode without parameters
 // (presets may set them explicitly; zero values never disable a rally run).
 const (
-	defaultRallyGap  = 2.5  // s of quiet between hits that splits rallies
-	defaultRallyPad  = 1.2  // s padded before/after the first/last hit
-	defaultMinHits   = 4    // transients required inside one rally
-	defaultMaxRally  = 30.0 // s — longer clusters are degenerate
-	rallySplitMotion = 0.28 // motion spike that hard-splits a rally (scene cut)
+	defaultRallyGap = 2.5  // s of quiet between hits that splits rallies
+	defaultRallyPad = 1.2  // s padded before/after the first/last hit
+	defaultMinHits  = 4    // transients required inside one rally
+	defaultMaxRally = 30.0 // s — longer clusters are degenerate
 )
 
 // buildRallies clusters onsets into rally segments.
@@ -84,11 +83,6 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		// Motion support: a rally with no on-screen motion is not watchable.
 		meanMotion := intervalMean(motion, start, end)
 		if meanMotion < cfg.MotionFloor {
-			continue
-		}
-		if hasCutWithin(motion, start, end) {
-			// A scene cut inside the padded window suggests mixed content;
-			// keep it only if hits dominate (>= min hits after the cut).
 			continue
 		}
 		if math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
@@ -177,20 +171,6 @@ func intervalMeanDB(t *analysis.FeatureTrack, start, end float64) float64 {
 		return silentDB
 	}
 	return sum / float64(n)
-}
-
-// hasCutWithin reports whether the motion track spikes above the cut
-// threshold inside [start, end].
-func hasCutWithin(t *analysis.FeatureTrack, start, end float64) bool {
-	if t == nil {
-		return false
-	}
-	for _, s := range t.Samples {
-		if s.T >= start && s.T <= end && s.V > rallySplitMotion {
-			return true
-		}
-	}
-	return false
 }
 
 func firstNonZero(v, def float64) float64 {
