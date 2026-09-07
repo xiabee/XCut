@@ -109,7 +109,7 @@ func TestProcessAliveSmoke(t *testing.T) {
 	if !processAlive(os.Getpid()) {
 		t.Fatal("own process must be alive")
 	}
-	if processAlive(1<<30) {
+	if processAlive(1 << 30) {
 		t.Fatal("impossible pid must be dead")
 	}
 	if processAlive(0) || processAlive(-1) {
