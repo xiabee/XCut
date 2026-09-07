@@ -143,6 +143,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		Verbose: *verbose,
 	}
 
+	// Writers take the exclusive workspace lock so two XCut processes can
+	// never mutate one workspace concurrently (DECISIONS.md). Readers never
+	// block, so `xcut jobs` works while serve runs. Crash safety: a lock
+	// whose owner process is gone is removed automatically.
+	if writesWorkspace(name, cmdArgs) {
+		ws := a.Workspace()
+		release, lerr := ws.Acquire(name)
+		if lerr != nil {
+			fmt.Fprintf(stderr, "xcut %s: %s\n", name, xcerr.UserMessage(lerr))
+			return exitFailure
+		}
+		defer release()
+	}
+
 	if err := cmd.fn(a, cmdArgs); err != nil {
 		if xcerr.IsCode(err, xcerr.CodeCancelled) || ctx.Err() != nil {
 			fmt.Fprintf(stderr, "xcut %s: cancelled\n", name)
@@ -162,6 +176,24 @@ func lookup(name string) (command, bool) {
 		}
 	}
 	return command{}, false
+}
+
+// writesWorkspace classifies commands by whether they mutate workspace state
+// (DB, projects, cache, temp). Anything not listed is treated read-only —
+// reads stay lock-free, so they work while another process holds the lock.
+// `eval` writes only to a throwaway temp workspace and never touches this
+// one; `serve` is a writer (it serves write API calls) and holds the lock
+// for its lifetime.
+func writesWorkspace(name string, args []string) bool {
+	switch name {
+	case "init", "import", "analyze", "timeline", "render", "auto",
+		"cleanup", "serve":
+		return true
+	case "project":
+		// list/show read; create/delete write.
+		return len(args) > 0 && (args[0] == "create" || args[0] == "delete")
+	}
+	return false
 }
 
 // loadConfig resolves effective configuration in two layers: a bootstrap

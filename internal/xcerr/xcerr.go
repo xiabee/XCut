@@ -16,6 +16,7 @@ type Code string
 
 const (
 	CodeValidation       Code = "validation"
+	CodeConflict         Code = "conflict"
 	CodeNotFound         Code = "not_found"
 	CodeUnsupportedMedia Code = "unsupported_media"
 	CodeResourceLimit    Code = "resource_limit"

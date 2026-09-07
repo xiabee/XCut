@@ -34,6 +34,8 @@ func statusFor(code xcerr.Code) int {
 		return http.StatusBadRequest
 	case xcerr.CodeNotFound:
 		return http.StatusNotFound
+	case xcerr.CodeConflict:
+		return http.StatusConflict
 	case xcerr.CodeUnsupportedMedia:
 		return http.StatusUnsupportedMediaType
 	case xcerr.CodeResourceLimit:
