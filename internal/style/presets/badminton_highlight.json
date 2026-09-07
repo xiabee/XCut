@@ -15,5 +15,6 @@
 		"min_duration": 2.0
 	},
 	"transition": { "type": "cut", "duration": 0 },
-	"audio": { "gain": 1.0 }
+	"audio": { "gain": 1.0 },
+	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4 }
 }

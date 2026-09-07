@@ -10,6 +10,7 @@ package style
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,18 @@ type Audio struct {
 	Gain float64 `json:"gain"` // 0..1
 }
 
+// Diversity suppresses near-duplicate picks. Zero-valued = disabled (older
+// presets parse unchanged and keep the plain top-N behavior).
+type Diversity struct {
+	// MinGap is the minimum source-time distance (seconds) between selected
+	// clips of the same asset; a candidate closer than this to any selected
+	// clip is rejected.
+	MinGap float64 `json:"min_gap,omitempty"`
+	// MaxOverlapIoU rejects a candidate whose temporal IoU with an
+	// already-selected clip exceeds this (0..1). 0 = rule disabled.
+	MaxOverlapIoU float64 `json:"max_overlap_iou,omitempty"`
+}
+
 // Transition applied between selected clips.
 type Transition struct {
 	Type     string  `json:"type"` // cut | fade
@@ -50,6 +63,7 @@ type Preset struct {
 	EventConfig     event.Config    `json:"event_config"`
 	Transition      Transition      `json:"transition"`
 	Audio           Audio           `json:"audio"`
+	Diversity       Diversity       `json:"diversity,omitempty"`
 
 	// Source records where the preset was loaded from (not serialized).
 	Source string `json:"-"`
@@ -99,6 +113,13 @@ func (p *Preset) Validate() error {
 	}
 	if p.Audio.Gain < 0 || p.Audio.Gain > 1 {
 		add("audio.gain must be in [0,1]")
+	}
+	if math.IsNaN(p.Diversity.MinGap) || p.Diversity.MinGap < 0 {
+		add("diversity.min_gap must be >= 0")
+	}
+	if math.IsNaN(p.Diversity.MaxOverlapIoU) ||
+		p.Diversity.MaxOverlapIoU < 0 || p.Diversity.MaxOverlapIoU > 1 {
+		add("diversity.max_overlap_iou must be in [0,1]")
 	}
 	if err := p.EventConfig.Validate(); err != nil {
 		add("event_config: %v", err)

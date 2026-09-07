@@ -224,14 +224,28 @@ function renderClips() {
     const tr = document.createElement("tr");
     if (c._removed) tr.className = "removed";
     const dur = (c.source_end - c.source_start).toFixed(1) + "s";
-    tr.innerHTML = `<td>${i + 1}</td>` +
-      `<td>${c.source_start.toFixed(1)}s – ${c.source_end.toFixed(1)}s</td>` +
-      `<td>${dur}</td>` +
-      `<td>
-         <button data-act="up" title="move up">↑</button>
-         <button data-act="down" title="move down">↓</button>
-         <button data-act="del" title="remove">${c._removed ? "undo" : "✕"}</button>
-       </td>`;
+
+    const tdNum = document.createElement("td");
+    tdNum.textContent = i + 1;
+    const tdRange = document.createElement("td");
+    tdRange.textContent = `${c.source_start.toFixed(1)}s – ${c.source_end.toFixed(1)}s`;
+    const tdDur = document.createElement("td");
+    tdDur.textContent = dur;
+    // Clip metadata comes from the style engine (score breakdown / reason).
+    // Untrusted by policy: textContent only, never innerHTML.
+    const tdScore = document.createElement("td");
+    tdScore.textContent = (c.metadata && c.metadata.score) || "";
+    tdScore.title = (c.metadata && c.metadata.score_breakdown) || "";
+    const tdWhy = document.createElement("td");
+    tdWhy.textContent = (c.metadata && c.metadata.reason) || "";
+    tdWhy.title = (c.metadata && c.metadata.score_breakdown) || "";
+    const tdAct = document.createElement("td");
+    tdAct.innerHTML =
+      `<button data-act="up" title="move up">↑</button>` +
+      `<button data-act="down" title="move down">↓</button>` +
+      `<button data-act="del" title="remove">${c._removed ? "undo" : "✕"}</button>`;
+
+    tr.append(tdNum, tdRange, tdDur, tdScore, tdWhy, tdAct);
     tr.addEventListener("click", (e) => {
       const act = e.target.dataset && e.target.dataset.act;
       if (!act) return;

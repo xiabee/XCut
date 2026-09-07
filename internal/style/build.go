@@ -1,9 +1,11 @@
 package style
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/xiabee/XCut/internal/event"
 	"github.com/xiabee/XCut/internal/timeline"
@@ -24,13 +26,82 @@ type AssetEvents struct {
 	Segments []event.Segment
 }
 
+// selInterval is a source-time span selected so far, kept per asset for the
+// diversity rules.
+type selInterval struct {
+	assetID    string
+	start, end float64
+}
+
+// factors is one segment's normalized (0..1) score components.
+type factors struct {
+	motion, audio, duration float64
+}
+
+// weighted returns the preset-weighted total.
+func (f factors) weighted(p *Preset) float64 {
+	return p.Scoring.Motion*f.motion + p.Scoring.Audio*f.audio + p.Scoring.Duration*f.duration
+}
+
+// reason names the dominant weighted factors (share of the total), e.g.
+// "motion+audio". Deterministic ordering by fixed factor priority.
+func (f factors) reason(p *Preset) string {
+	type part struct {
+		name  string
+		value float64
+	}
+	total := f.weighted(p)
+	if total <= 0 {
+		return "flat"
+	}
+	parts := []part{
+		{"motion", p.Scoring.Motion * f.motion},
+		{"audio", p.Scoring.Audio * f.audio},
+		{"duration", p.Scoring.Duration * f.duration},
+	}
+	sort.SliceStable(parts, func(i, j int) bool { return parts[i].value > parts[j].value })
+
+	var picked []string
+	var share float64
+	for _, pt := range parts {
+		if pt.value/total >= 0.3 {
+			picked = append(picked, pt.name)
+			share += pt.value / total
+		}
+		if share >= 0.6 {
+			break
+		}
+	}
+	if len(picked) == 0 {
+		return "balanced"
+	}
+	return strings.Join(picked, "+")
+}
+
+// breakdown renders the explainable score line stored on the clip, e.g.
+// "motion 0.82x0.55=0.45; audio 0.55x0.30=0.17; duration 0.53x0.20=0.11; total 0.72".
+func (f factors) breakdown(p *Preset) string {
+	line := func(name string, n float64, w float64) string {
+		return fmt.Sprintf("%s %.2fx%.2f=%.2f", name, n, w, n*w)
+	}
+	return strings.Join([]string{
+		line("motion", f.motion, p.Scoring.Motion),
+		line("audio", f.audio, p.Scoring.Audio),
+		line("duration", f.duration, p.Scoring.Duration),
+		fmt.Sprintf("total %.4f", f.weighted(p)),
+	}, "; ")
+}
+
 // Build constructs a deterministic Timeline from per-asset events and a
 // preset.
 //
 // Selection: events are re-scored with preset weights, ranked (ties broken by
-// time), greedily taken while the target duration allows, trimmed to a
-// centered window, then emitted chronologically. Identical inputs always
-// produce identical output (property tested).
+// time), then taken greedily while the target duration allows. When the
+// preset enables diversity (min_gap / max_overlap_iou), candidates too close
+// to — or overlapping — an already-selected clip are skipped so one match
+// cannot fill the reel with near-duplicates. Every clip carries its score
+// breakdown and dominant-factor reason in Metadata (explainable selection).
+// Identical inputs always produce identical output (property tested).
 func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Timeline, error) {
 	if len(items) == 0 {
 		return nil, xcerr.E(xcerr.CodeValidation, "no assets to build timeline from", nil)
@@ -41,6 +112,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		asset AssetInfo
 		seg   event.Segment
 		score float64
+		f     factors
 	}
 	var cands []candidate
 	for _, it := range items {
@@ -49,7 +121,13 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			if s.Duration() < preset.MinClipDuration {
 				continue
 			}
-			cands = append(cands, candidate{asset: it.Asset, seg: s, score: scoreSegment(preset, s)})
+			f := segmentFactors(preset, s)
+			cands = append(cands, candidate{
+				asset: it.Asset,
+				seg:   s,
+				score: f.weighted(preset),
+				f:     f,
+			})
 		}
 	}
 	if len(cands) == 0 {
@@ -71,14 +149,19 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		return a.asset.ID < b.asset.ID
 	})
 
-	// Greedy selection up to the target duration.
+	// Greedy selection up to the target duration, honoring diversity rules.
 	total := 0.0
+	var chosen []selInterval
 	var clips []timeline.Clip
 	n := 0
 	for _, c := range cands {
 		remaining := preset.TargetDuration - total
 		if remaining <= 0 {
 			break
+		}
+		cand := selInterval{assetID: c.asset.ID, start: c.seg.Start, end: c.seg.End}
+		if !diverse(preset, chosen, cand) {
+			continue
 		}
 		srcStart, srcEnd, ok := trimSegment(preset, c.seg, remaining)
 		if !ok {
@@ -93,6 +176,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			continue
 		}
 		n++
+		chosen = append(chosen, cand)
 		clips = append(clips, timeline.Clip{
 			ID:          "clip_" + strconv.Itoa(n),
 			AssetID:     c.asset.ID,
@@ -101,6 +185,11 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			SourceEnd:   srcEnd,
 			Speed:       1,
 			Volume:      preset.Audio.Gain,
+			Metadata: map[string]string{
+				"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
+				"score_breakdown": c.f.breakdown(preset),
+				"reason":          c.f.reason(preset),
+			},
 		})
 		total += srcEnd - srcStart
 	}
@@ -152,14 +241,51 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	return tl, nil
 }
 
-// scoreSegment applies preset weights to normalized segment factors. The
-// normalization constants match event scoring (0.30 full-scale motion,
-// 36 dB dynamic range, 15 s "long" segment) and are intentionally shared.
+// diverse reports whether a candidate respects the preset's diversity rules
+// against everything selected so far. Disabled rules (zero values) pass.
+func diverse(p *Preset, chosen []selInterval, cand selInterval) bool {
+	for _, c := range chosen {
+		if c.assetID != cand.assetID {
+			continue
+		}
+		if p.Diversity.MinGap > 0 {
+			gap := cand.start - c.end
+			if gap < 0 {
+				gap = c.start - cand.end
+			}
+			// Overlapping candidates have a negative "gap": always too close.
+			if gap < p.Diversity.MinGap {
+				return false
+			}
+		}
+		if p.Diversity.MaxOverlapIoU > 0 {
+			inter := math.Min(cand.end, c.end) - math.Max(cand.start, c.start)
+			if inter > 0 {
+				interLen := inter
+				union := (cand.end - cand.start) + (c.end - c.start) - interLen
+				if union > 0 && interLen/union > p.Diversity.MaxOverlapIoU {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// segmentFactors normalizes a segment into 0..1 score components. The
+// normalization constants match event scoring (0.30 full-scale motion, 36 dB
+// dynamic range, 15 s "long" segment) and are intentionally shared.
+func segmentFactors(p *Preset, s event.Segment) factors {
+	return factors{
+		motion:   clamp(s.MeanMotion/0.30, 0, 1),
+		audio:    clamp((s.MeanAudioDB-p.EventConfig.SilenceDB)/36.0, 0, 1),
+		duration: clamp(s.Duration()/15.0, 0, 1),
+	}
+}
+
+// scoreSegment applies preset weights to normalized segment factors.
 func scoreSegment(p *Preset, s event.Segment) float64 {
-	motionN := clamp(s.MeanMotion/0.30, 0, 1)
-	audioN := clamp((s.MeanAudioDB-p.EventConfig.SilenceDB)/36.0, 0, 1)
-	durN := clamp(s.Duration()/15.0, 0, 1)
-	return p.Scoring.Motion*motionN + p.Scoring.Audio*audioN + p.Scoring.Duration*durN
+	return segmentFactors(p, s).weighted(p)
 }
 
 // trimSegment cuts a segment to the desired clip length: the full segment

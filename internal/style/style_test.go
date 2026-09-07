@@ -5,6 +5,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/event"
@@ -249,5 +251,96 @@ func TestScoreSegmentWeights(t *testing.T) {
 	got := scoreSegment(p, seg(0, 1, 0.30, -12))
 	if math.Abs(got-1) > 1e-9 {
 		t.Fatalf("motion-dominant score = %v, want 1", got)
+	}
+}
+
+func TestBuildDiversitySuppressesDuplicates(t *testing.T) {
+	p := testPreset()
+	p.TargetDuration = 30
+	p.Diversity = Diversity{MinGap: 5, MaxOverlapIoU: 0.5}
+	asset := AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 120}
+	items := []AssetEvents{{Asset: asset, Segments: []event.Segment{
+		seg(10, 20, 0.30, -6),  // strongest: a 10s moment
+		seg(12, 22, 0.29, -6),  // near-clone of the same moment
+		seg(50, 55, 0.20, -12), // different moment, weaker
+	}}}
+	tl, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips := tl.Tracks[0].Clips
+	if len(clips) != 2 {
+		t.Fatalf("diversity picked %d clips, want 2 (twin suppressed): %+v", len(clips), clips)
+	}
+	for i := 0; i < len(clips); i++ {
+		for j := i + 1; j < len(clips); j++ {
+			inter := math.Min(clips[i].SourceEnd, clips[j].SourceEnd) - math.Max(clips[i].SourceStart, clips[j].SourceStart)
+			if inter > 0 {
+				t.Fatalf("selected clips overlap: %+v %+v", clips[i], clips[j])
+			}
+		}
+	}
+}
+
+func TestBuildWithoutDiversityKeepsTwins(t *testing.T) {
+	p := testPreset()
+	p.TargetDuration = 30
+	asset := AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 120}
+	items := []AssetEvents{{Asset: asset, Segments: []event.Segment{
+		seg(10, 20, 0.30, -6),
+		seg(12, 22, 0.29, -6),
+	}}}
+	tl, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tl.Tracks[0].Clips) != 2 {
+		t.Fatalf("without diversity both twins must be picked, got %d", len(tl.Tracks[0].Clips))
+	}
+}
+
+func TestBuildExplainsSelection(t *testing.T) {
+	p := testPreset()
+	asset := AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 60}
+	items := []AssetEvents{{Asset: asset, Segments: []event.Segment{
+		seg(5, 15, 0.30, -6),
+	}}}
+	tl, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := tl.Tracks[0].Clips[0]
+	md := clip.Metadata
+	if md == nil {
+		t.Fatal("clip has no metadata")
+	}
+	score, err := strconv.ParseFloat(md["score"], 64)
+	if err != nil || score <= 0 || score > 1.5 {
+		t.Errorf("metadata score %q not parseable into (0,1.5]", md["score"])
+	}
+	bd := md["score_breakdown"]
+	for _, want := range []string{"motion", "audio", "duration", "total"} {
+		if !strings.Contains(bd, want) {
+			t.Errorf("breakdown %q missing %q", bd, want)
+		}
+	}
+	if md["reason"] == "" {
+		t.Error("metadata reason empty")
+	}
+}
+
+func TestPresetDiversityValidation(t *testing.T) {
+	p := testPreset()
+	p.Diversity = Diversity{MinGap: -1}
+	if err := p.Validate(); err == nil {
+		t.Error("negative min_gap must be rejected")
+	}
+	p.Diversity = Diversity{MaxOverlapIoU: 1.5}
+	if err := p.Validate(); err == nil {
+		t.Error("max_overlap_iou > 1 must be rejected")
+	}
+	p.Diversity = Diversity{MinGap: 3, MaxOverlapIoU: 0.5}
+	if err := p.Validate(); err != nil {
+		t.Errorf("valid diversity rejected: %v", err)
 	}
 }
