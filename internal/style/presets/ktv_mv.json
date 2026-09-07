@@ -6,7 +6,12 @@
 	"target_duration": 45,
 	"min_clip_duration": 2.0,
 	"max_clip_duration": 12.0,
-	"scoring": { "motion": 0.30, "audio": 0.55, "duration": 0.15 },
+	"scoring": {
+		"motion": 0.25,
+		"audio": 0.40,
+		"duration": 0.10,
+		"density": 0.25
+	},
 	"event_config": {
 		"cut_threshold": 0.25,
 		"motion_floor": 0.04,
@@ -15,5 +20,6 @@
 		"min_duration": 3.0
 	},
 	"transition": { "type": "cut", "duration": 0 },
-	"audio": { "gain": 1.0 }
+	"audio": { "gain": 1.0 },
+	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4 }
 }

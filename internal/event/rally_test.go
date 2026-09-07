@@ -132,9 +132,9 @@ func TestBuildRallyRespectsMotionTrackPreference(t *testing.T) {
 	}
 }
 
-func TestBuildActivityModeUnchangedByRallyFields(t *testing.T) {
-	// Plain activity config with onsets present must produce activity
-	// segments exactly as before (rally code is opt-in via Mode).
+func TestBuildActivityModeAnnotatesOnsetDensity(t *testing.T) {
+	// Activity mode stays activity (Kind "") but, when an onset track is
+	// present, segments gain an honest transient count/density annotation.
 	cfg := Config{CutThreshold: 0.25, MotionFloor: 0.05, SilenceDB: -45,
 		MergeGap: 1.2, MinDuration: 2.0}
 	onsets := hitsAt(5, 5.5, 6, 6.5, 7)
@@ -143,13 +143,18 @@ func TestBuildActivityModeUnchangedByRallyFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range segs {
-		if s.Kind != "" || s.HitCount != 0 {
-			t.Fatalf("activity segment carries rally fields: %+v", s)
-		}
-	}
 	if len(segs) == 0 {
 		t.Fatal("activity segmentation produced nothing")
+	}
+	var covered int
+	for _, s := range segs {
+		if s.Kind != "" {
+			t.Fatalf("activity segment must not claim rally kind: %+v", s)
+		}
+		covered += s.HitCount
+	}
+	if covered != 5 {
+		t.Fatalf("onset annotations across segments = %d, want 5", covered)
 	}
 }
 

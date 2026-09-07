@@ -174,10 +174,28 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 			if s.end-s.start < cfg.MinDuration {
 				continue
 			}
-			segments = append(segments, scoreSpan(s, cfg))
+			seg := scoreSpan(s, cfg)
+			// Transient density inside activity segments: a generic music /
+			// percussive-energy signal (styles score it via hits/density
+			// weights; it is never surfaced as a "chorus" or other claim we
+			// cannot support).
+			if onsets != nil {
+				seg.HitCount = countOnsetsIn(onsets, s.start, s.end)
+				if dur := seg.End - seg.Start; dur > 0 {
+					seg.HitDensity = round4(float64(seg.HitCount) / dur)
+				}
+			}
+			segments = append(segments, seg)
 		}
 	}
 	return segments, nil
+}
+
+// countOnsetsIn counts onset samples within [start, end].
+func countOnsetsIn(onsets *analysis.FeatureTrack, start, end float64) int {
+	lo := sort.Search(len(onsets.Samples), func(i int) bool { return onsets.Samples[i].T >= start })
+	hi := sort.Search(len(onsets.Samples), func(i int) bool { return onsets.Samples[i].T > end })
+	return hi - lo
 }
 
 // buildCells maps the motion grid to activity cells with nearest-window audio.
