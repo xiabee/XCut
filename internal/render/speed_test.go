@@ -225,3 +225,43 @@ func TestAtempoChain(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderSpeedOffsetSeek: a sped clip starting mid-file (SourceStart>0,
+// past the first keyframe) must not lose its tail to the input -t window —
+// [4,8] covers blue 4-6 + white 6-8; speed=4 renders 1s. Frame at 0.75s
+// maps to source 7.0s → white; losing the tail would show blue.
+func TestRenderSpeedOffsetSeek(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	pathA, err := testmedia.Generate(dir, "a.mp4", testmedia.DefaultFixture(), 320, 240, 10) // 8s
+	if err != nil {
+		t.Fatal(err)
+	}
+	tl := &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 320, Height: 240, FPS: 10},
+		Tracks: []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{{
+			ID: "c1", AssetID: "c1", SourcePath: pathA,
+			SourceStart: 4, SourceEnd: 8, Speed: 4, Volume: 1, // blue+white, 1s out
+		}}}},
+	}
+	out := filepath.Join(dir, "offset.mp4")
+	if err := Render(context.Background(), tl, Options{Tools: testToolsX(), TempDir: dir}, out); err != nil {
+		t.Fatal(err)
+	}
+	probe, err := media.ProbeFile(context.Background(), testToolsX(), out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := probe.DurationSec; d < 0.85 || d > 1.15 {
+		t.Fatalf("offset speed=4 output duration %.2fs, want ~1s", d)
+	}
+	// Frame at 0.75s maps to source 7.0s — white. Losing the tail to the seek
+	// window would show blue here instead.
+	r, g, b := avgRGB(t, out, 0.75)
+	if !(r > 150 && g > 150 && b > 150) {
+		t.Fatalf("frame at 0.75s is rgb(%.0f,%.0f,%.0f), want the white scene (source 7.0s)", r, g, b)
+	}
+}
