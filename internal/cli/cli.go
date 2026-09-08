@@ -192,6 +192,9 @@ func writesWorkspace(name string, args []string) bool {
 	case "project":
 		// list/show read; create/delete write.
 		return len(args) > 0 && (args[0] == "create" || args[0] == "delete")
+	case "cache":
+		// stats reads; clear writes.
+		return len(args) > 0 && args[0] == "clear"
 	}
 	return false
 }

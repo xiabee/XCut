@@ -49,6 +49,9 @@ func NewStore(cacheDir string) *Store {
 	return &Store{dir: filepath.Join(cacheDir, "analysis")}
 }
 
+// Dir exposes the store's on-disk location (CLI reporting).
+func (s *Store) Dir() string { return s.dir }
+
 // Key exposes the cache key computation (used by CLI logging).
 func Key(fingerprint string, analyzers []Analyzer, cfg ConfigKey) string {
 	return cacheKey(fingerprint, analyzers, cfg)

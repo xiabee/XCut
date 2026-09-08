@@ -20,7 +20,7 @@ Living document. Near-term milestones are concrete; far-term is directional.
 
 - [x] `xcut serve`: localhost HTTP API (`/api/v1`: health, projects, assets, jobs) — web UI still pending
 - [ ] Proxy generation for analysis (configurable resolution/fps decision logic)
-- [ ] Cache eviction (LRU, size-capped) + `xcut cache` tooling
+- [x] Cache eviction (LRU, size-capped) + `xcut cache` tooling
 - [ ] Cross-platform CI (Windows/Linux amd64+arm64), release packaging
 
 ## Phase 3 — Rust worker & vertical depth
