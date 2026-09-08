@@ -324,14 +324,47 @@ func hasXfade(clips []timeline.Clip) bool {
 	return false
 }
 
-// xfadeCombine blends normalized clips with chained xfade (video) and
-// acrossfade (audio) filters. All parts share the normalized canvas and
-// audio layout, which is exactly what xfade requires. Offsets are computed
-// from the *probed* part durations so encoder round-off cannot accumulate.
-//
-// Duration semantics: total = Σ clip durations − Σ transition durations
-// (each xfade consumes part of both neighbors; the timeline placement in
-// style.Build mirrors this by overlapping TimelineStart).
+// buildJoinGraph constructs the filter_complex for joining parts with
+// xfade (transition joins) and concat (hard joins), given probed part
+// durations. Returns the filter string and the labels of the final video
+// and audio streams. Offsets accumulate actual output duration: an xfade
+// join consumes d seconds (acc += durs[i] − d), a hard join consumes none
+// (acc += durs[i]) — encoder round-off therefore cannot accumulate.
+func buildJoinGraph(clips []timeline.Clip, durs []float64) (filter, lastV, lastA string) {
+	var v, a []string
+	lastV, lastA = "[0:v]", "[0:a]"
+	acc := durs[0] // output duration accumulated through join i-1 → i
+	for i := 1; i < len(durs); i++ {
+		inV, inA := fmt.Sprintf("[%d:v]", i), fmt.Sprintf("[%d:a]", i)
+		outV, outA := fmt.Sprintf("[j%d]", i), fmt.Sprintf("[ja%d]", i)
+		if d := transitionBetween(clips, i-1); d > 0 {
+			// xfade join: offset relative to the chained result is its
+			// duration minus the transition window itself.
+			offset := acc - d
+			if offset < 0 {
+				offset = 0
+			}
+			v = append(v, fmt.Sprintf("%s%sxfade=transition=fade:duration=%s:offset=%s%s",
+				lastV, inV, f3(d), f3(offset), outV))
+			a = append(a, fmt.Sprintf("%s%sacrossfade=d=%s%s", lastA, inA, f3(d), outA))
+			acc = acc + durs[i] - d
+		} else {
+			// Hard join ("cut" or pre-baked "fade"): the concat filter joins
+			// back-to-back without overlap, re-encoding through the shared
+			// graph (the concat demuxer cannot run inside a filtergraph).
+			// Its pins interleave per segment: v0 a0 v1 a1 → one video + one
+			// audio out.
+			v = append(v, fmt.Sprintf("%s%s%s%sconcat=n=2:v=1:a=1%s%s",
+				lastV, lastA, inV, inA, outV, outA))
+			acc = acc + durs[i]
+		}
+		lastV, lastA = outV, outA
+	}
+	return strings.Join(append(v, a...), ";"), lastV, lastA
+}
+
+// xfadeCombine renders the parts through the join graph (buildJoinGraph) to
+// outPath.
 func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, opts Options, outPath string) error {
 	durs := make([]float64, len(parts))
 	for i, p := range parts {
@@ -342,36 +375,7 @@ func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, op
 		durs[i] = probe.DurationSec
 	}
 
-	var v, a []string
-	var lastV, lastA string
-	for i := 0; i < len(parts); i++ {
-		inV, inA := fmt.Sprintf("[%d:v]", i), fmt.Sprintf("[%d:a]", i)
-		outV, outA := fmt.Sprintf("[vx%d]", i), fmt.Sprintf("[ax%d]", i)
-		if i == 0 {
-			lastV, lastA = inV, inA
-			continue
-		}
-		d := transitionBetween(clips, i-1)
-		if d <= 0 {
-			return xcerr.E(xcerr.CodeRenderFailure,
-				"mixing xfade with hard cuts in one timeline is not supported yet", nil)
-		}
-		// Offset relative to the chained result: its duration minus the
-		// transition window itself.
-		offset := durs[i-1] - d
-		for j := 0; j < i-1; j++ {
-			offset += durs[j] - transitionBetween(clips, j)
-		}
-		if offset < 0 {
-			offset = 0
-		}
-		v = append(v, fmt.Sprintf("%s%sxfade=transition=fade:duration=%s:offset=%s%s",
-			lastV, inV, f3(d), f3(offset), outV))
-		a = append(a, fmt.Sprintf("%s%sacrossfade=d=%s%s", lastA, inA, f3(d), outA))
-		lastV, lastA = outV, outA
-	}
-
-	filter := strings.Join(append(v, a...), ";")
+	filter, lastV, lastA := buildJoinGraph(clips, durs)
 	args := []string{
 		"-hide_banner", "-nostdin", "-v", "error", "-y",
 		"-threads", strconv.Itoa(threadCap(opts.Tools.Threads)),

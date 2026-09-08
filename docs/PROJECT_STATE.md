@@ -49,9 +49,12 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
   ktv_mv v2 (onset-density weighted). Optional motion_roi block.
 - **Timeline → Render**: versioned timeline IR, strict validation (xfade
   overlaps validated against transition duration), manual editing (GET/PUT
-  + UI editor), renderer with trim/normalize/concat **or chained
-  xfade+acrossfade combine**, cut/fade/xfade transitions, ffprobe verify,
-  atomic publish.
+  + UI editor), renderer with trim/normalize/concat **or a single join
+  filtergraph chaining xfade+acrossfade (transition joins) and concat
+  (hard joins) — cut/fade/xfade may be mixed freely within one timeline**,
+  ffprobe verify, atomic publish; render output refused if it would
+  overwrite a source media file, a timeline-referenced clip source, or the
+  timeline document.
 - **Eval** (`internal/eval` + `xcut eval`): annotated manifests → temporal
   IoU / precision / recall / F1 / range hits / duplicate rate; JSON
   results; isolated throwaway workspace per run. docs/EVAL.md.
@@ -92,8 +95,9 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
   ffmpeg fallback covers it.
 - Luma-based cut detection misses chroma-only cuts (e.g. red→green).
 - Renderer transitions: `cut`, `fade` (through black) and `xfade` (real
-  crossfade with overlapping placement; combining xfade with hard cuts in
-  one timeline is refused for now).
+  crossfade with overlapping placement; transitions may now be freely
+  mixed within one timeline — xfade joins blend, cut/fade joins join
+  back-to-back in the same filtergraph).
 - Badminton v2's rally detection is validated on synthetic fixtures only —
   real annotated match footage is the missing ingredient (use
   `xcut eval` + docs/EVAL.md workflow; court ROI needs per-source manual
@@ -118,12 +122,10 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
 1. Real-footage evaluation: annotate a few real badminton/KTV clips, run
    `xcut eval`, tune badminton v2 (rally_gap/pad/min_hits, ROI rect) on
    measurements — the harness exists, it needs real data.
-2. Renderer polish: allow mixing xfade joins with hard cuts inside one
-   timeline (currently all-or-nothing per timeline).
-3. AI sidecar: first real analyzer (Whisper transcript → event labels) on
+2. AI sidecar: first real analyzer (Whisper transcript → event labels) on
    top of protocol v1 if a local Whisper exists; else capability remains
    honestly absent.
-4. Timeline UX: per-clip preview + trim handles (manual editing is the
+3. Timeline UX: per-clip preview + trim handles (manual editing is the
    fallback when algorithms disagree).
-5. Optional: re-enable push/PR CI when quota recovers (restore notes in
+4. Optional: re-enable push/PR CI when quota recovers (restore notes in
    ci.yml; consider concurrency cancel + docs-only paths-ignore).
