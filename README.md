@@ -50,6 +50,8 @@ Verify the result with any player or `ffprobe`.
 ./xcut import badminton-2026 match.mp4        # probe + fingerprint assets
 ./xcut analyze badminton-2026                 # motion/audio features → events
 ./xcut timeline badminton-2026 --style badminton_highlight
+#   regenerating overwrites manual edits — the previous document is kept
+#   as timeline.backup.json; `--restore-backup` swaps it back
 ./xcut render badminton-2026 --out cut.mp4
 ./xcut jobs badminton-2026                    # job history (crash-safe)
 ```
