@@ -5,6 +5,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 
 ## [Unreleased] — 2026-09-08/09 nightly session #3
 
+### Fixed
+- Renderer honors clip `speed`: setpts/atempo apply the full source range
+  at the requested pace (previously a sped clip was silently truncated to
+  its first seconds); frame-color integration tests prove the mapping in
+  both directions, offset-seek keeps the tail, speed+xfade composes.
+- Timeline editor honors speed: displayed durations, status total and
+  save-time placement accumulate playback durations (with an `@Nx` marker).
+
 ### Added
 - Timeline editor polish (Phase 3 item complete): per-clip source preview
   (▶ seeks the clip's source to its start offset) and drag-to-reorder rows
@@ -21,16 +29,24 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   low-res proxies under `cache/proxy` encoded at the analysis geometry so
   analyzer passes decode sampled frames instead of the full source; cache
   key carries a proxy bit; `resource.max_proxy_gb` budget (default 2 GB,
-  LRU-evicted) surfaced in `xcut cleanup` and `xcut cache stats|clear`.
+  LRU-evicted) surfaced in `xcut cleanup` and `xcut cache stats|clear`;
+  `resource.proxy_threads` gives the one-shot encode its own thread budget.
 - `xcut cache stats [--json]` and `xcut cache clear [--dry-run]`: inspect
   and clear the analysis + proxy caches (analysis entries only — projects,
   user media and the DB are never touched).
+- Renderer loudly refuses unsupported timeline shapes (audio tracks,
+  multi-track timelines, clip effects) instead of silently mis-rendering.
+- Per-analyzer call timeout (`resource.analyzer_call_timeout`, default
+  30m): a hung ffmpeg fails the job instead of pinning a worker slot.
+- `xcut doctor` reports analysis/proxy cache usage against budgets.
 
 ### Changed
 - Renderer: cut/fade joins now render inside the xfade filtergraph via the
   concat filter — `cut`, `fade` and `xfade` transitions may be freely
   mixed within one timeline (previously refused). Join offsets accumulate
   actual output duration; Σ durations − Σ xfade semantics preserved.
+- `xcut cleanup` also reclaims stale render partials under `projects/`
+  (crash debris; custom `--out` paths untouched).
 
 ## [Unreleased] — 2026-09-07/08 nightly session #2
 
