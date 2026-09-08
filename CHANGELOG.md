@@ -3,6 +3,29 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-08/09 nightly session #3
+
+### Added
+- Render output overwrite guard: `xcut render --out` (and the API's
+  `{"out"}`) refuse paths matching imported assets, timeline-referenced
+  clip sources, or the timeline document (same-file detection via
+  os.SameFile plus normalized comparison). Imports are referenced in
+  place, so a clobbered source is unrecoverable.
+- Analysis proxies (opt-in `resource.proxy_enabled`): fingerprint-keyed
+  low-res proxies under `cache/proxy` encoded at the analysis geometry so
+  analyzer passes decode sampled frames instead of the full source; cache
+  key carries a proxy bit; `resource.max_proxy_gb` budget (default 2 GB,
+  LRU-evicted) surfaced in `xcut cleanup` and `xcut cache stats|clear`.
+- `xcut cache stats [--json]` and `xcut cache clear [--dry-run]`: inspect
+  and clear the analysis + proxy caches (analysis entries only — projects,
+  user media and the DB are never touched).
+
+### Changed
+- Renderer: cut/fade joins now render inside the xfade filtergraph via the
+  concat filter — `cut`, `fade` and `xfade` transitions may be freely
+  mixed within one timeline (previously refused). Join offsets accumulate
+  actual output duration; Σ durations − Σ xfade semantics preserved.
+
 ## [Unreleased] — 2026-09-07/08 nightly session #2
 
 ### Added

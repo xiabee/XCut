@@ -3,17 +3,18 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
+Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: 9d474ec+ (local commits; not pushed this session — CI is
-  workflow_dispatch-only now, D11; push decision for the maintainer)
+- HEAD: 23befdf+ (local commits; not pushed — CI is workflow_dispatch-only,
+  D11; push decision for the maintainer)
 - Branch: main
 - CI: quota-constrained (D11). `ci.yml` is workflow_dispatch-only;
-  `release.yml` stays tag-triggered. All validation this session was local
-  (scripts/check.sh full + docker race gate).
+  `release.yml` stays tag-triggered. Validation is local
+  (scripts/ci-local.ps1 → check.ps1 fast) plus the remote-node node
+  (night-automation ci run) as independent acceptance.
 
 ## Working Architecture
 
@@ -28,13 +29,18 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
   panic→failed; startup orphan reconciliation.
 - **Pipeline** (`internal/pipeline`): import/analyze/timeline/render shared
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
+  Render outputs are guarded against overwriting source media, timeline-
+  referenced clip sources, or the timeline document.
 - **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
   limiter; `StreamStdout` for bounded streaming passes.
 - **Analysis** (`internal/analysis`): frame_diff (motion + cuts), audio RMS
   (astats), **audio onsets** (PCM pipe → Go DSP: 20 ms peak envelope → flux
   → median+k·MAD adaptive threshold → local-max peaks), **court-ROI motion**
   (crop before signalstats; ROI in the analyzer name = cache-safe).
-  Fingerprint-keyed cache with budget eviction; optional Rust worker
+  Fingerprint-keyed cache with budget eviction; optional **analysis
+  proxies** (opt-in `resource.proxy_enabled`: fingerprint-keyed low-res
+  proxies at the analysis geometry under `cache/proxy`, own LRU budget
+  `resource.max_proxy_gb`, proxy bit in the cache key); optional Rust worker
   (auto: worker-first with ffmpeg fallback; rust: strict; ffmpeg: builtin).
 - **Events** (`internal/event`): activity segmentation (default) and rally
   mode (`mode: "rally"`: transient clustering → gap split → padding →
@@ -68,21 +74,25 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
 
 ## Implemented & Working (browser- or CLI-verified)
 
-- CLI: `version|config show|init|doctor|cleanup [--dry-run]|project
-  create|list|show|delete|jobs|import|analyze [assetIDs]|timeline|render|
-  auto|serve|eval`
+- CLI: `version|config show|init|doctor|cleanup [--dry-run]|cache
+  stats|clear [--dry-run]|project create|list|show|delete|jobs|import|
+  analyze [assetIDs]|timeline|render|auto|serve|eval`
 - HTTP `/api/v1`: health, projects CRUD, jobs, async triggers, timeline
   GET/PUT, styles list, render download (range-capable playback)
-- Full E2E paths re-verified this session: `xcut auto` (generic), eval
-  integration (generic + badminton v2), two-process lock scenarios
+- Full E2E paths re-verified this session: `xcut auto` (generic), render
+  refusing `--out` onto source media (source byte-identical after), mixed
+  transition renders (xfade+cut, xfade+fade), proxy-backed analyze
+  (proxy generated, original untouched), `xcut cache` stats/clear
 
 ## Actually Tested
 
-- `go test ./...` all packages green (full suite re-run at end of session;
-  integration tests run against `.tools` ffmpeg 9.0.1)
+- `go test ./...` all packages green (full suite re-run after each
+  milestone; integration tests run against `.tools` ffmpeg 9.0.1)
+- Remote acceptance: `night-automation ci run XCut --node remote-node` PASS twice
+  (after N1–N3 and again after N4)
 - Race detector: all packages green under linux in docker
   (scripts/race-docker.sh); Windows-local race unavailable (no cgo/C
-  toolchain) and skipped loudly by the gate
+  toolchain) and skipped loudly by the gate — NOT re-run this session
 - `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
   toolchain fallback — no MSVC Build Tools on this machine)
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
@@ -98,6 +108,11 @@ Updated: 2026-09-08 02:00 (+08:00) — nightly session #2, end of feature work
   crossfade with overlapping placement; transitions may now be freely
   mixed within one timeline — xfade joins blend, cut/fade joins join
   back-to-back in the same filtergraph).
+- Analysis proxies re-encode audio (AAC 96k), so proxy-based results
+  differ slightly from original-audio analysis; the cache key keeps the
+  two strictly separated. Proxy decision is width-based only — a
+  high-resolution low-fps source still benefits, a tiny-fps source
+  already decodes cheaply.
 - Badminton v2's rally detection is validated on synthetic fixtures only —
   real annotated match footage is the missing ingredient (use
   `xcut eval` + docs/EVAL.md workflow; court ROI needs per-source manual
