@@ -39,6 +39,22 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-08 | audio onset: PCM pipe + Go DSP (this machine) | 60s aac | **0.121 s** | ~0.002x | `BenchmarkAudioOnset60s`; faster than astats — streaming s16le beats per-window metadata printing |
 | 2026-09-07 | **serve idle RAM** | — | **12.3 MB working set / 14.6 MB private** | — | goal <100 MB, stretch <50 MB: **met** |
 | 2026-09-07 | **serve idle CPU** | 30 s idle | **0.031 s total, unchanged** (~0%) | — | no background scanning loops: **met** |
+| 2026-09-09 | **serve idle RAM (re-check)** | — | **11.9 MB WS / 46.6 MB private** | — | after session #3 (asset file endpoint, proxies): **met** |
+| 2026-09-09 | **serve idle CPU (re-check)** | 10 s idle | **0.000 s** (~0%) | — | **met** |
+| 2026-09-09 | analyze, proxy OFF (cold) | 300s 1080p30 testsrc2 | 42.8 s wall | **0.14x realtime** | default 2-thread cap; frame_diff dominates (1080p decode × 9000 frames) |
+| 2026-09-09 | analyze, proxy ON (cold, incl. proxy encode) | same | 43.4 s wall | **0.14x realtime** | one-time proxy encode ≈ 35 s under the 2-thread cap (1080p decode-bound); analyzer passes collapse to ~2 s |
+| 2026-09-09 | analyze, proxy ON (proxy warm, analysis cold) | same | **40.0 → breakdown: encode 35 s, analyzers 1.9 s** | **~0.01x for the analysis passes** | frame_diff 0.76 s + RMS 0.74 s + onset 0.35 s (debug-log timing); 10–20× less per repeated analysis |
+
+Analysis proxies (session #3): the win is on **repeated** analysis (style
+changes, re-runs, multi-project sharing) — analyzer passes drop from
+~40 s to ~2 s on a 5-min 1080p source because they decode a 640-wide
+2 fps proxy instead of the full source. The one-time proxy encode is
+itself decode-bound under the default `ffmpeg_threads` cap, so a single
+cold analyze is break-even. A higher thread budget for the one-time
+encode is a possible future knob (resource policy decision, not a defect).
+Raw ffmpeg component timings at default threads (32-core machine):
+decode original 8.1 s, decode proxy 0.5 s, frame_diff chain 13.3 s
+(original) vs 1.0 s (proxy).
 
 Rust vs FFmpeg audio baseline: parity on this workload (decode/IO bound).
 The Go onset DSP (2026-09-08) settles the "which runtime for transients"
