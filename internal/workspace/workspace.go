@@ -210,11 +210,12 @@ func (w *Workspace) CleanupTemp(dryRun bool) (removed []string, bytes int64, err
 	return removed, bytes, nil
 }
 
-// CleanupPartials removes stale render partials (*.partial) anywhere under
-// projects/. A partial is the renderer's scratch output and is only ever
-// renamed into place after ffprobe verification, so a leftover one is crash
-// debris — never valid output and never user data. dry-run reports without
-// removing. Returns the number of entries and their bytes.
+// CleanupPartials removes stale atomic-write debris anywhere under
+// projects/: render partials (*.partial) and WriteAtomic temp files
+// (.tmp-*). Both are only ever renamed into place after their content is
+// complete/verified, so a leftover one is crash debris — never valid output
+// and never user data. dry-run reports without removing. Returns the number
+// of entries and their bytes.
 func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err error) {
 	root := w.ProjectsDir()
 	if _, serr := os.Stat(root); os.IsNotExist(serr) {
@@ -224,7 +225,11 @@ func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err er
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".partial") {
+		if d.IsDir() {
+			return nil
+		}
+		isDebris := strings.HasSuffix(d.Name(), ".partial") || strings.HasPrefix(d.Name(), ".tmp-")
+		if !isDebris {
 			return nil
 		}
 		size := int64(0)

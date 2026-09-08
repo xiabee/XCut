@@ -125,24 +125,29 @@ func TestCleanupPartials(t *testing.T) {
 		}
 	}
 	write("render.mp4.partial", "crash debris")
+	write(".tmp-123456", "atomic-write debris")
 	write("render.mp4", "VERIFIED OUTPUT")
 	write("timeline.json", "{}")
 
 	// Dry run reports but keeps.
 	count, bytes, err := w.CleanupPartials(true)
-	if err != nil || count != 1 || bytes == 0 {
+	if err != nil || count != 2 || bytes == 0 {
 		t.Fatalf("dry run: count=%d bytes=%d err=%v", count, bytes, err)
 	}
-	if _, err := os.Stat(filepath.Join(proj, "render.mp4.partial")); err != nil {
-		t.Fatal("dry run must keep the partial")
+	for _, keep := range []string{"render.mp4.partial", ".tmp-123456"} {
+		if _, err := os.Stat(filepath.Join(proj, keep)); err != nil {
+			t.Fatalf("dry run must keep %s: %v", keep, err)
+		}
 	}
 
 	count, _, err = w.CleanupPartials(false)
-	if err != nil || count != 1 {
+	if err != nil || count != 2 {
 		t.Fatalf("cleanup: count=%d err=%v", count, err)
 	}
-	if _, err := os.Stat(filepath.Join(proj, "render.mp4.partial")); !os.IsNotExist(err) {
-		t.Fatal("partial must be removed")
+	for _, gone := range []string{"render.mp4.partial", ".tmp-123456"} {
+		if _, err := os.Stat(filepath.Join(proj, gone)); !os.IsNotExist(err) {
+			t.Fatalf("%s must be removed", gone)
+		}
 	}
 	// Real output and timeline survive; a second run is a no-op.
 	for _, keep := range []string{"render.mp4", "timeline.json"} {
