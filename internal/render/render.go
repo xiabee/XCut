@@ -61,8 +61,25 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 	for _, c := range clips {
 		if c.Transition != nil && c.Transition.Type != "cut" && c.Transition.Type != "fade" && c.Transition.Type != "xfade" {
 			return xcerr.E(xcerr.CodeRenderFailure,
-				fmt.Sprintf("transition %q not supported by renderer yet", c.Transition.Type), nil)
+				fmt.Sprintf("transition %q not supported by the renderer yet", c.Transition.Type), nil)
 		}
+		if len(c.Effects) > 0 {
+			return xcerr.E(xcerr.CodeRenderFailure,
+				fmt.Sprintf("effect %q not supported by the renderer yet — refusing to render a timeline that would silently drop it", c.Effects[0]), nil)
+		}
+	}
+	// The renderer joins clips back-to-back from a single ordered stream:
+	// audio-kind tracks and multi-track placement are IR constructs it does
+	// not honor yet, so refuse them instead of mis-rendering.
+	for _, tr := range tl.Tracks {
+		if tr.Kind != "video" {
+			return xcerr.E(xcerr.CodeRenderFailure,
+				fmt.Sprintf("track %q has kind %q — audio tracks are not supported by the renderer yet", tr.ID, tr.Kind), nil)
+		}
+	}
+	if len(tl.Tracks) > 1 {
+		return xcerr.E(xcerr.CodeRenderFailure,
+			fmt.Sprintf("timeline has %d tracks — multi-track timelines are not supported by the renderer yet", len(tl.Tracks)), nil)
 	}
 
 	// Pre-check all sources exist before starting any work.

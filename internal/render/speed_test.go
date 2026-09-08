@@ -3,6 +3,7 @@ package render
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -263,5 +264,60 @@ func TestRenderSpeedOffsetSeek(t *testing.T) {
 	r, g, b := avgRGB(t, out, 0.75)
 	if !(r > 150 && g > 150 && b > 150) {
 		t.Fatalf("frame at 0.75s is rgb(%.0f,%.0f,%.0f), want the white scene (source 7.0s)", r, g, b)
+	}
+}
+
+// TestRenderRefusesUnsupportedShapes: the renderer loudly refuses timeline
+// constructs it cannot honor (audio tracks, multi-track, effects) instead
+// of silently mis-rendering them — same policy as unknown transitions.
+func TestRenderRefusesUnsupportedShapes(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	pathA, err := testmedia.Generate(dir, "a.mp4", testmedia.DefaultFixture()[:2], 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := func(id string) timeline.Clip {
+		return timeline.Clip{ID: id, AssetID: id, SourcePath: pathA,
+			SourceStart: 0, SourceEnd: 1, Speed: 1, Volume: 1}
+	}
+	base := func() *timeline.Timeline {
+		return &timeline.Timeline{
+			Version: timeline.Version,
+			Canvas:  timeline.Canvas{Width: 320, Height: 240, FPS: 10},
+			Tracks:  []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{clip("c1")}}},
+		}
+	}
+
+	cases := map[string]func(*timeline.Timeline){
+		"audio track": func(tl *timeline.Timeline) {
+			tl.Tracks[0].Kind = "audio"
+		},
+		"multi track": func(tl *timeline.Timeline) {
+			tl.Tracks = append(tl.Tracks, timeline.Track{ID: "v2", Kind: "video", Clips: []timeline.Clip{clip("c2")}})
+		},
+		"effects": func(tl *timeline.Timeline) {
+			tl.Tracks[0].Clips[0].Effects = []string{"sepia"}
+		},
+	}
+	for name, mutate := range cases {
+		tl := base()
+		mutate(tl)
+		if err := tl.Validate(nil); err != nil {
+			t.Fatalf("%s: IR must stay valid (renderer refuses, not validation): %v", name, err)
+		}
+		out := filepath.Join(dir, "refused-"+strings.ReplaceAll(name, " ", "-")+".mp4")
+		err := Render(context.Background(), tl, Options{Tools: testToolsX(), TempDir: dir}, out)
+		if err == nil {
+			t.Fatalf("%s: render must be refused", name)
+		}
+		if !strings.Contains(err.Error(), "not supported by the renderer yet") {
+			t.Fatalf("%s: refusal should name the capability, got: %v", name, err)
+		}
+		if _, serr := os.Stat(out); serr == nil {
+			t.Fatalf("%s: refused render must not create output", name)
+		}
 	}
 }
