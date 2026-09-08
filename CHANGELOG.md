@@ -6,6 +6,9 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-08/09 nightly session #3
 
 ### Fixed
+- Timeline validation rejects placement gaps: the renderer joins clips
+  back-to-back and never honors TimelineStart gaps, so gapped timelines
+  used to fail only as a confusing post-render duration mismatch.
 - Renderer honors clip `speed`: setpts/atempo apply the full source range
   at the requested pace (previously a sped clip was silently truncated to
   its first seconds); frame-color integration tests prove the mapping in
@@ -41,6 +44,9 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 - `xcut doctor` reports analysis/proxy cache usage against budgets.
 
 ### Changed
+- Timeline regeneration keeps a one-level undo: the previous document is
+  backed up to `timeline.backup.json` and
+  `xcut timeline <proj> --restore-backup` swaps it back.
 - Renderer: cut/fade joins now render inside the xfade filtergraph via the
   concat filter — `cut`, `fade` and `xfade` transitions may be freely
   mixed within one timeline (previously refused). Join offsets accumulate
