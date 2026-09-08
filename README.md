@@ -112,6 +112,7 @@ curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
+curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
 ```
 
 Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.

@@ -216,6 +216,8 @@ async function refreshTimeline() {
   timelineDoc = null;
   clipEdits = null;
   dragIndex = -1;
+  const prev = $("clip-preview");
+  if (prev) { prev.hidden = true; prev.removeAttribute("src"); prev.load(); }
   renderClips();
   if (!currentProject) return;
   try {

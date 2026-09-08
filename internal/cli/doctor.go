@@ -219,6 +219,25 @@ func cmdDoctor(a *App, args []string) error {
 		db.Close()
 	}
 
+	// Cache usage: informational (OPTIONAL) — eviction is enforced elsewhere.
+	{
+		store := analysis.NewStore(ws.CacheDir())
+		proxies := analysis.NewProxyStore(ws.CacheDir())
+		entries, cacheBytes, err := store.Usage()
+		if err != nil {
+			add("Cache", "WARN", xcerr.UserMessage(err))
+		} else {
+			proxyEntries, proxyBytes, perr := proxies.Usage()
+			if perr != nil {
+				add("Cache", "WARN", xcerr.UserMessage(perr))
+			} else {
+				add("Cache", "OPTIONAL", fmt.Sprintf("analysis %d entries (%.1f MB of %.1f GB), proxies %d (%.1f MB of %.1f GB)",
+					entries, float64(cacheBytes)/(1<<20), a.Cfg.Resource.MaxCacheGB,
+					proxyEntries, float64(proxyBytes)/(1<<20), a.Cfg.Resource.MaxProxyGB))
+			}
+		}
+	}
+
 	if bin := worker.ResolveBin(a.Cfg.Workers.MediaBin); bin == "" {
 		add("Rust worker", "OPTIONAL", "not installed (analysis falls back to Go/FFmpeg)")
 	} else if d, err := worker.Probe(ctx, bin); err != nil {
