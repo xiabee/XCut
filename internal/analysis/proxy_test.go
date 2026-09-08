@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/media"
@@ -176,4 +178,66 @@ func (stubAnalyzer) Version() int { return 1 }
 func (stubAnalyzer) Kind() string { return "stub" }
 func (stubAnalyzer) Analyze(context.Context, Options, string, bool, *slog.Logger) ([]FeatureTrack, error) {
 	return nil, nil
+}
+
+// hangingAnalyzer blocks until its context is done — simulates a hung
+// ffmpeg that must not pin a worker slot forever.
+type hangingAnalyzer struct{ called *bool }
+
+func (h hangingAnalyzer) Name() string { return "hanging" }
+func (h hangingAnalyzer) Version() int { return 1 }
+func (h hangingAnalyzer) Kind() string { return "hanging" }
+func (h hangingAnalyzer) Analyze(ctx context.Context, _ Options, _ string, _ bool, _ *slog.Logger) ([]FeatureTrack, error) {
+	*h.called = true
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// instantAnalyzer emits one track immediately.
+type instantAnalyzer struct{}
+
+func (instantAnalyzer) Name() string { return "instant" }
+func (instantAnalyzer) Version() int { return 1 }
+func (instantAnalyzer) Kind() string { return "instant" }
+func (instantAnalyzer) Analyze(context.Context, Options, string, bool, *slog.Logger) ([]FeatureTrack, error) {
+	return []FeatureTrack{{Kind: "instant", Samples: []Sample{{T: 0, V: 1}}}}, nil
+}
+
+// TestRunPerCallTimeout: a hung analyzer is cut off by CallTimeout with an
+// error naming it; a following analyzer on a healthy call is unaffected.
+func TestRunPerCallTimeout(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	called := false
+	log := proxyLogger()
+
+	// Timeout fires for the hanging analyzer.
+	_, err := Run(context.Background(), store, Options{CallTimeout: 50 * time.Millisecond},
+		[]Analyzer{hangingAnalyzer{called: &called}}, "no-file.mp4", "fp", 1, false, log)
+	if err == nil {
+		t.Fatal("hanging analyzer must fail on CallTimeout")
+	}
+	if !strings.Contains(err.Error(), "hanging") {
+		t.Errorf("timeout error must name the analyzer: %v", err)
+	}
+	if !called {
+		t.Error("hanging analyzer was never invoked")
+	}
+
+	// A generous timeout lets a fast analyzer succeed.
+	res, err := Run(context.Background(), store, Options{CallTimeout: 30 * time.Second},
+		[]Analyzer{instantAnalyzer{}}, "no-file.mp4", "fp", 1, false, log)
+	if err != nil {
+		t.Fatalf("fast analyzer must succeed: %v", err)
+	}
+	if len(res.Tracks) != 1 || res.Tracks[0].Kind != "instant" {
+		t.Errorf("unexpected result: %+v", res.Tracks)
+	}
+
+	// CallTimeout=0 disables the cap (ctx still cancels).
+	_, err = Run(context.Background(), store, Options{},
+		[]Analyzer{instantAnalyzer{}}, "no-file.mp4", "fp", 1, false, log)
+	if err != nil {
+		t.Fatalf("CallTimeout=0 must not interfere: %v", err)
+	}
 }

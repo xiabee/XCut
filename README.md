@@ -73,6 +73,7 @@ Key knobs (see `docs/ARCHITECTURE.md` for the full model):
 | `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |
 | `resource.max_proxy_gb` | 2 | proxy disk budget (LRU-evicted) |
 | `resource.proxy_threads` | inherit | one-shot proxy encode threads (decode-bound; higher cuts cold-start) |
+| `resource.analyzer_call_timeout` | `30m` | per-analyzer ffmpeg budget (hang protection) |
 | `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
 | `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |

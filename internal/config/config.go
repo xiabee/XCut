@@ -28,18 +28,19 @@ type Server struct {
 // scheduler must never exceed them. Zero/negative values are repaired to
 // defaults by Resolve.
 type Resource struct {
-	MaxConcurrentJobs  int     `json:"max_concurrent_jobs"`
-	MaxFFmpegProcesses int     `json:"max_ffmpeg_processes"`
-	MaxAnalysisWorkers int     `json:"max_analysis_workers"`
-	MaxRenderWorkers   int     `json:"max_render_workers"`
-	FFmpegThreads      int     `json:"ffmpeg_threads"` // per ffmpeg/ffprobe process; 0 = default (2)
-	ProxyThreads       int     `json:"proxy_threads"`  // one-shot proxy encode; 0 = inherit ffmpeg_threads
-	MaxCacheGB         float64 `json:"max_cache_gb"`
-	MaxTempGB          float64 `json:"max_temp_gb"`
-	MaxProxyGB         float64 `json:"max_proxy_gb"`     // analysis-proxy disk budget
-	ProxyEnabled       bool    `json:"proxy_enabled"`    // generate low-res analysis proxies
-	FrameSampleFPS     float64 `json:"frame_sample_fps"` // sampling fps for analysis
-	AnalysisWidth      int     `json:"analysis_width"`   // proxy width for analysis
+	MaxConcurrentJobs   int      `json:"max_concurrent_jobs"`
+	MaxFFmpegProcesses  int      `json:"max_ffmpeg_processes"`
+	MaxAnalysisWorkers  int      `json:"max_analysis_workers"`
+	MaxRenderWorkers    int      `json:"max_render_workers"`
+	FFmpegThreads       int      `json:"ffmpeg_threads"` // per ffmpeg/ffprobe process; 0 = default (2)
+	ProxyThreads        int      `json:"proxy_threads"`  // one-shot proxy encode; 0 = inherit ffmpeg_threads
+	MaxCacheGB          float64  `json:"max_cache_gb"`
+	MaxTempGB           float64  `json:"max_temp_gb"`
+	MaxProxyGB          float64  `json:"max_proxy_gb"`          // analysis-proxy disk budget
+	ProxyEnabled        bool     `json:"proxy_enabled"`         // generate low-res analysis proxies
+	FrameSampleFPS      float64  `json:"frame_sample_fps"`      // sampling fps for analysis
+	AnalysisWidth       int      `json:"analysis_width"`        // proxy width for analysis
+	AnalyzerCallTimeout Duration `json:"analyzer_call_timeout"` // per-analyzer ffmpeg budget; 0 = default (30m)
 }
 
 // FFmpeg locates external binaries. Empty means "resolve from PATH".
@@ -122,16 +123,17 @@ func Default() *Config {
 		Log:       Log{Level: "info", MaxSizeMB: 50, MaxFiles: 3},
 		Server:    Server{Listen: "127.0.0.1:8619", ListenRemote: false},
 		Resource: Resource{
-			MaxConcurrentJobs:  2,
-			MaxFFmpegProcesses: 2,
-			MaxAnalysisWorkers: 2,
-			MaxRenderWorkers:   1,
-			FFmpegThreads:      2,
-			MaxCacheGB:         10,
-			MaxTempGB:          20,
-			MaxProxyGB:         2,
-			FrameSampleFPS:     2.0,
-			AnalysisWidth:      640,
+			MaxConcurrentJobs:   2,
+			MaxFFmpegProcesses:  2,
+			MaxAnalysisWorkers:  2,
+			MaxRenderWorkers:    1,
+			FFmpegThreads:       2,
+			MaxCacheGB:          10,
+			MaxTempGB:           20,
+			MaxProxyGB:          2,
+			FrameSampleFPS:      2.0,
+			AnalyzerCallTimeout: Duration{30 * time.Minute},
+			AnalysisWidth:       640,
 		},
 		FFmpeg:  FFmpeg{},
 		Job:     Job{StaleRunningAfter: Duration{2 * time.Hour}},
@@ -236,6 +238,9 @@ func Resolve(cfg *Config) error {
 	}
 	if r.ProxyThreads < 0 {
 		r.ProxyThreads = 0 // 0 = inherit ffmpeg_threads
+	}
+	if r.AnalyzerCallTimeout.Duration <= 0 {
+		r.AnalyzerCallTimeout = Duration{30 * time.Minute}
 	}
 	if r.MaxCacheGB <= 0 {
 		r.MaxCacheGB = 10

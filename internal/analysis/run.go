@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/xiabee/XCut/internal/worker"
@@ -104,8 +105,21 @@ func Run(ctx context.Context, store *Store, opts Options, analyzers []Analyzer, 
 
 	result := &Result{Fingerprint: fingerprint, DurationSec: durationSec}
 	for _, a := range analyzers {
-		tracks, err := a.Analyze(ctx, opts, path, hasAudio, log)
+		callCtx := ctx
+		cancel := func() {}
+		if opts.CallTimeout > 0 {
+			callCtx, cancel = context.WithTimeout(ctx, opts.CallTimeout)
+		}
+		tracks, err := a.Analyze(callCtx, opts, path, hasAudio, log)
+		cancel()
 		if err != nil {
+			if ctx.Err() == nil && callCtx.Err() != nil {
+				// The job context is still live — this analyzer itself blew
+				// the per-call budget (a hung ffmpeg must not pin the
+				// worker slot forever).
+				return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
+					fmt.Sprintf("analyzer %s exceeded its %s time budget", a.Name(), opts.CallTimeout), err)
+			}
 			return nil, err
 		}
 		result.Tracks = append(result.Tracks, tracks...)

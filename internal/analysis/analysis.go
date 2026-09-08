@@ -13,6 +13,7 @@ package analysis
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/xiabee/XCut/internal/media"
 )
@@ -57,6 +58,10 @@ type Options struct {
 	// UseProxy marks results computed from a generated low-res proxy. It is
 	// part of the cache key: proxy and original analysis never cross-serve.
 	UseProxy bool
+	// CallTimeout bounds each individual analyzer execution (an ffmpeg
+	// process that hangs must not pin a worker slot forever). 0 disables
+	// the per-call cap — the job context still applies.
+	CallTimeout time.Duration
 }
 
 // Analyzer is the pluggable analysis unit. Future Rust/AI workers implement

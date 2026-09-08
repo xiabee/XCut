@@ -98,6 +98,7 @@ func (d Deps) analysisOpts() analysis.Options {
 		Tools:         d.tools(),
 		SampleFPS:     d.Cfg.Resource.FrameSampleFPS,
 		AnalysisWidth: d.Cfg.Resource.AnalysisWidth,
+		CallTimeout:   d.Cfg.Resource.AnalyzerCallTimeout.Duration,
 	}
 }
 
