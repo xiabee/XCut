@@ -40,8 +40,12 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   Fingerprint-keyed cache with budget eviction; optional **analysis
   proxies** (opt-in `resource.proxy_enabled`: fingerprint-keyed low-res
   proxies at the analysis geometry under `cache/proxy`, own LRU budget
-  `resource.max_proxy_gb`, proxy bit in the cache key); optional Rust worker
+  `resource.max_proxy_gb`, own encode thread budget `resource.proxy_threads`,
+  proxy bit in the cache key, per-call analyzer timeout
+  `resource.analyzer_call_timeout` default 30m); optional Rust worker
   (auto: worker-first with ffmpeg fallback; rust: strict; ffmpeg: builtin).
+  The renderer refuses unsupported timeline shapes (audio/multi-track,
+  effects) loudly; clip speed is fully honored (setpts + atempo).
 - **Events** (`internal/event`): activity segmentation (default) and rally
   mode (`mode: "rally"`: transient clustering → gap split → padding →
   min-hits + motion gating). Segments carry hit_count/hit_density (activity
