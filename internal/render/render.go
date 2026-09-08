@@ -159,7 +159,10 @@ func fadePlan(clips []timeline.Clip) [][2]float64 {
 
 // normalizeClip re-encodes one clip onto the timeline canvas. sourceHasAudio
 // false injects a silent stereo track so every part concatenates uniformly.
-// fade = [fadeIn, fadeOut] seconds (0 disables).
+// fade = [fadeIn, fadeOut] seconds (0 disables). Clip speed is applied for
+// real: setpts compresses/expands video, an atempo chain (each factor kept
+// inside atempo's portable [0.5,2] range) does the same for audio — the clip
+// shows its FULL source range at the requested pace, never a truncation.
 func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, idx int, fade [2]float64, sourceHasAudio bool, opts Options) (string, error) {
 	out := filepath.Join(opts.TempDir, fmt.Sprintf("clip-%04d.mp4", idx))
 	dur := c.Duration()
@@ -168,6 +171,12 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 		tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.Width, tl.Canvas.Height,
 		strconv.FormatFloat(tl.Canvas.FPS, 'f', -1, 64))
 	af := "aresample=48000,volume=" + strconv.FormatFloat(c.Volume, 'f', 4, 64)
+	if c.Speed != 1 {
+		// Speed applies before the fps resample so the canvas rate is
+		// sampled from the already-time-mapped stream.
+		vf = "setpts=PTS/" + strconv.FormatFloat(c.Speed, 'f', 6, 64) + "," + vf
+		af = atempoChain(c.Speed) + "," + af
+	}
 
 	// "fade" transition halves: dissolve through black at the joined edges.
 	if fade[0] > 0 {
@@ -188,8 +197,10 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 	args := []string{
 		"-hide_banner", "-nostdin", "-v", "error", "-y",
 		"-threads", strconv.Itoa(threadCap(opts.Tools.Threads)),
-		// Fast input seek to the clip start; -t bounds the output length.
+		// Fast input seek to the clip start; the input -t bounds decode to
+		// the exact source range so speeding never reads beyond it.
 		"-ss", strconv.FormatFloat(c.SourceStart, 'f', 6, 64),
+		"-t", strconv.FormatFloat(c.SourceEnd-c.SourceStart, 'f', 6, 64),
 		"-i", c.SourcePath,
 	}
 	audioArgs := []string{}
@@ -406,3 +417,26 @@ func transitionBetween(clips []timeline.Clip, i int) float64 {
 }
 
 func f3(f float64) string { return strconv.FormatFloat(f, 'f', 3, 64) }
+
+// atempoChain renders a speed factor as a comma-prefixed atempo chain with
+// every individual factor inside atempo's portable [0.5, 2] range (older
+// ffmpeg builds only accept that window). The chain multiplies out to the
+// requested speed within float rounding.
+func atempoChain(speed float64) string {
+	if speed <= 0 {
+		// Validation forbids it; fall back to no-op rather than a broken filter.
+		return "atempo=1.000"
+	}
+	var parts []string
+	s := speed
+	for s > 2 {
+		parts = append(parts, "atempo=2.000")
+		s /= 2
+	}
+	for s < 0.5 {
+		parts = append(parts, "atempo=0.500")
+		s *= 2
+	}
+	parts = append(parts, "atempo="+f3(s))
+	return strings.Join(parts, ",")
+}
