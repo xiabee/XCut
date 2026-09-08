@@ -8,17 +8,29 @@ import (
 )
 
 func init() {
-	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name]"), cmdTimeline)
+	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup"), cmdTimeline)
 }
 
 func cmdTimeline(a *App, args []string) error {
 	styleName := "generic_highlight"
-	pos, err := parseCommandArgs(args, map[string]*string{"style": &styleName})
+	restore := false
+	// --restore-backup is a boolean-style flag; pull it out before
+	// parseCommandArgs (which requires values for its flags).
+	rest := args[:0]
+	for _, arg := range args {
+		if arg == "--restore-backup" {
+			restore = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	pos, err := parseCommandArgs(rest, map[string]*string{"style": &styleName})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return xcerr.E(xcerr.CodeValidation, "usage: xcut timeline <project> [--style name]", nil)
+		return xcerr.E(xcerr.CodeValidation,
+			"usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -32,6 +44,18 @@ func cmdTimeline(a *App, args []string) error {
 		return err
 	}
 	d := a.Pipeline(db)
+
+	if restore {
+		ok, err := d.RestoreTimelineBackup(p)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return xcerr.E(xcerr.CodeNotFound, "no timeline backup for this project (nothing to restore)", nil)
+		}
+		fmt.Fprintf(a.Stdout, "restored timeline backup for %s (the previous document is now the backup)\n", p.Name)
+		return nil
+	}
 
 	tl, err := d.BuildTimeline(p, styleName)
 	if err != nil {

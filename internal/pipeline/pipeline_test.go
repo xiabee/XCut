@@ -152,3 +152,57 @@ func TestAnalyzeWithProxy(t *testing.T) {
 		t.Fatal("original media was modified by proxy-backed analysis")
 	}
 }
+
+// TestTimelineBackupAndRestore: a style regeneration backs up the previous
+// document, and RestoreTimelineBackup swaps it back (twice — the swap is
+// its own undo).
+func TestTimelineBackupAndRestore(t *testing.T) {
+	d, p := analyzeSetup(t, 1)
+
+	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+		t.Fatal(err)
+	}
+	cur, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate manual edits to the stored document.
+	manual := []byte(`{"version":1,"manual":true}`)
+	if err := os.WriteFile(cur, manual, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Regeneration must push the manual version into the backup.
+	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+		t.Fatal(err)
+	}
+	bak, err := d.TimelineBackupPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(bak)
+	if err != nil {
+		t.Fatalf("backup missing after regeneration: %v", err)
+	}
+	if string(got) != string(manual) {
+		t.Fatalf("backup holds %q, want the manual document", got)
+	}
+
+	// Restore swaps: current == manual again, backup == regenerated.
+	ok, err := d.RestoreTimelineBackup(p)
+	if err != nil || !ok {
+		t.Fatalf("restore: ok=%v err=%v", ok, err)
+	}
+	got, err = os.ReadFile(cur)
+	if err != nil || string(got) != string(manual) {
+		t.Fatalf("restored current %q err=%v", got, err)
+	}
+	// And the swap is undoable.
+	if ok, err := d.RestoreTimelineBackup(p); err != nil || !ok {
+		t.Fatalf("second restore: ok=%v err=%v", ok, err)
+	}
+	got, err = os.ReadFile(cur)
+	if err != nil || string(got) == string(manual) {
+		t.Fatalf("second restore must bring back the regenerated doc, got %q", got)
+	}
+}

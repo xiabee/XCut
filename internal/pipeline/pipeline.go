@@ -379,6 +379,18 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		if err != nil {
 			return err
 		}
+		// One-level undo: regeneration is the machine overwriting whatever
+		// the user last had (manual edits included), so keep the previous
+		// document around before replacing it.
+		if prev, rerr := os.ReadFile(outPath); rerr == nil {
+			backupPath, err := d.TimelineBackupPath(project.ID)
+			if err != nil {
+				return err
+			}
+			if err := WriteAtomic(backupPath, prev); err != nil {
+				return err
+			}
+		}
 		if err := WriteAtomic(outPath, b); err != nil {
 			return err
 		}
@@ -391,6 +403,43 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 // TimelinePath is where a project's timeline document lives.
 func (d Deps) TimelinePath(projectID string) (string, error) {
 	return d.WS.SafeJoin(filepath.Join("projects", projectID, "timeline.json"))
+}
+
+// TimelineBackupPath is the previous timeline document, kept when a style
+// regeneration replaces the current one (one-level undo).
+func (d Deps) TimelineBackupPath(projectID string) (string, error) {
+	return d.WS.SafeJoin(filepath.Join("projects", projectID, "timeline.backup.json"))
+}
+
+// RestoreTimelineBackup swaps the backup document back in as the current
+// timeline (and the current one becomes the backup, so the swap is itself
+// undoable). Returns whether a backup existed.
+func (d Deps) RestoreTimelineBackup(project *storage.Project) (bool, error) {
+	curPath, err := d.TimelinePath(project.ID)
+	if err != nil {
+		return false, err
+	}
+	bakPath, err := d.TimelineBackupPath(project.ID)
+	if err != nil {
+		return false, err
+	}
+	bak, err := os.ReadFile(bakPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, xcerr.E(xcerr.CodeInternal, "cannot read timeline backup", err)
+	}
+	cur, curErr := os.ReadFile(curPath)
+	if err := WriteAtomic(curPath, bak); err != nil {
+		return false, err
+	}
+	if curErr == nil {
+		if err := WriteAtomic(bakPath, cur); err != nil {
+			return true, err
+		}
+	}
+	return true, nil
 }
 
 // DefaultRenderPath is the default render output for a project.
