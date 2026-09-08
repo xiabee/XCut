@@ -110,3 +110,68 @@ func TestE2ERenderRefusesSourceOverwrite(t *testing.T) {
 		t.Fatal("refused render must not leave a .partial next to the source")
 	}
 }
+
+// TestE2EAutoWithProxy: proxy_enabled + a small analysis width route
+// analysis through a generated proxy; the full auto pipeline must succeed
+// and leave exactly one fingerprint-keyed proxy in the workspace cache.
+func TestE2EAutoWithProxy(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_PROXY_ENABLED", "1")
+
+	// Workspace config layer: analyze at 160 wide (fixture is 320 wide →
+	// the proxy decision fires).
+	wsCfg := filepath.Join(root, "config.json")
+	if err := os.WriteFile(wsCfg, []byte(`{"resource":{"analysis_width":160}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture := filepath.Join(root, "fixture.mp4")
+	if _, err := testmedia.Generate(root, "fixture.mp4", testmedia.DefaultFixture(), 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) int {
+		var stdout, stderr bytes.Buffer
+		return Run(args, &stdout, &stderr)
+	}
+	run("init")
+	if code := run("auto", fixture, "--project", "proxy-e2e", "--style", "generic_highlight"); code != 0 {
+		t.Fatalf("auto with proxies failed (exit %d)", code)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(root, "cache", "proxy"))
+	if err != nil {
+		t.Fatalf("proxy cache dir missing: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("proxy cache has %d entries, want exactly the fixture's proxy", len(entries))
+	}
+
+	// The source must be untouched and a rerun must reuse the proxy
+	// (still exactly one entry).
+	before, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := run("auto", fixture, "--project", "proxy-e2e", "--style", "generic_highlight"); code != 0 {
+		t.Fatalf("second auto failed (exit %d)", code)
+	}
+	entries, err = os.ReadDir(filepath.Join(root, "cache", "proxy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("rerun produced %d proxy entries, want 1 (reuse)", len(entries))
+	}
+	after, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("source media was modified by proxy-backed analysis")
+	}
+}

@@ -88,11 +88,14 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 
 - `go test ./...` all packages green (full suite re-run after each
   milestone; integration tests run against `.tools` ffmpeg 9.0.1)
+- `go test -race` all packages green on the Windows host (full gate) —
+  a gcc toolchain (windows-gnu, from the Rust setup) now satisfies the
+  gate's cgo requirement
+- govulncheck clean on go1.26.6 (session #3 bumped the toolchain from
+  go1.26.4: four stdlib advisories in crypto/tls, net/http, encoding/asn1
+  affected called code)
 - Remote acceptance: `night-automation ci run XCut --node remote-node` PASS twice
   (after N1–N3 and again after N4)
-- Race detector: all packages green under linux in docker
-  (scripts/race-docker.sh); Windows-local race unavailable (no cgo/C
-  toolchain) and skipped loudly by the gate — NOT re-run this session
 - `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
   toolchain fallback — no MSVC Build Tools on this machine)
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
@@ -117,8 +120,10 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   real annotated match footage is the missing ingredient (use
   `xcut eval` + docs/EVAL.md workflow; court ROI needs per-source manual
   rects).
-- Race detector on Windows hosts requires the docker runner or a cgo
-  toolchain; the local gate skips it loudly rather than silently.
+- Race detector on Windows hosts needs a cgo/C toolchain (gcc); the gate
+  runs it when one is present and skips loudly otherwise (docker runner
+  remains the fallback). This machine's windows-gnu gcc satisfies it since
+  session #3.
 - serve has no auth: loopback-only by construction; remote bind refused.
 - Manual timeline edits are overwritten by style regeneration (by design,
   still to be surfaced in UI copy).
