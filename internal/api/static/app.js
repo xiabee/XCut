@@ -210,10 +210,12 @@ function showPlayer() {
 /* ---------- timeline editing ---------- */
 let timelineDoc = null; // last fetched timeline JSON
 let clipEdits = null;   // working copy of timelineDoc.tracks[0].clips
+let dragIndex = -1;     // clipEdits index being dragged (HTML5 DnD reorder)
 
 async function refreshTimeline() {
   timelineDoc = null;
   clipEdits = null;
+  dragIndex = -1;
   renderClips();
   if (!currentProject) return;
   try {
@@ -257,9 +259,39 @@ function renderClips() {
     tdWhy.title = (c.metadata && c.metadata.score_breakdown) || "";
     const tdAct = document.createElement("td");
     tdAct.innerHTML =
+      `<button data-act="preview" title="preview this clip's source at its start offset">▶</button>` +
       `<button data-act="up" title="move up">↑</button>` +
       `<button data-act="down" title="move down">↓</button>` +
       `<button data-act="del" title="remove">${c._removed ? "undo" : "✕"}</button>`;
+
+    // Drag to reorder (HTML5 DnD, no deps): drop reorders clipEdits and the
+    // existing save path recomputes timeline_start from the new order.
+    if (!c._removed) {
+      tr.draggable = true;
+      tr.dataset.index = i;
+      tr.addEventListener("dragstart", (e) => {
+        dragIndex = i;
+        tr.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) { /* IE-style targets */ }
+      });
+      tr.addEventListener("dragend", () => tr.classList.remove("dragging"));
+      tr.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        tr.classList.toggle("drop-target", dragIndex >= 0 && dragIndex !== i);
+      });
+      tr.addEventListener("dragleave", () => tr.classList.remove("drop-target"));
+      tr.addEventListener("drop", (e) => {
+        e.preventDefault();
+        tr.classList.remove("drop-target");
+        if (dragIndex < 0 || dragIndex === i) return;
+        const [moved] = clipEdits.splice(dragIndex, 1);
+        clipEdits.splice(i, 0, moved);
+        dragIndex = -1;
+        renderClips();
+      });
+    }
 
     tr.append(tdNum, tdRange, tdDur, tdScore, tdWhy, tdAct);
     tr.addEventListener("click", (e) => {
@@ -268,10 +300,30 @@ function renderClips() {
       if (act === "del") c._removed = !c._removed;
       if (act === "up" && i > 0) [clipEdits[i - 1], clipEdits[i]] = [clipEdits[i], clipEdits[i - 1]];
       if (act === "down" && i < clipEdits.length - 1) [clipEdits[i + 1], clipEdits[i]] = [clipEdits[i], clipEdits[i + 1]];
+      if (act === "preview") { previewClip(c); return; }
       renderClips();
     });
     tbody.appendChild(tr);
   });
+}
+
+// previewClip plays the clip's source media from its start offset in the
+// editor preview player. The media URL is the project-scoped asset endpoint
+// (DB-registered path only — no client-supplied paths).
+function previewClip(c) {
+  const video = $("clip-preview");
+  if (!video || !currentProject || !c.asset_id) return;
+  video.hidden = false;
+  video.src = `/api/v1/projects/${currentProject.id}/assets/${encodeURIComponent(c.asset_id)}/file`;
+  const seek = () => {
+    if (c.source_start > 0 && isFinite(c.source_start)) {
+      try { video.currentTime = c.source_start; } catch (_) { /* not seekable yet */ }
+    }
+    video.play().catch(() => { /* autoplay policies — user can press play */ });
+  };
+  if (video.readyState >= 1) seek();
+  else video.addEventListener("loadedmetadata", seek, { once: true });
+  video.scrollIntoView({ block: "nearest" });
 }
 
 async function saveTimeline() {

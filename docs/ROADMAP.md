@@ -26,7 +26,7 @@ Living document. Near-term milestones are concrete; far-term is directional.
 ## Phase 3 — Rust worker & vertical depth
 
 - [x] `xcut-worker-media` (Rust): protocol v1 + audio RMS shipped (benchmark parity with ffmpeg — kept as optionality); frame diff / onset pending real need
-- [ ] Manual timeline editing polish: per-clip preview, drag reorder
+- [x] Manual timeline editing polish: per-clip preview, drag reorder
 - [x] Badminton pipeline v2: rally clustering (transient-based), court ROI analysis, hit-driven scoring, diversity dedup; `xcut eval` harness for measurement
 - [x] KTV pipeline v2: onset-density weighted selection (honest naming — high-energy signal, no chorus claims)
 - [x] AI sidecar protocol v1 (capabilities/health/analyze, bounded output), capability detection in doctor; reference sidecar ships, models remain optional/local

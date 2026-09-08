@@ -6,6 +6,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-08/09 nightly session #3
 
 ### Added
+- Timeline editor polish (Phase 3 item complete): per-clip source preview
+  (▶ seeks the clip's source to its start offset) and drag-to-reorder rows
+  (HTML5 DnD; save recomputes timeline_start). Backed by the new
+  `GET /api/v1/projects/{id}/assets/{assetID}/file` endpoint — DB-registered
+  paths only, project-ownership enforced, range-capable; the client never
+  supplies a path.
 - Render output overwrite guard: `xcut render --out` (and the API's
   `{"out"}`) refuse paths matching imported assets, timeline-referenced
   clip sources, or the timeline document (same-file detection via

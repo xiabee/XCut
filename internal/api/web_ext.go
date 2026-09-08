@@ -11,11 +11,12 @@ import (
 )
 
 // RegisterExtensionEndpoints adds read-only endpoints used by the web UI:
-// style listing and rendered-video download/playback (range-request capable
-// via http.ServeContent).
+// style listing, rendered-video download/playback and per-clip source
+// preview (range-request capable via http.ServeContent).
 func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/styles", s.handleStyles)
 	mux.HandleFunc("GET /api/v1/projects/{id}/render", s.handleRenderDownload)
+	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/file", s.handleAssetFile)
 }
 
 // handleStyles lists style presets visible to the server (embedded +
@@ -75,4 +76,38 @@ func sanitizeHeaderFilename(name string) string {
 		return "render"
 	}
 	return keep
+}
+
+// handleAssetFile streams one project asset's source media for clip preview
+// playback. The path comes exclusively from the DB asset row (never from the
+// client), ownership is enforced (asset must belong to the project), and the
+// response is range-capable so the browser can seek to a clip's source
+// offset.
+func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	assetID := r.PathValue("assetID")
+	a, err := s.DB.GetAsset(r.Context(), assetID)
+	if err != nil || a == nil || a.ProjectID != p.ID {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "unknown asset for this project", nil))
+		return
+	}
+	fi, err := os.Stat(a.Path)
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "asset media file is missing on disk", err))
+		return
+	}
+	f, err := os.Open(a.Path)
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open asset media file", err))
+		return
+	}
+	defer f.Close()
+
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Content-Disposition",
+		"inline; filename=\""+sanitizeHeaderFilename(a.Filename)+"\"")
+	http.ServeContent(w, r, filepath.Base(a.Filename), fi.ModTime(), f)
 }
