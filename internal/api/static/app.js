@@ -221,9 +221,10 @@ async function refreshTimeline() {
   renderClips();
   if (!currentProject) return;
   try {
-    const { timeline } = await api(`/api/v1/projects/${currentProject.id}/timeline`);
+    const { timeline, has_backup } = await api(`/api/v1/projects/${currentProject.id}/timeline`);
     timelineDoc = timeline;
     clipEdits = JSON.parse(JSON.stringify(timeline.tracks[0].clips));
+    $("btn-tl-restore").hidden = !has_backup;
   } catch (_) { /* no timeline yet — expected before first generation */ }
   renderClips();
 }
@@ -234,6 +235,7 @@ function renderClips() {
   const has = Array.isArray(clipEdits);
   $("btn-tl-save").disabled = !has;
   $("btn-tl-reset").disabled = !has;
+  if (!has) $("btn-tl-restore").hidden = true;
   if (!has) {
     $("tl-status").textContent = timelineDoc === null ? "generate a timeline first" : "";
     return;
@@ -329,6 +331,15 @@ function previewClip(c) {
   video.scrollIntoView({ block: "nearest" });
 }
 
+async function restoreBackup() {
+  if (!currentProject) return;
+  try {
+    await api(`/api/v1/projects/${currentProject.id}/timeline/restore-backup`, { method: "POST" });
+    banner("Timeline backup restored (the regenerated version is now the backup)");
+    await refreshTimeline();
+  } catch (e) { banner(`Restore failed: ${e.message}`); }
+}
+
 async function saveTimeline() {
   if (!currentProject || !timelineDoc) return;
   const kept = clipEdits.filter(c => !c._removed);
@@ -358,6 +369,7 @@ async function saveTimeline() {
 }
 
 $("btn-tl-save").addEventListener("click", saveTimeline);
+$("btn-tl-restore").addEventListener("click", restoreBackup);
 $("btn-tl-reset").addEventListener("click", refreshTimeline);
 
 /* ---------- wiring ---------- */

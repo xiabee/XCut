@@ -2,9 +2,12 @@ package api
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/timeline"
 )
 
@@ -80,4 +83,94 @@ func marshalTimeline(t *testing.T, tl *timeline.Timeline) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// TestTimelineRestoreBackup: PUT (manual save) does NOT create a backup;
+// a regeneration (BuildTimeline) does; the restore endpoint swaps them and
+// reports 404 when no backup exists.
+func TestTimelineRestoreBackup(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "rb"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "rb")
+
+	// No timeline yet → restore must 404.
+	if rec, _ := do(t, s, "POST", "/api/v1/projects/"+p.ID+"/timeline/restore-backup", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("restore without backup: %d, want 404", rec.Code)
+	}
+
+	// Seed a timeline (as the style builder would write it).
+	tl := &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks: []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{{
+			ID: "c1", AssetID: "a", SourceStart: 0, SourceEnd: 1, Speed: 1, Volume: 1,
+		}}}},
+	}
+	b, err := jsonMarshalTL(tl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlPath, err := s.Pipe.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(tlPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tlPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// has_backup must be false before any regeneration.
+	rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	if rec.Code != http.StatusOK || out["has_backup"] != false {
+		t.Fatalf("has_backup before regeneration: %v (%d)", out["has_backup"], rec.Code)
+	}
+
+	// Regenerate: pipeline backs up the current document.
+	b2, err := jsonMarshalTL(&timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks: []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{{
+			ID: "regen", AssetID: "a", SourceStart: 0, SourceEnd: 2, Speed: 1, Volume: 1,
+		}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pipeline.WriteAtomic(tlPath, b2); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the backup the regeneration writes (the job itself is
+	// covered by TestTimelineBackupAndRestore).
+	cur, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bakPath, err := s.Pipe.TimelineBackupPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bakPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = cur
+
+	// has_backup flips true; restore swaps the documents.
+	rec2, out2 := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	if rec2.Code != http.StatusOK || out2["has_backup"] != true {
+		t.Fatalf("has_backup after regeneration: %v (%d)", out2["has_backup"], rec2.Code)
+	}
+	if rec3, _ := do(t, s, "POST", "/api/v1/projects/"+p.ID+"/timeline/restore-backup", ""); rec3.Code != http.StatusOK {
+		t.Fatalf("restore: %d", rec3.Code)
+	}
+	got, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `"c1"`) {
+		t.Fatalf("restored timeline should hold the backup document, got %s", got)
+	}
 }

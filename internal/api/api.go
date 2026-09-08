@@ -80,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/projects/{id}/assets", s.handleAssetImport)
 	mux.HandleFunc("POST /api/v1/projects/{id}/analyze", s.handleAnalyze)
 	mux.HandleFunc("POST /api/v1/projects/{id}/timeline", s.handleTimeline)
+	mux.HandleFunc("POST /api/v1/projects/{id}/timeline/restore-backup", s.handleTimelineRestore)
 	mux.HandleFunc("POST /api/v1/projects/{id}/render", s.handleRender)
 
 	// Timeline inspection and manual editing.

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/timeline"
@@ -26,7 +27,13 @@ func (s *Server) handleTimelineGet(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"timeline": tl})
+	hasBackup := false
+	if bakPath, berr := s.Pipe.TimelineBackupPath(p.ID); berr == nil {
+		if _, serr := os.Stat(bakPath); serr == nil {
+			hasBackup = true
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"timeline": tl, "has_backup": hasBackup})
 }
 
 // handleTimelinePut replaces the project timeline with the posted document.
@@ -84,4 +91,23 @@ func countClips(tl *timeline.Timeline) int {
 		n += len(tr.Clips)
 	}
 	return n
+}
+
+// handleTimelineRestore swaps the one-level timeline backup back in as the
+// current document (the swap is self-inverting). 404 when no backup exists.
+func (s *Server) handleTimelineRestore(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	ok, err := s.Pipe.RestoreTimelineBackup(p)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if !ok {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no timeline backup for this project (nothing to restore)", nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"restored": true})
 }
