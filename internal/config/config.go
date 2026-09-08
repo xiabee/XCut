@@ -35,6 +35,8 @@ type Resource struct {
 	FFmpegThreads      int     `json:"ffmpeg_threads"` // per ffmpeg/ffprobe process; 0 = default (2)
 	MaxCacheGB         float64 `json:"max_cache_gb"`
 	MaxTempGB          float64 `json:"max_temp_gb"`
+	MaxProxyGB         float64 `json:"max_proxy_gb"`     // analysis-proxy disk budget
+	ProxyEnabled       bool    `json:"proxy_enabled"`    // generate low-res analysis proxies
 	FrameSampleFPS     float64 `json:"frame_sample_fps"` // sampling fps for analysis
 	AnalysisWidth      int     `json:"analysis_width"`   // proxy width for analysis
 }
@@ -126,6 +128,7 @@ func Default() *Config {
 			FFmpegThreads:      2,
 			MaxCacheGB:         10,
 			MaxTempGB:          20,
+			MaxProxyGB:         2,
 			FrameSampleFPS:     2.0,
 			AnalysisWidth:      640,
 		},
@@ -182,6 +185,14 @@ func Env(cfg *Config) {
 	if v := os.Getenv("XCUT_AI_BIN"); v != "" {
 		cfg.Workers.AIBin = v
 	}
+	if v := os.Getenv("XCUT_PROXY_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			cfg.Resource.ProxyEnabled = true
+		case "0", "false", "no", "off":
+			cfg.Resource.ProxyEnabled = false
+		}
+	}
 }
 
 // Resolve validates and repairs the config after defaults+file+env+flags merge.
@@ -227,6 +238,9 @@ func Resolve(cfg *Config) error {
 	}
 	if r.MaxTempGB <= 0 {
 		r.MaxTempGB = 20
+	}
+	if r.MaxProxyGB <= 0 {
+		r.MaxProxyGB = 2
 	}
 	if r.FrameSampleFPS < 0.1 || r.FrameSampleFPS > 30 {
 		r.FrameSampleFPS = 2.0

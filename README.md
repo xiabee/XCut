@@ -70,12 +70,15 @@ Key knobs (see `docs/ARCHITECTURE.md` for the full model):
 | `resource.ffmpeg_threads` | 2 | per-process `-threads` |
 | `resource.frame_sample_fps` | 2 | analysis sampling rate |
 | `resource.analysis_width` | 640 | analysis downscale width |
+| `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |
+| `resource.max_proxy_gb` | 2 | proxy disk budget (LRU-evicted) |
 | `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
 | `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
 
-Nothing runs unbounded: jobs, processes, cache, temp and logs all have
-configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space.
+Nothing runs unbounded: jobs, processes, cache, proxies, temp and logs all
+have configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space;
+`xcut cache stats|clear` inspects and clears the analysis/proxy caches.
 
 ## Styles
 

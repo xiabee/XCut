@@ -109,3 +109,46 @@ func TestWriteAtomicRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAnalyzeWithProxy: proxy_enabled routes analysis through a generated
+// low-res proxy; the run must complete with segments and write the proxy
+// into its own cache dir (fingerprint-keyed), leaving the original untouched.
+func TestAnalyzeWithProxy(t *testing.T) {
+	d, p := analyzeSetup(t, 1)
+	d.Cfg.Resource.ProxyEnabled = true
+	d.Cfg.Resource.AnalysisWidth = 160 // fixture is 320-wide → proxy decision fires
+
+	asset, err := d.DB.ListAssets(context.Background(), p.ID)
+	if err != nil || len(asset) != 1 {
+		t.Fatalf("list assets: %v", err)
+	}
+	before, err := os.ReadFile(asset[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got int
+	err = d.AnalyzeProject(p, func(a AnalyzedAsset) { got++ })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Fatalf("analyzed %d assets, want 1", got)
+	}
+
+	proxies := d.proxyStore()
+	entries, bytes, err := proxies.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries != 1 || bytes <= 0 {
+		t.Fatalf("proxy cache has %d entries (%d bytes), want 1", entries, bytes)
+	}
+	after, err := os.ReadFile(asset[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("original media was modified by proxy-backed analysis")
+	}
+}

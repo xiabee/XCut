@@ -57,6 +57,35 @@ func (d Deps) analysisStore() *analysis.Store {
 	return s
 }
 
+func (d Deps) proxyStore() *analysis.ProxyStore {
+	s := analysis.NewProxyStore(d.WS.CacheDir())
+	s.MaxBytes = int64(d.Cfg.Resource.MaxProxyGB * (1 << 30))
+	return s
+}
+
+// analysisInput resolves the file to analyze for an asset: a generated
+// low-res proxy when proxy_enabled and the source is larger than the
+// analysis canvas, the original otherwise. The returned Options copy pins
+// UseProxy so the cache key distinguishes proxy-based results forever.
+func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options) (analysis.Options, string) {
+	if !d.Cfg.Resource.ProxyEnabled {
+		return baseOpts, asset.Path
+	}
+	opts := baseOpts
+	proxyPath, used, err := d.proxyStore().Ensure(ctx, d.tools(), asset.Path, asset.Fingerprint,
+		d.Cfg.Resource.AnalysisWidth, d.Cfg.Resource.FrameSampleFPS, d.Log)
+	if err != nil {
+		// Proxy is an optimization, never a correctness gate.
+		d.Log.Warn("proxy generation failed; analyzing original", "asset", asset.ID, "err", err)
+		return baseOpts, asset.Path
+	}
+	if !used {
+		return baseOpts, asset.Path
+	}
+	opts.UseProxy = true
+	return opts, proxyPath
+}
+
 func (d Deps) analyzers() ([]analysis.Analyzer, error) {
 	return analysis.ResolveAnalyzers(d.Ctx, analysis.WorkerConfig{
 		MediaBin: d.Cfg.Workers.MediaBin,
@@ -230,8 +259,9 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				result, err := analysis.Run(jctx, store, opts, analyzers,
-					asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
+				assetOpts, path := d.analysisInput(jctx, &asset, opts)
+				result, err := analysis.Run(jctx, store, assetOpts, analyzers,
+					path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
 				if err != nil {
 					errCh <- err
 					return

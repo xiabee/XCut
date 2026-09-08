@@ -91,3 +91,34 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 		t.Fatalf("defaults not applied: %+v", cfg.Resource)
 	}
 }
+
+func TestProxyKnobs(t *testing.T) {
+	cfg := Default()
+	if cfg.Resource.ProxyEnabled {
+		t.Error("proxy_enabled must default to false (no silent behavior change)")
+	}
+	if cfg.Resource.MaxProxyGB != 2 {
+		t.Errorf("max_proxy_gb default %v, want 2", cfg.Resource.MaxProxyGB)
+	}
+	cfg.Resource.MaxProxyGB = 0
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.MaxProxyGB != 2 {
+		t.Errorf("Resolve must repair max_proxy_gb to 2, got %v", cfg.Resource.MaxProxyGB)
+	}
+
+	t.Setenv("XCUT_PROXY_ENABLED", "1")
+	cfg2 := Default()
+	Env(cfg2)
+	if !cfg2.Resource.ProxyEnabled {
+		t.Error("XCUT_PROXY_ENABLED=1 must enable proxies")
+	}
+	t.Setenv("XCUT_PROXY_ENABLED", "off")
+	cfg3 := Default()
+	cfg3.Resource.ProxyEnabled = true
+	Env(cfg3)
+	if cfg3.Resource.ProxyEnabled {
+		t.Error("XCUT_PROXY_ENABLED=off must disable proxies")
+	}
+}

@@ -54,6 +54,9 @@ type Options struct {
 	Tools         media.Tools
 	SampleFPS     float64 // analysis sampling rate
 	AnalysisWidth int     // downscaled analysis width
+	// UseProxy marks results computed from a generated low-res proxy. It is
+	// part of the cache key: proxy and original analysis never cross-serve.
+	UseProxy bool
 }
 
 // Analyzer is the pluggable analysis unit. Future Rust/AI workers implement

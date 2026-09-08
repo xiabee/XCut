@@ -107,9 +107,30 @@ func cmdCleanup(a *App, args []string) error {
 			entries, float64(cacheBytes)/(1024*1024), evicted, float64(evictedBytes)/(1024*1024), float64(budget)/(1<<30))
 	}
 
-	if !dryRun && (len(removed) > 0 || evicted > 0) {
+	// 3. Analysis proxies: same eviction discipline under their own budget.
+	proxies := analysis.NewProxyStore(ws.CacheDir())
+	proxyEntries, proxyBytes, err := proxies.Usage()
+	if err != nil {
+		return err
+	}
+	proxyBudget := int64(a.Cfg.Resource.MaxProxyGB * (1 << 30))
+	proxyEvicted, proxyEvictedBytes, err := proxies.EvictTo(proxyBudget)
+	if err != nil {
+		return err
+	}
+	if dryRun {
+		fmt.Fprintf(a.Stdout, "proxies: %d entries, %.1f MB; would evict %d entries (%.1f MB) to fit %.1f GB budget%s\n",
+			proxyEntries, float64(proxyBytes)/(1024*1024), proxyEvicted, float64(proxyEvictedBytes)/(1024*1024),
+			float64(proxyBudget)/(1<<30), " (dry run)")
+	} else {
+		fmt.Fprintf(a.Stdout, "proxies: %d entries, %.1f MB; evicted %d entries (%.1f MB) to fit %.1f GB budget\n",
+			proxyEntries, float64(proxyBytes)/(1024*1024), proxyEvicted, float64(proxyEvictedBytes)/(1024*1024), float64(proxyBudget)/(1<<30))
+	}
+
+	if !dryRun && (len(removed) > 0 || evicted > 0 || proxyEvicted > 0) {
 		a.Log.Info("cleanup done", "temp_entries", len(removed), "temp_bytes", tempBytes,
-			"cache_evicted", evicted, "cache_bytes", evictedBytes)
+			"cache_evicted", evicted, "cache_bytes", evictedBytes,
+			"proxy_evicted", proxyEvicted, "proxy_bytes", proxyEvictedBytes)
 	}
 	return nil
 }

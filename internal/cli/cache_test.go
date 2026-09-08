@@ -26,6 +26,19 @@ func seedCacheEntries(t *testing.T, root string, n int) string {
 	return dir
 }
 
+// seedProxy drops one fake proxy file into the workspace proxy cache.
+func seedProxy(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, "cache", "proxy")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "deadbeef.mp4"), []byte("fake proxy bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func runCapture(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -54,38 +67,54 @@ func TestCacheStats(t *testing.T) {
 	if !strings.Contains(out, dir) {
 		t.Errorf("stats output missing cache dir:\n%s", out)
 	}
+	if !strings.Contains(out, "proxy dir:") {
+		t.Errorf("stats output missing proxy section:\n%s", out)
+	}
 
 	code, out, errOut = runCapture(t, "cache", "stats", "--json")
 	if code != 0 {
 		t.Fatalf("cache stats --json failed: %s", errOut)
 	}
 	var parsed struct {
-		Entries int    `json:"entries"`
-		Bytes   int    `json:"bytes"`
-		Dir     string `json:"dir"`
+		Analysis struct {
+			Entries int    `json:"entries"`
+			Bytes   int64  `json:"bytes"`
+			Dir     string `json:"dir"`
+		} `json:"analysis"`
+		Proxy struct {
+			Entries int    `json:"entries"`
+			Dir     string `json:"dir"`
+		} `json:"proxy"`
 	}
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("json stats unparseable: %v\n%s", err, out)
 	}
-	if parsed.Entries != 3 || parsed.Bytes <= 0 || parsed.Dir != dir {
-		t.Errorf("json stats wrong: %+v", parsed)
+	if parsed.Analysis.Entries != 3 || parsed.Analysis.Bytes <= 0 || parsed.Analysis.Dir != dir {
+		t.Errorf("json analysis stats wrong: %+v", parsed.Analysis)
+	}
+	if parsed.Proxy.Entries != 0 || parsed.Proxy.Dir == "" {
+		t.Errorf("json proxy stats wrong: %+v", parsed.Proxy)
 	}
 }
 
 func TestCacheClear(t *testing.T) {
 	root := testWorkspace(t)
 	dir := seedCacheEntries(t, root, 2)
+	proxyDir := seedProxy(t, root)
 
 	// Dry run reports but keeps.
 	code, out, errOut := runCapture(t, "cache", "clear", "--dry-run")
 	if code != 0 {
 		t.Fatalf("clear --dry-run failed: %s", errOut)
 	}
-	if !strings.Contains(out, "would remove 2 entries") {
+	if !strings.Contains(out, "would remove 2 analysis entries") || !strings.Contains(out, "1 proxies") {
 		t.Errorf("dry-run output unexpected:\n%s", out)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
 		t.Fatalf("dry run must keep entries, found %d", len(entries))
+	}
+	if entries, _ := os.ReadDir(proxyDir); len(entries) != 1 {
+		t.Fatalf("dry run must keep proxies, found %d", len(entries))
 	}
 
 	// Real clear removes every entry; other workspace state stays.
@@ -93,11 +122,14 @@ func TestCacheClear(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("clear failed: %s", errOut)
 	}
-	if !strings.Contains(out, "removed 2 entries") {
+	if !strings.Contains(out, "removed 2 analysis entries") || !strings.Contains(out, "1 proxies") {
 		t.Errorf("clear output unexpected:\n%s", out)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Fatalf("clear left %d entries", len(entries))
+		t.Fatalf("clear left %d analysis entries", len(entries))
+	}
+	if entries, _ := os.ReadDir(proxyDir); len(entries) != 0 {
+		t.Fatalf("clear left %d proxies", len(entries))
 	}
 	if _, err := os.Stat(filepath.Join(root, "projects")); err != nil {
 		t.Errorf("projects dir must survive cache clear: %v", err)
