@@ -43,3 +43,25 @@ func TestHostileFilenamesAreJustArguments(t *testing.T) {
 func xcerrIsUnsupported(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "unsupported_media")
 }
+
+// TestProbeMissingToolchainError: a missing ffprobe binary must be reported
+// as an environment problem ("not runnable"), never as unsupported media —
+// that mislabel sent a real user chasing the wrong file.
+func TestProbeMissingToolchainError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.mp4")
+	if err := os.WriteFile(path, []byte("not really an mp4"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ProbeFile(context.Background(),
+		Tools{FFprobe: "definitely-missing-ffprobe-binary", FFmpeg: "ffmpeg"}, path)
+	if err == nil {
+		t.Fatal("probe with missing ffprobe must fail")
+	}
+	if !strings.Contains(err.Error(), "not runnable") {
+		t.Fatalf("error must say ffprobe is not runnable, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "supported media") {
+		t.Fatal("missing toolchain must not be mislabeled as unsupported media")
+	}
+}
