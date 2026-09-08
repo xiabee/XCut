@@ -132,6 +132,22 @@ func cmdCleanup(a *App, args []string) error {
 			"cache_evicted", evicted, "cache_bytes", evictedBytes,
 			"proxy_evicted", proxyEvicted, "proxy_bytes", proxyEvictedBytes)
 	}
+
+	// 4. Stale render partials: <out>.partial files left inside the
+	// workspace by a crashed render are never valid output (the renderer
+	// publishes atomically), so they are safe to reclaim. Custom --out
+	// paths outside the workspace are never touched.
+	partialRemoved, partialBytes, err := ws.CleanupPartials(dryRun)
+	if err != nil {
+		return err
+	}
+	verb = "removed"
+	if dryRun {
+		verb = "would remove"
+	}
+	fmt.Fprintf(a.Stdout, "partials: %s %d entries, %.1f MB%s\n",
+		verb, partialRemoved, float64(partialBytes)/(1024*1024), map[bool]string{true: " (dry run)", false: ""}[dryRun])
+
 	return nil
 }
 

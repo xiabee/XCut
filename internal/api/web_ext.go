@@ -106,8 +106,9 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	w.Header().Set("Content-Type", "video/mp4")
+	// Content-Type comes from the asset's real extension via ServeContent
+	// (imports may be .mov/.webm/... — hardcoding video/mp4 mislabels them).
 	w.Header().Set("Content-Disposition",
 		"inline; filename=\""+sanitizeHeaderFilename(a.Filename)+"\"")
-	http.ServeContent(w, r, filepath.Base(a.Filename), fi.ModTime(), f)
+	http.ServeContent(w, r, a.Filename, fi.ModTime(), f)
 }

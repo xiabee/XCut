@@ -100,3 +100,40 @@ func TestAssetFileEndpoint(t *testing.T) {
 		}
 	}
 }
+
+// TestAssetFileContentType: content-type derives from the asset's real
+// extension (imports may be .mov/.webm/...), not a hardcoded mp4 label.
+func TestAssetFileContentType(t *testing.T) {
+	s := testServer(t)
+	ctx := t.Context()
+	p, err := s.DB.CreateProject(ctx, "ct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name, want string
+	}{
+		{"clip.mov", "video/quicktime"},
+		{"clip.webm", "video/webm"},
+		{"clip.mp4", "video/mp4"},
+	} {
+		path := filepath.Join(dir, tc.name)
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		a := storageAssetFor(p.ID)
+		a.Path = path
+		a.Filename = tc.name
+		if err := s.DB.UpsertAsset(ctx, &a); err != nil {
+			t.Fatal(err)
+		}
+		rec, _ := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/assets/"+a.ID+"/file", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d", tc.name, rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != tc.want {
+			t.Errorf("%s: content-type %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

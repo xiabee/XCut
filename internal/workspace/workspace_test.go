@@ -108,3 +108,49 @@ func TestDiskFree(t *testing.T) {
 		t.Fatal("free = 0")
 	}
 }
+
+func TestCleanupPartials(t *testing.T) {
+	w := New(t.TempDir())
+	if err := w.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	proj := filepath.Join(w.ProjectsDir(), "prj_x")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(proj, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("render.mp4.partial", "crash debris")
+	write("render.mp4", "VERIFIED OUTPUT")
+	write("timeline.json", "{}")
+
+	// Dry run reports but keeps.
+	count, bytes, err := w.CleanupPartials(true)
+	if err != nil || count != 1 || bytes == 0 {
+		t.Fatalf("dry run: count=%d bytes=%d err=%v", count, bytes, err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, "render.mp4.partial")); err != nil {
+		t.Fatal("dry run must keep the partial")
+	}
+
+	count, _, err = w.CleanupPartials(false)
+	if err != nil || count != 1 {
+		t.Fatalf("cleanup: count=%d err=%v", count, err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, "render.mp4.partial")); !os.IsNotExist(err) {
+		t.Fatal("partial must be removed")
+	}
+	// Real output and timeline survive; a second run is a no-op.
+	for _, keep := range []string{"render.mp4", "timeline.json"} {
+		if _, err := os.Stat(filepath.Join(proj, keep)); err != nil {
+			t.Fatalf("%s must survive cleanup: %v", keep, err)
+		}
+	}
+	if count, _, err := w.CleanupPartials(false); err != nil || count != 0 {
+		t.Fatalf("second cleanup: count=%d err=%v", count, err)
+	}
+}

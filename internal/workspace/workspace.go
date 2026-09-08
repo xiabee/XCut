@@ -209,3 +209,39 @@ func (w *Workspace) CleanupTemp(dryRun bool) (removed []string, bytes int64, err
 	}
 	return removed, bytes, nil
 }
+
+// CleanupPartials removes stale render partials (*.partial) anywhere under
+// projects/. A partial is the renderer's scratch output and is only ever
+// renamed into place after ffprobe verification, so a leftover one is crash
+// debris — never valid output and never user data. dry-run reports without
+// removing. Returns the number of entries and their bytes.
+func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err error) {
+	root := w.ProjectsDir()
+	if _, serr := os.Stat(root); os.IsNotExist(serr) {
+		return 0, 0, nil
+	}
+	werr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".partial") {
+			return nil
+		}
+		size := int64(0)
+		if fi, ierr := d.Info(); ierr == nil {
+			size = fi.Size()
+		}
+		count++
+		bytes += size
+		if !dryRun {
+			if rerr := os.Remove(path); rerr != nil {
+				return xcerr.E(xcerr.CodeInternal, "cannot remove partial "+filepath.Base(path), rerr)
+			}
+		}
+		return nil
+	})
+	if werr != nil {
+		return count, bytes, xcerr.E(xcerr.CodeInternal, "cannot scan projects dir for partials", werr)
+	}
+	return count, bytes, nil
+}
