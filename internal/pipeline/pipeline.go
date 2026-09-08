@@ -73,7 +73,7 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 	}
 	opts := baseOpts
 	proxyPath, used, err := d.proxyStore().Ensure(ctx, d.tools(), asset.Path, asset.Fingerprint,
-		d.Cfg.Resource.AnalysisWidth, d.Cfg.Resource.FrameSampleFPS, d.Log)
+		d.Cfg.Resource.AnalysisWidth, d.Cfg.Resource.FrameSampleFPS, d.Cfg.Resource.ProxyThreads, d.Log)
 	if err != nil {
 		// Proxy is an optimization, never a correctness gate.
 		d.Log.Warn("proxy generation failed; analyzing original", "asset", asset.ID, "err", err)

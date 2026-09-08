@@ -122,3 +122,24 @@ func TestProxyKnobs(t *testing.T) {
 		t.Error("XCUT_PROXY_ENABLED=off must disable proxies")
 	}
 }
+
+func TestProxyThreadsKnob(t *testing.T) {
+	cfg := Default()
+	if cfg.Resource.ProxyThreads != 0 {
+		t.Errorf("proxy_threads default %d, want 0 (inherit ffmpeg_threads)", cfg.Resource.ProxyThreads)
+	}
+	cfg.Resource.ProxyThreads = -3
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.ProxyThreads != 0 {
+		t.Errorf("Resolve must repair negative proxy_threads to 0, got %d", cfg.Resource.ProxyThreads)
+	}
+	cfg.Resource.ProxyThreads = 8
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.ProxyThreads != 8 {
+		t.Errorf("explicit proxy_threads must survive Resolve, got %d", cfg.Resource.ProxyThreads)
+	}
+}

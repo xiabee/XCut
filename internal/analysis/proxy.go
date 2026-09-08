@@ -56,7 +56,10 @@ func (s *ProxyStore) EvictTo(maxBytes int64) (removed int, freed int64, err erro
 // canvas, or probing failed benignly) — the caller must analyze the original
 // file instead. Generation is atomic (unique temp + rename) so concurrent
 // analyzers racing on the same fingerprint never observe a partial file.
-func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fingerprint string, width int, fps float64, log *slog.Logger) (proxyPath string, used bool, err error) {
+// proxyThreads is the encode's own thread budget; <=0 inherits the tools'
+// default cap (the one-shot encode is decode-bound, so a higher budget here
+// is safe and measured to cut cold-start cost ~4x).
+func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fingerprint string, width int, fps float64, proxyThreads int, log *slog.Logger) (proxyPath string, used bool, err error) {
 	probe, err := media.ProbeFile(ctx, tools, srcPath)
 	if err != nil {
 		return "", false, xcerr.E(xcerr.CodeInternal, "cannot probe source for proxy decision", err)
@@ -88,9 +91,13 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 
 	// The encode mirrors the analyzers' canvas: same width, same sampling
 	// fps, audio kept (RMS/onset analyzers read it) at a modest bitrate.
+	threads := proxyThreads
+	if threads <= 0 {
+		threads = tools.Threads
+	}
 	args := []string{
 		"-hide_banner", "-nostdin", "-v", "error", "-y",
-		"-threads", strconv.Itoa(threadCap(tools.Threads)),
+		"-threads", strconv.Itoa(threadCap(threads)),
 		"-i", srcPath,
 		"-vf", fmt.Sprintf("scale=%d:-2,fps=%s", target, strconv.FormatFloat(fps, 'f', -1, 64)),
 		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",

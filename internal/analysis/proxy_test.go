@@ -37,7 +37,7 @@ func TestProxyEnsureGeneratesOnce(t *testing.T) {
 	}
 
 	store := NewProxyStore(dir)
-	p, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, proxyLogger())
+	p, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestProxyEnsureGeneratesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p2, used2, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, proxyLogger())
+	p2, used2, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
 	if err != nil || !used2 || p2 != p {
 		t.Fatalf("second Ensure: path=%q used=%v err=%v", p2, used2, err)
 	}
@@ -96,7 +96,7 @@ func TestProxyDeclinedWhenSourceFits(t *testing.T) {
 	}
 
 	store := NewProxyStore(dir)
-	p, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 640, 2.0, proxyLogger())
+	p, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 640, 2.0, 0, proxyLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestProxyEviction(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, proxyLogger()); err != nil || !used {
+		if _, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger()); err != nil || !used {
 			t.Fatalf("proxy %d: used=%v err=%v", i, used, err)
 		}
 		fps = append(fps, fp)
