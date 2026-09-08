@@ -65,3 +65,48 @@ func TestE2EAutoPipeline(t *testing.T) {
 		}
 	}
 }
+
+// TestE2ERenderRefusesSourceOverwrite: pointing --out at an imported source
+// file must fail the command and leave the original media byte-identical
+// (imports are referenced in place — there is no copy to fall back on).
+func TestE2ERenderRefusesSourceOverwrite(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	fixture := filepath.Join(root, "fixture.mp4")
+	if _, err := testmedia.Generate(root, "fixture.mp4", testmedia.DefaultFixture(), 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) int {
+		var stdout, stderr bytes.Buffer
+		return Run(args, &stdout, &stderr)
+	}
+	run("init")
+	if code := run("auto", fixture, "--project", "guard", "--style", "generic_highlight"); code != 0 {
+		t.Fatalf("auto setup failed (exit %d)", code)
+	}
+
+	// The refusal must be a clean command failure — no output file, no
+	// damaged source.
+	if code := run("render", "guard", "--out", fixture); code == 0 {
+		t.Fatal("render --out pointing at the imported source must fail")
+	}
+	after, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("source media was modified by a refused render")
+	}
+	if _, err := os.Stat(filepath.Join(root, "fixture.mp4.partial")); err == nil {
+		t.Fatal("refused render must not leave a .partial next to the source")
+	}
+}

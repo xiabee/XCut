@@ -370,6 +370,9 @@ func (d Deps) DefaultRenderPath(projectID string) (string, error) {
 // RenderProject renders the project's stored timeline to outPath (recorded
 // job, blocking; temp scratch removed on success, kept on failure).
 func (d Deps) RenderProject(project *storage.Project, outPath string, onProgress func(pct int)) error {
+	if err := d.guardRenderOut(project, outPath); err != nil {
+		return err
+	}
 	_, jerr := d.Queue.RunInline(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
 		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
 	return jerr
@@ -377,6 +380,9 @@ func (d Deps) RenderProject(project *storage.Project, outPath string, onProgress
 
 // RenderProjectAsync is the non-blocking variant.
 func (d Deps) RenderProjectAsync(project *storage.Project, outPath string, onProgress func(pct int)) (string, error) {
+	if err := d.guardRenderOut(project, outPath); err != nil {
+		return "", err
+	}
 	return d.Queue.RunAsync(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
 		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
 }
