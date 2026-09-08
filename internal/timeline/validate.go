@@ -84,7 +84,10 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			// Overlap check on the same track (clips must be ordered). An
 			// xfade transition on the *previous* clip means the two clips
 			// intentionally share the transition window: the overlap must
-			// match the transition duration exactly (within eps).
+			// match the transition duration exactly (within eps). Any other
+			// join must be flush — the renderer joins clips back-to-back,
+			// so a placement gap could never be honored and would only
+			// surface as a confusing duration mismatch after rendering.
 			end := c.TimelineStart + c.Duration()
 			if ci > 0 && c.TimelineStart < prevEnd-eps {
 				xfade := prev != nil && prev.Transition != nil &&
@@ -97,6 +100,9 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				} else if xfade && prev.Transition.Duration > c.Duration()+eps {
 					errs = append(errs, fmt.Sprintf("%s: xfade duration %g exceeds this clip's length %g", ctx, prev.Transition.Duration, c.Duration()))
 				}
+			}
+			if ci > 0 && c.TimelineStart > prevEnd+eps {
+				errs = append(errs, fmt.Sprintf("%s: leaves a %.6gs gap after the previous clip (ends %g, starts %g) — the renderer joins clips back-to-back, so gaps cannot be honored", ctx, c.TimelineStart-prevEnd, prevEnd, c.TimelineStart))
 			}
 			if end > prevEnd {
 				prevEnd = end

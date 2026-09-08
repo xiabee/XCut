@@ -2,11 +2,14 @@ package timeline
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/xiabee/XCut/internal/testmedia"
 )
 
 func fmtInt(n int) string { return fmt.Sprintf("%d", n) }
@@ -143,5 +146,58 @@ func TestPropertyValidTimelinesPass(t *testing.T) {
 		if tl.Duration() <= 0 {
 			t.Fatalf("iteration %d: total duration non-positive", iter)
 		}
+	}
+}
+
+// TestValidateRejectsGap: cut/fade joins must be flush — the renderer joins
+// clips back-to-back, so a placement gap can never be honored and must be
+// rejected at validation time with a gap-naming error.
+func TestValidateRejectsGap(t *testing.T) {
+	dir := t.TempDir()
+	pathA, err := testmedia.Generate(dir, "a.mp4", testmedia.DefaultFixture()[:2], 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := func(id string, timelineStart float64) Clip {
+		return Clip{
+			ID: id, AssetID: id, SourcePath: pathA,
+			SourceStart: 0, SourceEnd: 2, Speed: 1, Volume: 1,
+			TimelineStart: timelineStart,
+		}
+	}
+	gapped := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 320, Height: 240, FPS: 10},
+		Tracks: []Track{{ID: "v1", Kind: "video", Clips: []Clip{
+			clip("c1", 0), clip("c2", 5), // 3s gap
+		}}},
+	}
+	err = gapped.Validate(nil)
+	if err == nil {
+		t.Fatal("gap must be rejected")
+	}
+	var multi *MultiError
+	if errors.As(err, &multi) {
+		found := false
+		for _, d := range multi.Details() {
+			if strings.Contains(d, "gap") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("gap error must name the gap: %v", err)
+		}
+	}
+
+	// A flush joint stays valid.
+	flush := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 320, Height: 240, FPS: 10},
+		Tracks: []Track{{ID: "v1", Kind: "video", Clips: []Clip{
+			clip("c1", 0), clip("c2", 2),
+		}}},
+	}
+	if err := flush.Validate(nil); err != nil {
+		t.Fatalf("flush join must stay valid: %v", err)
 	}
 }
