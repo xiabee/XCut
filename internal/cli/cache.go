@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	register("cache", "inspect or clear the analysis cache",
+	register("cache", "inspect or clear the analysis and proxy caches",
 		usageSyntax("xcut cache stats [--json] | clear [--dry-run]"), cmdCache)
 }
 
