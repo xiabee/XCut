@@ -238,12 +238,13 @@ function renderClips() {
     $("tl-status").textContent = timelineDoc === null ? "generate a timeline first" : "";
     return;
   }
+  const playDur = (c) => (c.source_end - c.source_start) / (c.speed > 0 ? c.speed : 1);
   $("tl-status").textContent = `${clipEdits.filter(c => !c._removed).length} clips · ` +
-    `${(clipEdits.filter(c => !c._removed).reduce((s, c) => s + (c.source_end - c.source_start), 0)).toFixed(1)}s`;
+    `${(clipEdits.filter(c => !c._removed).reduce((s, c) => s + playDur(c), 0)).toFixed(1)}s`;
   clipEdits.forEach((c, i) => {
     const tr = document.createElement("tr");
     if (c._removed) tr.className = "removed";
-    const dur = (c.source_end - c.source_start).toFixed(1) + "s";
+    const dur = playDur(c).toFixed(1) + "s" + (c.speed && c.speed !== 1 ? ` @${c.speed}x` : "");
 
     const tdNum = document.createElement("td");
     tdNum.textContent = i + 1;
@@ -337,7 +338,9 @@ async function saveTimeline() {
     const copy = { ...c };
     delete copy._removed;
     copy.id = `clip_${i + 1}`;
-    copy.timeline_start = kept.slice(0, i).reduce((s, x) => s + (x.source_end - x.source_start), 0);
+    // Placement accumulates *playback* durations (source range over speed) —
+    // the renderer honors speed, so a 2x clip occupies half its source range.
+    copy.timeline_start = kept.slice(0, i).reduce((s, x) => s + (x.source_end - x.source_start) / (x.speed > 0 ? x.speed : 1), 0);
     copy.transition = undefined;
     return copy;
   });
