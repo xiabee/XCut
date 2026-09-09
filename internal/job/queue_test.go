@@ -240,3 +240,50 @@ func TestRenderBoundLeavesOtherJobsFree(t *testing.T) {
 		t.Fatalf("max concurrent analyze jobs = %d, want 3", got)
 	}
 }
+
+func TestRunAsyncDuplicateConflict(t *testing.T) {
+	q, db := testQueue(t, 2)
+	ctx := context.Background()
+
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetProjectByName(ctx, "p")
+
+	release := make(chan struct{})
+	id1, err := q.RunAsync(ctx, TypeRender, p.ID, ClassCPUHeavy, nil,
+		func(ctx context.Context, progress func(float64)) error {
+			<-release
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = q.RunAsync(ctx, TypeRender, p.ID, ClassCPUHeavy, nil, noopRunner)
+	if !xcerr.IsCode(err, xcerr.CodeConflict) {
+		t.Fatalf("duplicate err = %v, want conflict", err)
+	}
+
+	// Non-exclusive types are never deduped.
+	for i := 0; i < 2; i++ {
+		if _, err := q.RunAsync(ctx, TypeImport, p.ID, ClassIOHeavy, nil, noopRunner); err != nil {
+			t.Fatalf("import #%d must not conflict: %v", i+1, err)
+		}
+	}
+
+	close(release)
+	q.Wait()
+
+	// Terminal state frees the slot: enqueueing works again.
+	id2, err := q.RunAsync(ctx, TypeRender, p.ID, ClassCPUHeavy, nil, noopRunner)
+	if err != nil {
+		t.Fatalf("render after completion: %v", err)
+	}
+	if id2 == id1 {
+		t.Fatal("job ids must differ")
+	}
+	q.Wait()
+}
+
+func noopRunner(ctx context.Context, progress func(float64)) error { return nil }

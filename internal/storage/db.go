@@ -135,6 +135,18 @@ CREATE INDEX idx_assets_project ON assets(project_id);
 CREATE INDEX idx_jobs_project   ON jobs(project_id);
 CREATE INDEX idx_jobs_status    ON jobs(status);
 `},
+	// v2: at most one queued/running job per (project, exclusive type).
+	// Two concurrent renders for one project would drive two ffmpeg encodes
+	// into the same output scratch; this makes the guard race-proof at the
+	// storage layer, not just a pre-check. Import is excluded — concurrent
+	// imports of different files are legitimate. NULL project_id (global
+	// jobs) is distinct in SQLite unique indexes, so globals are unaffected.
+	{id: 2, name: "exclusive-active-jobs", stmt: `
+CREATE UNIQUE INDEX idx_jobs_active_exclusive
+ON jobs(project_id, type)
+WHERE status IN ('queued', 'running')
+  AND type IN ('analyze', 'timeline', 'render');
+`},
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is

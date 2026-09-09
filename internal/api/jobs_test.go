@@ -233,3 +233,140 @@ func TestRenderOverwriteGuardHTTP(t *testing.T) {
 		t.Fatal("refused render must not leave a .partial next to the source")
 	}
 }
+
+// TestRenderBodyAndDuplicateGuard covers the render endpoint's request
+// handling: empty body is accepted, malformed body is exactly one 400 with
+// no job queued, and a duplicate active render conflicts with 409.
+// No ffmpeg needed — the refused paths never reach the pipeline and the
+// accepted path fails fast at "no timeline".
+func TestRenderBodyAndDuplicateGuard(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	_ = config.Resolve(cfg)
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	defer s.Shutdown()
+
+	// Project row (created through the API for realism).
+	resp, err := http.Post(ts.URL+"/api/v1/projects", "application/json", bytes.NewBufferString(`{"name":"dup-guard"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projOut struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&projOut)
+	resp.Body.Close()
+	renderURL := "/api/v1/projects/" + projOut.Project.ID + "/render"
+
+	// 1. Malformed body → single 400, nothing queued.
+	resp, err = http.Post(ts.URL+renderURL, "application/json", bytes.NewBufferString(`{"out": broken`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed body → %d, want 400", resp.StatusCode)
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("400 body is not JSON: %v (%s)", err, body)
+	}
+	if dec.More() {
+		t.Fatalf("response carries more than one JSON value (double write?): %s", body)
+	}
+	jobs := getJobs(t, ts.URL, projOut.Project.ID)
+	if len(jobs) != 0 {
+		t.Fatalf("malformed body queued %d jobs, want 0", len(jobs))
+	}
+
+	// 2. Empty body → 202, job queued (it will fail later on missing
+	// timeline, which is irrelevant here).
+	resp, err = http.Post(ts.URL+renderURL, "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var accepted struct {
+		JobID string `json:"job_id"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&accepted)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("empty body → %d, want 202", resp.StatusCode)
+	}
+	// Wait for the job to reach a terminal state before staging the
+	// duplicate marker below (storage lessons: the unique index does not
+	// care who enqueued it).
+	waitTerminal(t, ts.URL, accepted.JobID)
+
+	// 3. Duplicate render while one is queued/running → 409.
+	if _, err := db.CreateJob(t.Context(), "render", projOut.Project.ID, "CPU_HEAVY", ""); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Post(ts.URL+renderURL, "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate render → %d, want 409", resp.StatusCode)
+	}
+}
+
+func waitTerminal(t *testing.T, baseURL, jobID string) {
+	t.Helper()
+	if jobID == "" {
+		t.Fatal("no job id")
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(baseURL + "/api/v1/jobs/" + jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct {
+			Job struct {
+				Status string `json:"status"`
+			} `json:"job"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		switch out.Job.Status {
+		case "succeeded", "failed", "cancelled":
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("job %s did not reach a terminal state in time", jobID)
+}
+
+func getJobs(t *testing.T, baseURL, projectID string) []any {
+	t.Helper()
+	resp, err := http.Get(baseURL + "/api/v1/projects/" + projectID + "/jobs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Jobs []any `json:"jobs"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out.Jobs
+}

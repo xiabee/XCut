@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -54,7 +55,8 @@ func scanJob(row interface{ Scan(...any) error }) (*Job, error) {
 }
 
 // CreateJob inserts a job row in queued state. An empty projectID is stored
-// as NULL (global job, FK-safe).
+// as NULL (global job, FK-safe). A duplicate active exclusive job (see
+// migration v2) is reported as Conflict, not a storage failure.
 func (d *DB) CreateJob(ctx context.Context, typ, projectID, resourceClass, payloadJSON string) (*Job, error) {
 	j := &Job{
 		ID:            NewID("job"),
@@ -75,7 +77,30 @@ INSERT INTO jobs (id, type, project_id, status, progress, error_code, error_mess
 VALUES (?, ?, ?, ?, 0, '', '', 0, ?, ?, ?, NULL, NULL)`,
 		j.ID, j.Type, fkProject, j.Status, j.ResourceClass, j.PayloadJSON, j.CreatedAt)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") {
+			return nil, xcerr.E(xcerr.CodeConflict,
+				"an identical job is already queued or running for this project", err)
+		}
 		return nil, xcerr.E(xcerr.CodeStorageFailure, "cannot create job", err)
+	}
+	return j, nil
+}
+
+// FindActiveJob returns the newest queued/running job of the given type for
+// the project (nil when none). Empty projectID matches global jobs.
+func (d *DB) FindActiveJob(ctx context.Context, typ, projectID string) (*Job, error) {
+	q := `SELECT ` + jobCols + ` FROM jobs WHERE type = ? AND status IN (?, ?)`
+	args := []any{typ, StatusQueued, StatusRunning}
+	if projectID != "" {
+		q += ` AND project_id = ?`
+		args = append(args, projectID)
+	} else {
+		q += ` AND project_id IS NULL`
+	}
+	q += ` ORDER BY created_at DESC, id DESC LIMIT 1`
+	j, err := scanJob(d.QueryRowContext(ctx, q, args...))
+	if err != nil {
+		return nil, xcerr.E(xcerr.CodeStorageFailure, "cannot scan active job", err)
 	}
 	return j, nil
 }

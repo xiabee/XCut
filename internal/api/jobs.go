@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/xiabee/XCut/internal/storage"
@@ -41,6 +43,26 @@ func (s *Server) requireProjectRow(w http.ResponseWriter, r *http.Request) *stor
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(v); err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
+		return false
+	}
+	return true
+}
+
+// decodeOptionalBody parses a small JSON body that may be omitted entirely
+// (POST with no body). An empty body leaves v untouched; a non-empty but
+// invalid body is a 400 and the caller must stop — continuing after a failed
+// decode would queue work the client was told failed.
+func decodeOptionalBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeValidation, "cannot read request body", err))
+		return false
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return true
+	}
+	if err := json.Unmarshal(body, v); err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
 		return false
 	}
@@ -117,7 +139,9 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Out string `json:"out"`
 	}
-	_ = decodeBody(w, r, &body) // body optional
+	if !decodeOptionalBody(w, r, &body) {
+		return
+	}
 	out := body.Out
 	if out == "" {
 		defaultOut, err := s.Pipe.DefaultRenderPath(p.ID)

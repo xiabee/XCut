@@ -16,8 +16,8 @@ func TestOpenMigratesIdempotently(t *testing.T) {
 	if err := db.QueryRow(`SELECT COALESCE(MAX(id),0) FROM schema_migrations`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 1 {
-		t.Fatalf("schema version = %d, want 1", v)
+	if v != len(migrations) {
+		t.Fatalf("schema version = %d, want %d", v, len(migrations))
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -32,8 +32,8 @@ func TestOpenMigratesIdempotently(t *testing.T) {
 	if err := db2.QueryRow(`SELECT COALESCE(MAX(id),0) FROM schema_migrations`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 1 {
-		t.Fatalf("schema version after reopen = %d, want 1", v)
+	if v != len(migrations) {
+		t.Fatalf("schema version after reopen = %d, want %d", v, len(migrations))
 	}
 
 	// Required tables exist.

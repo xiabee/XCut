@@ -9,6 +9,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -115,10 +116,32 @@ func (q *Queue) safeRun(ctx context.Context, id string, fn Runner, progress func
 // graceful shutdown (bounded by the caller's context/timeout).
 func (q *Queue) Wait() { q.wg.Wait() }
 
+// exclusiveTypes may have at most one queued/running job per project.
+// Import is deliberately excluded — concurrent imports of different files
+// are legitimate. Must stay in sync with migration v2's partial unique
+// index, which enforces the same rule at the storage layer.
+var exclusiveTypes = map[string]bool{
+	TypeAnalyze:  true,
+	TypeTimeline: true,
+	TypeRender:   true,
+}
+
 // RunAsync records a job row and executes fn in a background goroutine,
 // returning the job id immediately. Concurrency is still bounded by the
-// queue's slots; poll the DB for status. Used by the HTTP API.
+// queue's slots; poll the DB for status. Used by the HTTP API. Duplicate
+// active exclusive jobs (same project+type) are refused with Conflict —
+// e.g. a second render would drive a second encode into the same output.
+// Global jobs (empty projectID) are never deduped, matching the migration
+// v2 index where NULL project rows are distinct.
 func (q *Queue) RunAsync(ctx context.Context, typ, projectID string, class ResourceClass, payload any, fn Runner) (string, error) {
+	if projectID != "" && exclusiveTypes[typ] {
+		if active, err := q.db.FindActiveJob(ctx, typ, projectID); err != nil {
+			return "", err
+		} else if active != nil {
+			return "", xcerr.E(xcerr.CodeConflict,
+				fmt.Sprintf("a %s job for this project is already %s — wait for it or poll its status instead of queueing a duplicate", typ, active.Status), nil)
+		}
+	}
 	var payloadJSON string
 	if payload != nil {
 		if b, err := json.Marshal(payload); err == nil {

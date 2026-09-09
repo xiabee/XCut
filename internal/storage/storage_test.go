@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"github.com/xiabee/XCut/internal/xcerr"
 	"path/filepath"
 	"testing"
 	"time"
@@ -156,4 +157,76 @@ func TestJobLifecycleAndReconcile(t *testing.T) {
 		t.Fatalf("fresh job reconciled: %v", ids)
 	}
 	_ = fresh
+}
+
+func TestExclusiveActiveJobConflict(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	p, err := db.CreateProject(ctx, "exclusive")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Same type, still active → conflict (storage-layer guarantee).
+	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); !xcerr.IsCode(err, xcerr.CodeConflict) {
+		t.Fatalf("duplicate render err = %v, want conflict", err)
+	}
+
+	// A different exclusive type is fine.
+	if _, err := db.CreateJob(ctx, "analyze", p.ID, "CPU_HEAVY", ""); err != nil {
+		t.Fatalf("analyze while render active: %v", err)
+	}
+
+	// Import is not exclusive: concurrent imports must stay legitimate.
+	if _, err := db.CreateJob(ctx, "import", p.ID, "IO_HEAVY", `{"path":"a"}`); err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	if _, err := db.CreateJob(ctx, "import", p.ID, "IO_HEAVY", `{"path":"b"}`); err != nil {
+		t.Fatalf("second import must not conflict: %v", err)
+	}
+
+	// After the first render reaches a terminal state, rendering is possible
+	// again.
+	if err := db.FinishJob(ctx, first.ID, StatusSucceeded, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); err != nil {
+		t.Fatalf("render after terminal state: %v", err)
+	}
+}
+
+func TestFindActiveJob(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	p, err := db.CreateProject(ctx, "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j, err := db.FindActiveJob(ctx, "render", p.ID); err != nil || j != nil {
+		t.Fatalf("empty scan: job=%v err=%v", j, err)
+	}
+
+	created, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.FindActiveJob(ctx, "render", p.ID)
+	if err != nil || got == nil || got.ID != created.ID {
+		t.Fatalf("FindActiveJob = %+v, %v; want %s", got, err, created.ID)
+	}
+
+	// Terminal job must not count as active.
+	if err := db.FinishJob(ctx, created.ID, StatusFailed, "x", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if j, err := db.FindActiveJob(ctx, "render", p.ID); err != nil || j != nil {
+		t.Fatalf("failed job still active: job=%v err=%v", j, err)
+	}
 }
