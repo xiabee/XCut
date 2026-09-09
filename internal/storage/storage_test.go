@@ -230,3 +230,71 @@ func TestFindActiveJob(t *testing.T) {
 		t.Fatalf("failed job still active: job=%v err=%v", j, err)
 	}
 }
+
+func TestPruneJobHistory(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	p, err := db.CreateProject(ctx, "prune")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4 terminal jobs with distinct finish order + 1 running (never pruned).
+	// Each job is driven to a terminal state before the next is created —
+	// the exclusive-active index (migration v2) would refuse overlapping
+	// same-type rows.
+	var ids []string
+	for i := 0; i < 4; i++ {
+		j, err := db.CreateJob(ctx, "analyze", p.ID, "CPU_HEAVY", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SetJobRunning(ctx, j.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.FinishJob(ctx, j.ID, StatusSucceeded, "", ""); err != nil {
+			t.Fatal(err)
+		}
+		// Backdate the finish order deterministically (FinishJob stamps now).
+		finished := int64(1000 + i)
+		if _, err := db.Exec(`UPDATE jobs SET finished_at = ? WHERE id = ?`, finished, j.ID); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, j.ID)
+	}
+	running, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetJobRunning(ctx, running.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := db.PruneJobHistory(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed %d rows, want 2", removed)
+	}
+
+	// The two NEWEST terminal jobs survive, the running row is untouched.
+	for _, id := range ids[2:] {
+		j, _ := db.GetJob(ctx, id)
+		if j == nil {
+			t.Fatalf("newest terminal job %s was pruned", id)
+		}
+	}
+	if j, _ := db.GetJob(ctx, ids[0]); j != nil {
+		t.Fatal("oldest terminal job should have been pruned")
+	}
+	if j, _ := db.GetJob(ctx, running.ID); j == nil || j.Status != StatusRunning {
+		t.Fatalf("running job must survive pruning: %+v", j)
+	}
+
+	// keep<=0 is a no-op guard.
+	if _, err := db.PruneJobHistory(ctx, 0); err != nil {
+		t.Fatalf("keep=0: %v", err)
+	}
+}

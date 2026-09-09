@@ -49,13 +49,17 @@ type Queue struct {
 	// continuously, so one crowded generic slot pool must not mean four
 	// simultaneous encodes. nil when the bound is >= the generic pool.
 	renders chan struct{}
-	wg      sync.WaitGroup
+	// maxHistory caps terminal job rows (jobs.max_history); the queue
+	// prunes as jobs finish. <=0 disables pruning (tests).
+	maxHistory int
+	wg         sync.WaitGroup
 }
 
 // NewQueue builds a queue allowing at most maxConcurrent simultaneously
 // running jobs (>=1 enforced), of which at most maxRenderWorkers are render
-// jobs (>=1 enforced).
-func NewQueue(db *storage.DB, maxConcurrent, maxRenderWorkers int, log *slog.Logger) *Queue {
+// jobs (>=1 enforced), keeping at most maxHistory terminal job rows
+// (<=0 disables pruning).
+func NewQueue(db *storage.DB, maxConcurrent, maxRenderWorkers, maxHistory int, log *slog.Logger) *Queue {
 	if maxConcurrent < 1 {
 		maxConcurrent = 1
 	}
@@ -65,7 +69,7 @@ func NewQueue(db *storage.DB, maxConcurrent, maxRenderWorkers int, log *slog.Log
 	if log == nil {
 		log = slog.Default()
 	}
-	q := &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent)}
+	q := &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent), maxHistory: maxHistory}
 	if maxRenderWorkers < maxConcurrent {
 		q.renders = make(chan struct{}, maxRenderWorkers)
 	}
@@ -209,6 +213,7 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 	}
 
 	runErr := q.safeRun(ctx, id, fn, progress)
+	defer q.pruneHistory()
 
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -227,6 +232,22 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 		_ = q.db.FinishJob(cctx, id, storage.StatusFailed, string(code), xcerr.UserMessage(runErr))
 		q.log.Error("job failed", "job_id", id, "type", typ, "error_code", code, "err", runErr)
 		return runErr
+	}
+}
+
+// pruneHistory trims terminal job rows to the configured cap (best-effort:
+// retention is housekeeping and must never fail the job that triggered it).
+func (q *Queue) pruneHistory() {
+	if q.maxHistory <= 0 {
+		return
+	}
+	cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	n, err := q.db.PruneJobHistory(cctx, q.maxHistory)
+	if err != nil {
+		q.log.Warn("job history prune failed", "err", err)
+	} else if n > 0 {
+		q.log.Info("pruned job history", "removed", n, "kept", q.maxHistory)
 	}
 }
 
@@ -250,5 +271,8 @@ func (q *Queue) ReconcileOrphans(ctx context.Context, olderThan time.Duration) (
 	if len(ids) > 0 {
 		q.log.Warn("reconciled orphaned jobs", "count", len(ids), "job_ids", ids)
 	}
+	// Startup also prunes: covers rows accumulated before this knob existed
+	// or while history grew under a crashed writer.
+	q.pruneHistory()
 	return len(ids), nil
 }

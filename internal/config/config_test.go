@@ -143,3 +143,34 @@ func TestProxyThreadsKnob(t *testing.T) {
 		t.Errorf("explicit proxy_threads must survive Resolve, got %d", cfg.Resource.ProxyThreads)
 	}
 }
+
+func TestMaxHistoryKnob(t *testing.T) {
+	cfg := Default()
+	if cfg.Job.MaxHistory != 500 {
+		t.Fatalf("default max_history = %d, want 500", cfg.Job.MaxHistory)
+	}
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Job.MaxHistory != 500 {
+		t.Fatalf("resolved max_history = %d, want 500", cfg.Job.MaxHistory)
+	}
+
+	// Explicit values survive; invalid ones are repaired to the default.
+	cfg2 := Default()
+	cfg2.Job.MaxHistory = 42
+	if err := Resolve(cfg2); err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Job.MaxHistory != 42 {
+		t.Fatalf("explicit max_history lost: %d", cfg2.Job.MaxHistory)
+	}
+	cfg3 := Default()
+	cfg3.Job.MaxHistory = -1
+	if err := Resolve(cfg3); err != nil {
+		t.Fatal(err)
+	}
+	if cfg3.Job.MaxHistory != 500 {
+		t.Fatalf("negative max_history must repair to 500, got %d", cfg3.Job.MaxHistory)
+	}
+}

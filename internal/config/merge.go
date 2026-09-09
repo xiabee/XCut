@@ -61,6 +61,9 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Job.StaleRunningAfter.Duration != 0 {
 		out.Job.StaleRunningAfter = layer.Job.StaleRunningAfter
 	}
+	if layer.Job.MaxHistory != 0 {
+		out.Job.MaxHistory = layer.Job.MaxHistory
+	}
 	if layer.Workers.MediaBin != "" {
 		out.Workers.MediaBin = layer.Workers.MediaBin
 	}

@@ -20,7 +20,8 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 
 - **Go core** (`cmd/xcut`): CLI + localhost web UI + HTTP API; typed error
   model (11 codes incl. conflict → 409); two-layer config; loopback-forced
-  listen; resource budgets (jobs/ffmpeg/threads/cache/temp/log rotation).
+  listen; resource budgets (jobs/ffmpeg/threads/cache/temp/log rotation/
+  job-history retention) — all enforced, see config.json defaults.
 - **Workspace lock** (`xcut.lock`, O_EXCL): writer commands serialize;
   readers lock-free; stale locks of dead PIDs auto-reclaimed (crash-safe);
   E2E verified with serve + CLI + forced kill.

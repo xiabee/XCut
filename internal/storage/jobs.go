@@ -179,6 +179,30 @@ func (d *DB) ReconcileStale(ctx context.Context, olderThan time.Duration) ([]str
 	return ids, nil
 }
 
+// PruneJobHistory keeps at most keep terminal jobs (succeeded/failed/
+// cancelled, newest first by finished_at) and deletes older ones. Queued/
+// running rows are never touched. Returns the number of rows removed.
+// The jobs table is the one growth axis with no natural bound — every
+// import/analyze/timeline/render adds a row — so the queue prunes it as
+// jobs finish (resource.max history knob, jobs.max_history).
+func (d *DB) PruneJobHistory(ctx context.Context, keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	res, err := d.ExecContext(ctx, `
+DELETE FROM jobs WHERE status IN (?, ?, ?) AND id NOT IN (
+	SELECT id FROM jobs WHERE status IN (?, ?, ?)
+	ORDER BY finished_at DESC, created_at DESC, id DESC LIMIT ?
+)`,
+		StatusSucceeded, StatusFailed, StatusCancelled,
+		StatusSucceeded, StatusFailed, StatusCancelled, keep)
+	if err != nil {
+		return 0, xcerr.E(xcerr.CodeStorageFailure, "cannot prune job history", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // GetJob by id; nil when missing.
 func (d *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	j, err := scanJob(d.QueryRowContext(ctx, `SELECT `+jobCols+` FROM jobs WHERE id = ?`, id))

@@ -20,7 +20,7 @@ func testQueue(t *testing.T, maxConcurrent int) (*Queue, *storage.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return NewQueue(db, maxConcurrent, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil))), db
+	return NewQueue(db, maxConcurrent, 1, 0, slog.New(slog.NewTextHandler(&testWriter{t}, nil))), db
 }
 
 type testWriter struct{ t *testing.T }
@@ -160,7 +160,7 @@ func TestRenderWorkerBound(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	// Generic pool admits 3; renders are capped at 1.
-	q := NewQueue(db, 3, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
+	q := NewQueue(db, 3, 1, 0, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
 	ctx := context.Background()
 
 	var running, maxRunning atomic.Int64
@@ -196,7 +196,7 @@ func TestRenderBoundLeavesOtherJobsFree(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	// Pool of 4: the parked render holds one generic slot, leaving exactly
 	// three for the analyze jobs below.
-	q := NewQueue(db, 4, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
+	q := NewQueue(db, 4, 1, 0, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
 	ctx := context.Background()
 
 	// A render parked in the generic pool must not stop non-render jobs:
@@ -287,3 +287,29 @@ func TestRunAsyncDuplicateConflict(t *testing.T) {
 }
 
 func noopRunner(ctx context.Context, progress func(float64)) error { return nil }
+
+func TestQueuePrunesHistory(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	q := NewQueue(db, 2, 1, 2, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
+	ctx := context.Background()
+
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := q.RunInline(ctx, TypeImport, "", ClassIOHeavy, nil, noopRunner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE status = ?`, storage.StatusSucceeded).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("terminal job rows = %d, want 2 (max_history)", n)
+	}
+}

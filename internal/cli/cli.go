@@ -329,7 +329,7 @@ func (a *App) OpenDB() (*storage.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Cfg.Resource.MaxRenderWorkers, a.Log)
+	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Cfg.Resource.MaxRenderWorkers, a.Cfg.Job.MaxHistory, a.Log)
 	ctx, cancel := context.WithTimeout(a.Ctx, 15*time.Second)
 	defer cancel()
 	if _, err := q.ReconcileOrphans(ctx, a.Cfg.Job.StaleRunningAfter.Duration); err != nil {

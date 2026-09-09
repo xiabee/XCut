@@ -54,6 +54,9 @@ type Job struct {
 	// StaleRunningAfter: a DB row still "running" older than this at startup is
 	// reconciled as failed (crash recovery).
 	StaleRunningAfter Duration `json:"stale_running_after"`
+	// MaxHistory caps terminal (succeeded/failed/cancelled) job rows kept;
+	// older rows are pruned as jobs finish. 0 = default (500).
+	MaxHistory int `json:"max_history"`
 }
 
 // Log controls structured logging growth.
@@ -136,7 +139,7 @@ func Default() *Config {
 			AnalysisWidth:       640,
 		},
 		FFmpeg:  FFmpeg{},
-		Job:     Job{StaleRunningAfter: Duration{2 * time.Hour}},
+		Job:     Job{StaleRunningAfter: Duration{2 * time.Hour}, MaxHistory: 500},
 		Workers: Workers{MediaBin: "", Audio: "auto"},
 	}
 }
@@ -268,6 +271,9 @@ func Resolve(cfg *Config) error {
 	}
 	if cfg.Job.StaleRunningAfter.Duration <= 0 {
 		cfg.Job.StaleRunningAfter = Duration{2 * time.Hour}
+	}
+	if cfg.Job.MaxHistory <= 0 {
+		cfg.Job.MaxHistory = 500
 	}
 	switch cfg.Workers.Audio {
 	case "", "auto", "ffmpeg", "rust":

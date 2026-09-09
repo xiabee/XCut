@@ -45,7 +45,7 @@ func NewDeps(ctx context.Context, db *storage.DB, ws *workspace.Workspace, cfg *
 		WS:    ws,
 		Cfg:   cfg,
 		Log:   log,
-		Queue: job.NewQueue(db, cfg.Resource.MaxConcurrentJobs, cfg.Resource.MaxRenderWorkers, log),
+		Queue: job.NewQueue(db, cfg.Resource.MaxConcurrentJobs, cfg.Resource.MaxRenderWorkers, cfg.Job.MaxHistory, log),
 	}
 }
 
