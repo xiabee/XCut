@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -20,16 +21,23 @@ type RustAudioAnalyzer struct {
 func (a RustAudioAnalyzer) Name() string { return "audio_rms_rust" }
 func (a RustAudioAnalyzer) Version() int { return 1 }
 
-func (a RustAudioAnalyzer) Analyze(ctx context.Context, _ Options, path string, hasAudio bool, log *slog.Logger) ([]FeatureTrack, error) {
+func (a RustAudioAnalyzer) Analyze(ctx context.Context, opts Options, path string, hasAudio bool, log *slog.Logger) ([]FeatureTrack, error) {
 	if !hasAudio {
 		return nil, nil
 	}
-	raw, err := worker.Call(ctx, a.Bin, worker.Request{
+	// The worker call must honor the configured per-call budget; the
+	// client's built-in default would silently cap every call at 10 minutes
+	// no matter what resource.analyzer_call_timeout says.
+	timeout := opts.CallTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	raw, err := worker.CallWithTimeout(ctx, a.Bin, worker.Request{
 		Protocol: worker.Protocol,
 		Op:       "audio_rms",
 		Input:    path,
 		Params:   map[string]any{"window_sec": 0.5},
-	})
+	}, timeout)
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "rust audio worker failed", err)
 	}

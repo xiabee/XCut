@@ -88,7 +88,15 @@ func Probe(ctx context.Context, bin string) (*Describe, error) {
 // timeout. The worker receives the request on stdin and answers once on
 // stdout.
 func Call(ctx context.Context, bin string, req Request) (json.RawMessage, error) {
-	return callBounded(ctx, bin, req, 10*time.Minute, MaxResponseBytes)
+	return CallWithTimeout(ctx, bin, req, 10*time.Minute)
+}
+
+// CallWithTimeout executes one request with an explicit deadline. Analyzer
+// paths must pass their configured per-call budget
+// (resource.analyzer_call_timeout) here — the 10-minute default would
+// otherwise silently override a larger configured budget.
+func CallWithTimeout(ctx context.Context, bin string, req Request, timeout time.Duration) (json.RawMessage, error) {
+	return callBounded(ctx, bin, req, timeout, MaxResponseBytes)
 }
 
 // MaxResponseBytes caps one worker response (worker output security: a
@@ -97,6 +105,11 @@ const MaxResponseBytes = 32 << 20
 
 // maxStderrBytes caps captured worker stderr for error reporting.
 const maxStderrBytes = 64 << 10
+
+// workerExitGrace is how long a worker that already answered may take to
+// exit before it is killed. Real workers exit in milliseconds; the grace
+// only exists so a valid answer is not discarded over startup jitter.
+const workerExitGrace = 2 * time.Second
 
 // callBounded executes one request with an explicit deadline and response
 // caps. The response is streamed with a hard byte limit — oversized output
@@ -132,7 +145,24 @@ func callBounded(ctx context.Context, bin string, req Request, timeout time.Dura
 			_ = cmd.Process.Kill()
 		}
 	}
-	waitErr := cmd.Wait()
+	// The response is complete once stdout hits EOF. A sidecar that answered
+	// but does not exit (non-daemon threads, atexit hangs) must not hold the
+	// call until the deadline — wait a short grace window, then kill and reap.
+	var waitErr error
+	if readErr != nil {
+		waitErr = cmd.Wait()
+	} else {
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case waitErr = <-done:
+		case <-time.After(workerExitGrace):
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			waitErr = <-done
+		}
+	}
 	if readErr != nil {
 		var tooLarge errResponseTooLarge
 		if errors.As(readErr, &tooLarge) {
@@ -141,23 +171,24 @@ func callBounded(ctx context.Context, bin string, req Request, timeout time.Dura
 		}
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot read worker response", readErr)
 	}
+	resp, parseErr := parseResponse(raw)
 	if waitErr != nil {
 		// Workers answer with a structured envelope even on failure (exit 1);
-		// prefer that over the bare exec error.
-		if resp, perr := parseResponse(raw); perr == nil && resp.Error != nil {
+		// prefer that over the bare exec error. A worker killed for not
+		// exiting after a complete answer still counts as answered.
+		if parseErr == nil && resp.Error != nil && !resp.OK {
 			return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
 				fmt.Sprintf("%s (%s)", resp.Error.Message, resp.Error.Code), nil)
 		}
-		if ctx.Err() != nil {
-			return nil, xcerr.E(xcerr.CodeResourceLimit, "worker call timed out", ctx.Err())
+		if !(parseErr == nil && resp.OK) {
+			if ctx.Err() != nil {
+				return nil, xcerr.E(xcerr.CodeResourceLimit, "worker call timed out", ctx.Err())
+			}
+			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "worker failed",
+				fmt.Errorf("%v: %s", waitErr, stderrTail(cmd.Stderr)))
 		}
-		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "worker failed",
-			fmt.Errorf("%v: %s", waitErr, stderrTail(cmd.Stderr)))
-	}
-
-	resp, err := parseResponse(raw)
-	if err != nil {
-		return nil, err
+	} else if parseErr != nil {
+		return nil, parseErr
 	}
 	if resp.Protocol != Protocol {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure,

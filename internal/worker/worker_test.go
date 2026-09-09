@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -86,5 +88,70 @@ func TestUnknownOpFails(t *testing.T) {
 	_, err := Call(context.Background(), bin, Request{Protocol: Protocol, Op: "bogus"})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// TestHelperWorkerStub is re-executed by the stub tests below (same pattern
+// as the media package): it answers one protocol envelope on stdout, then
+// either exits, hangs forever, or sleeps long past any test budget —
+// selected by XCUT_TEST_WORKER_STUB.
+func TestHelperWorkerStub(t *testing.T) {
+	mode := os.Getenv("XCUT_TEST_WORKER_STUB")
+	if mode == "" {
+		return
+	}
+	switch mode {
+	case "answer":
+		// Result content proves the parsed envelope is the real answer.
+		os.Stdout.WriteString(`{"protocol":1,"ok":true,"result":{"value":42}}`)
+	case "answer-then-hang":
+		os.Stdout.WriteString(`{"protocol":1,"ok":true,"result":{"value":42}}`)
+		// Close stdout so the reader sees a complete response, then keep
+		// running — the shape of a sidecar stuck in a non-daemon thread.
+		os.Stdout.Close()
+		time.Sleep(10 * time.Minute)
+	case "never-answer":
+		time.Sleep(10 * time.Minute)
+	}
+	os.Exit(0)
+}
+
+func stubWorkerCmd(t *testing.T, mode string) string {
+	t.Helper()
+	t.Setenv("XCUT_TEST_WORKER_STUB", mode)
+	return os.Args[0]
+}
+
+// TestCallWithExplicitTimeout: the explicit deadline parameter governs the
+// call — a worker that never answers is cut off by a short budget instead
+// of the built-in 10-minute default.
+func TestCallWithExplicitTimeout(t *testing.T) {
+	bin := stubWorkerCmd(t, "never-answer")
+	start := time.Now()
+	_, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, 500*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("timeout took %s, want ~500ms", elapsed)
+	}
+}
+
+// TestCallReturnsBeforeWorkerExits: a sidecar that answered and closed
+// stdout but never exits (non-daemon threads, atexit hangs) must not hold
+// the call until the deadline — the answer is returned after the grace
+// window and the process is reaped.
+func TestCallReturnsBeforeWorkerExits(t *testing.T) {
+	bin := stubWorkerCmd(t, "answer-then-hang")
+	start := time.Now()
+	raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, 30*time.Second)
+	if err != nil {
+		t.Fatalf("valid answer must survive a hanging worker: %v", err)
+	}
+	if !strings.Contains(string(raw), "42") {
+		t.Fatalf("unexpected result: %s", raw)
+	}
+	if elapsed := time.Since(start); elapsed > 15*time.Second {
+		t.Fatalf("call took %s, want seconds (grace + kill), not the full deadline", elapsed)
 	}
 }

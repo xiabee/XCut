@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -77,7 +76,7 @@ INSERT INTO jobs (id, type, project_id, status, progress, error_code, error_mess
 VALUES (?, ?, ?, ?, 0, '', '', 0, ?, ?, ?, NULL, NULL)`,
 		j.ID, j.Type, fkProject, j.Status, j.ResourceClass, j.PayloadJSON, j.CreatedAt)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") {
+		if isUniqueViolation(err) {
 			return nil, xcerr.E(xcerr.CodeConflict,
 				"an identical job is already queued or running for this project", err)
 		}
