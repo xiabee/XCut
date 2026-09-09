@@ -95,3 +95,35 @@ func TestSaveLoadRoundTripAndKey(t *testing.T) {
 		t.Fatalf("usage: %d %v", entries, err)
 	}
 }
+
+// TestEvictToSparesInFlightScratch: .tmp-* files of a concurrent writer are
+// counted toward the budget but never removed — deleting the half-written
+// temp makes the writer's final rename fail (ENOENT on Linux) and kills the
+// analysis. Their bytes still push finalized entries out so debris cannot
+// wedge the budget.
+func TestEvictToSparesInFlightScratch(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(s.dir, ".tmp-123456.mp4")
+	if err := os.WriteFile(scratch, []byte("half-written"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeEntry(t, s, "old", "oldest-entry", 1000)
+	writeEntry(t, s, "new", "n", 2000)
+
+	removed, freed, err := s.EvictTo(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 || freed == 0 {
+		t.Fatalf("removed=%d freed=%d, want both finalized entries", removed, freed)
+	}
+	if _, err := os.Stat(scratch); err != nil {
+		t.Fatal("in-flight scratch must survive eviction")
+	}
+	if _, err := os.Stat(s.path("old")); !os.IsNotExist(err) {
+		t.Fatal("oldest finalized entry should be gone")
+	}
+}
