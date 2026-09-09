@@ -214,6 +214,11 @@ func TestRenderBoundLeavesOtherJobsFree(t *testing.T) {
 
 	var running, maxRunning atomic.Int64
 	var analyzed sync.WaitGroup
+	// Barrier: every analyze job blocks until all three are inside, so the
+	// overlap assertion is scheduling-independent (sleep-based overlap is
+	// flaky — it failed once in 15 overnight iterations).
+	var barrier sync.WaitGroup
+	barrier.Add(3)
 	for i := 0; i < 3; i++ {
 		analyzed.Add(1)
 		if _, err := q.RunAsync(ctx, TypeAnalyze, "", ClassCPUHeavy, nil,
@@ -226,7 +231,8 @@ func TestRenderBoundLeavesOtherJobsFree(t *testing.T) {
 						break
 					}
 				}
-				time.Sleep(40 * time.Millisecond)
+				barrier.Done()
+				barrier.Wait()
 				running.Add(-1)
 				return nil
 			}); err != nil {
