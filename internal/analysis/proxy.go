@@ -14,9 +14,11 @@ import (
 )
 
 // ProxyStore manages content-addressed low-res analysis proxies under
-// <workspace>/cache/proxy. Entries are keyed by the SOURCE fingerprint, so
-// identical content shares one proxy regardless of where it lives on disk,
-// and repeated analyze runs decode a tiny file instead of the original.
+// <workspace>/cache/proxy. Entries are keyed by the SOURCE fingerprint plus
+// the analysis geometry (width, fps), so identical content shares one proxy
+// and repeated analyze runs decode a tiny file instead of the original —
+// while a changed analysis_width / frame_sample_fps can never be served a
+// proxy encoded for a different canvas.
 //
 // Decision logic (configurable via resource.proxy_enabled plus the analysis
 // sampling knobs): a proxy is only worth generating when the source is wider
@@ -37,8 +39,13 @@ func NewProxyStore(cacheDir string) *ProxyStore {
 // Dir exposes the store's on-disk location (CLI reporting).
 func (s *ProxyStore) Dir() string { return s.dir }
 
-func (s *ProxyStore) path(fingerprint string) string {
-	return filepath.Join(s.dir, fingerprint+".mp4")
+// path encodes the geometry into the name: a config change (analysis_width,
+// frame_sample_fps) must regenerate, never silently reuse a proxy built for
+// the old canvas — the cache key would claim the new geometry while the
+// pixels come from the old one. Stale-geometry entries age out through
+// budget eviction.
+func (s *ProxyStore) path(fingerprint string, width int, fps float64) string {
+	return filepath.Join(s.dir, fingerprint+".w"+strconv.Itoa(width)+".f"+formatFPS(fps)+".mp4")
 }
 
 // Usage returns the number of proxy files and total bytes on disk.
@@ -71,7 +78,7 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 		return "", false, nil
 	}
 
-	p := s.path(fingerprint)
+	p := s.path(fingerprint, target, fps)
 	if _, err := os.Stat(p); err == nil {
 		return p, true, nil
 	}

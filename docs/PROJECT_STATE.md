@@ -38,7 +38,7 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   → median+k·MAD adaptive threshold → local-max peaks), **court-ROI motion**
   (crop before signalstats; ROI in the analyzer name = cache-safe).
   Fingerprint-keyed cache with budget eviction; optional **analysis
-  proxies** (opt-in `resource.proxy_enabled`: fingerprint-keyed low-res
+  proxies** (opt-in `resource.proxy_enabled`: fingerprint+geometry-keyed low-res
   proxies at the analysis geometry under `cache/proxy`, own LRU budget
   `resource.max_proxy_gb`, own encode thread budget `resource.proxy_threads`,
   proxy bit in the cache key, per-call analyzer timeout

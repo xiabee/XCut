@@ -134,12 +134,12 @@ func TestProxyEviction(t *testing.T) {
 		}
 		fps = append(fps, fp)
 	}
-	if _, err := os.Stat(store.path(fps[0])); err != nil {
+	if _, err := os.Stat(store.path(fps[0], 320, 2.0)); err != nil {
 		t.Fatal(err)
 	}
 
 	// Budget equal to the newer proxy's size: only the oldest (a) must go.
-	fiB, err := os.Stat(store.path(fps[1]))
+	fiB, err := os.Stat(store.path(fps[1], 320, 2.0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestProxyEviction(t *testing.T) {
 	if freed <= 0 {
 		t.Errorf("freed %d bytes, want >0", freed)
 	}
-	if _, err := os.Stat(store.path(fps[1])); err != nil {
+	if _, err := os.Stat(store.path(fps[1], 320, 2.0)); err != nil {
 		t.Errorf("newer proxy must survive: %v", err)
 	}
 }
@@ -239,5 +239,76 @@ func TestRunPerCallTimeout(t *testing.T) {
 		[]Analyzer{instantAnalyzer{}}, "no-file.mp4", "fp", 1, false, log)
 	if err != nil {
 		t.Fatalf("CallTimeout=0 must not interfere: %v", err)
+	}
+}
+
+// TestProxyGeometryChangeRegenerates: raising analysis_width or changing
+// frame_sample_fps must generate a NEW proxy at the new geometry — the old
+// file stays untouched on disk (stale, ages out via eviction) and is never
+// silently reused for a different canvas.
+func TestProxyGeometryChangeRegenerates(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "src.mp4", testmedia.DefaultFixture(), 960, 540, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp, err := media.Fingerprint(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewProxyStore(dir)
+	ctx := context.Background()
+
+	p320, used, err := store.Ensure(ctx, proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
+	if err != nil || !used {
+		t.Fatalf("first proxy: used=%v err=%v", used, err)
+	}
+	fi320, err := os.Stat(p320)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wider analysis canvas → new proxy at 480, old one untouched.
+	p480, used, err := store.Ensure(ctx, proxyTools(), src, fp, 480, 2.0, 0, proxyLogger())
+	if err != nil || !used {
+		t.Fatalf("wider proxy: used=%v err=%v", used, err)
+	}
+	if p480 == p320 {
+		t.Fatal("width change must not reuse the 320px proxy")
+	}
+	probe, err := media.ProbeFile(ctx, proxyTools(), p480)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probe.Width != 480 {
+		t.Errorf("new proxy width %d, want 480", probe.Width)
+	}
+	if fi, err := os.Stat(p320); err != nil || !fi.ModTime().Equal(fi320.ModTime()) {
+		t.Errorf("old proxy must stay untouched: %v", err)
+	}
+
+	// Different sampling fps → another new proxy, ~5 fps.
+	p5, used, err := store.Ensure(ctx, proxyTools(), src, fp, 320, 5.0, 0, proxyLogger())
+	if err != nil || !used {
+		t.Fatalf("fps-changed proxy: used=%v err=%v", used, err)
+	}
+	if p5 == p320 {
+		t.Fatal("fps change must not reuse the 2fps proxy")
+	}
+	probe, err = media.ProbeFile(ctx, proxyTools(), p5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probe.FPS < 4.8 || probe.FPS > 5.2 {
+		t.Errorf("new proxy fps %.2f, want ~5", probe.FPS)
+	}
+
+	// Same geometry again → reuse (no re-encode).
+	p480again, used, err := store.Ensure(ctx, proxyTools(), src, fp, 480, 2.0, 0, proxyLogger())
+	if err != nil || !used || p480again != p480 {
+		t.Fatalf("reuse after geometry cycle: path=%q used=%v err=%v", p480again, used, err)
 	}
 }
