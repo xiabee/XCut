@@ -47,7 +47,10 @@ Invoke-Step "gofmt" {
 }
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
-Invoke-Step "go test" { go test ./... }
+# -count=1: a gate that can answer from the test cache is not a gate — an
+# environment change (ffmpeg removed, fixture regression) would be masked
+# by cached PASSes instead of re-running the (possibly now-skipping) tests.
+Invoke-Step "go test" { go test -count=1 ./... }
 
 if ($Mode -eq "full") {
     # The race detector needs cgo + a C toolchain (absent on this Windows
@@ -56,7 +59,7 @@ if ($Mode -eq "full") {
     $cgoOn = (go env CGO_ENABLED).Trim() -eq "1"
     $hasGcc = $null -ne (Get-Command gcc -ErrorAction SilentlyContinue)
     if ($cgoOn -and $hasGcc) {
-        Invoke-Step "go test -race" { go test -race ./... }
+        Invoke-Step "go test -race" { go test -count=1 -race ./... }
     }
     else {
         Write-Host "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
