@@ -8,7 +8,7 @@ timeline → render. No cloud, no telemetry, no AI required.
 - Optional hot-path worker: **Rust** (`xcut-worker-media`)
 - Media tooling: **FFmpeg / ffprobe**
 - Storage: **SQLite** (pure-Go driver, no CGO)
-- Status: **Alpha** — core pipeline works end-to-end; UI/API still ahead
+- Status: **Alpha** — pipeline, localhost web UI and HTTP API work end-to-end
   (see [docs/ROADMAP.md](docs/ROADMAP.md))
 
 ## Why XCut
@@ -90,8 +90,24 @@ Styles are data, not code — validated JSON presets in
 `internal/style/presets/` (embedded) overridable from `<workspace>/styles/`:
 
 - `generic_highlight` — balanced motion/audio scoring
-- `ktv_mv` — audio-led (singing/energy), longer clips for music scenes
-- `badminton_highlight` — motion-heavy, longer rally windows
+- `generic_xfade` — like generic_highlight, with real crossfade (xfade) joins
+- `ktv_mv` — audio-led (singing/energy), onset-density weighted, longer clips
+  for music scenes
+- `badminton_highlight` — motion-heavy rally mode: transient clustering,
+  hit-driven scoring, court-ROI motion analysis
+
+Every selected clip carries its score, score breakdown and the reason it was
+picked in its metadata — the web UI shows the "why" per clip.
+
+## Timeline & rendering
+
+The renderer applies the timeline exactly as validated: `cut`, `fade`
+(through black) and `xfade` (real crossfade) transitions may be freely mixed
+within one timeline; per-clip `speed` is honored for both video and audio.
+Unsupported constructs (audio tracks, multi-track timelines, clip effects)
+are refused loudly instead of silently dropped. Output is ffprobe-verified
+before an atomic publish, and a render is refused if its `--out` would
+overwrite any source media.
 
 ## Serve (local web UI + HTTP API)
 
@@ -101,7 +117,10 @@ Styles are data, not code — validated JSON presets in
 
 Then open http://127.0.0.1:8619 in a browser: create a project, import a
 local video path, and run analyze → timeline → render with live job progress —
-the rendered MP4 plays right in the page. The UI is vanilla HTML/JS embedded
+the rendered MP4 plays right in the page. The built-in timeline editor shows
+every clip with its score and "why", previews the clip's source at its start
+offset, and supports drag-to-reorder with a save/backup-restore round-trip.
+The UI is vanilla HTML/JS embedded
 in the binary (`go:embed`): no Node, no build step, no extra files.
 
 ![xcut web UI: a project with imported asset, four succeeded jobs, and the
@@ -159,6 +178,7 @@ log live in [`docs/`](docs/):
 - [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — what actually works right now
 - [docs/ROADMAP.md](docs/ROADMAP.md) — where this is going
 - [docs/USAGE.md](docs/USAGE.md) — per-command reference
+- [docs/EVAL.md](docs/EVAL.md) — selection-quality evaluation (`xcut eval`)
 
 ## Packaging
 

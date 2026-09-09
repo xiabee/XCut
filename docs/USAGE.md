@@ -1,6 +1,6 @@
 # XCut Command Reference
 
-_Generated from `xcut <command> --help` output (commit b27138a)._
+_Generated from `xcut <command> --help` output (commit b7328e6)._
 
 Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
 
@@ -18,18 +18,18 @@ usage: xcut config show|path
 show or validate configuration
 ```
 
-## xcut init
-```
-usage: xcut init
-
-create workspace layout and default config
-```
-
 ## xcut doctor
 ```
 usage: xcut doctor
 
 check environment (ffmpeg, workspace, disk, db, optional workers)
+```
+
+## xcut init
+```
+usage: xcut init
+
+create workspace layout and default config
 ```
 
 ## xcut cleanup
@@ -39,11 +39,25 @@ usage: xcut cleanup [--dry-run]
 remove temp files and evict analysis cache to budget
 ```
 
+## xcut cache
+```
+usage: xcut cache stats [--json] | clear [--dry-run]
+
+inspect or clear the analysis and proxy caches
+```
+
 ## xcut project
 ```
 usage: xcut project create|list|show|delete <name>
 
 manage projects
+```
+
+## xcut jobs
+```
+usage: xcut jobs <project>
+
+list jobs of a project
 ```
 
 ## xcut import
@@ -62,7 +76,7 @@ run baseline analyzers over project assets
 
 ## xcut timeline
 ```
-usage: xcut timeline <project> [--style name]
+usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup
 
 generate a timeline for a project
 ```
@@ -81,13 +95,6 @@ usage: xcut auto <file...> [--style name] [--project name] [--out path]
 one-shot: import → analyze → timeline → render
 ```
 
-## xcut eval
-```
-usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
-
-score pipeline selection quality against an annotated manifest
-```
-
 ## xcut serve
 ```
 usage: xcut serve [--addr host:port]
@@ -95,10 +102,10 @@ usage: xcut serve [--addr host:port]
 run the local HTTP API
 ```
 
-## xcut jobs
+## xcut eval
 ```
-usage: xcut jobs <project>
+usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
 
-list jobs of a project
+score pipeline selection quality against an annotated manifest
 ```
 
