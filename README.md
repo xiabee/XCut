@@ -138,6 +138,8 @@ curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip p
 ```
 
 Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
+Only one analyze/timeline/render job may be queued or running per project — a
+duplicate trigger returns `409` (imports are never deduplicated).
 Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
 authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
 measured 12 MB RAM, ~0% CPU (docs/PERFORMANCE.md).

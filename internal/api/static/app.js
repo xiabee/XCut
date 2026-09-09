@@ -74,6 +74,10 @@ function selectProject(p) {
   if (ph) ph.style.display = "none";
   $("project-name").textContent = p.name;
   $("delete-project").hidden = false;
+  // Disarm the regeneration confirm across project switches.
+  const tl = $("btn-timeline");
+  tl.dataset.armed = "";
+  tl.textContent = "2 · Timeline";
   refreshAssets();
   refreshJobs();
   refreshTimeline();
@@ -401,6 +405,18 @@ $("btn-analyze").addEventListener("click", async () => {
   try { await trigger("/analyze", {}); } catch (e) { banner(`Analyze failed: ${e.message}`); busy(false); }
 });
 $("btn-timeline").addEventListener("click", async () => {
+  const btn = $("btn-timeline");
+  // Regeneration replaces the stored timeline — manual edits in the editor
+  // are lost (the pre-regeneration document stays recoverable via Restore
+  // backup). Two-step confirm, same pattern as delete: the first click asks.
+  if (timelineDoc && btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "Replace timeline? Click again";
+    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "2 · Timeline"; }, 4000);
+    return;
+  }
+  btn.dataset.armed = "";
+  btn.textContent = "2 · Timeline";
   try { await trigger("/timeline", { style: $("style").value }); } catch (e) { banner(`Timeline failed: ${e.message}`); busy(false); }
 });
 $("btn-render").addEventListener("click", async () => {

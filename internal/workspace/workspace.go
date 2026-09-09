@@ -174,7 +174,7 @@ func (w *Workspace) NewTempDir(prefix string) (string, error) {
 	if w.MaxTempBytes > 0 {
 		if used := w.TempUsage(); used >= w.MaxTempBytes {
 			return "", xcerr.E(xcerr.CodeResourceLimit,
-				fmt.Sprintf("temp budget exhausted (%s in use, budget %s) — run 'xcut cleanup' to reclaim failed-run scratch, or raise resource.max_temp_gb",
+				fmt.Sprintf("temp budget exhausted (%s in use, budget %s) — stop 'xcut serve' if it is running, then run 'xcut cleanup' to reclaim failed-run scratch, or raise resource.max_temp_gb",
 					humanBytes(used), humanBytes(w.MaxTempBytes)), nil)
 		}
 	}
