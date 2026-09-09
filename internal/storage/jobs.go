@@ -104,6 +104,23 @@ func (d *DB) FindActiveJob(ctx context.Context, typ, projectID string) (*Job, er
 	return j, nil
 }
 
+// HasActiveJobs reports whether the project has any queued/running job of
+// any type. Deleting a project cascades its job rows, which would silently
+// kill in-flight work (a running encode would only fail at publish time),
+// so callers refuse deletion while this is true. Not atomic with
+// DeleteProject — a job queued in the same instant can slip through; the
+// guard covers the realistic delete-while-rendering case.
+func (d *DB) HasActiveJobs(ctx context.Context, projectID string) (bool, error) {
+	var n int
+	err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM jobs WHERE project_id = ? AND status IN (?, ?)`,
+		projectID, StatusQueued, StatusRunning).Scan(&n)
+	if err != nil {
+		return false, xcerr.E(xcerr.CodeStorageFailure, "cannot scan active jobs", err)
+	}
+	return n > 0, nil
+}
+
 // SetJobRunning marks a job running.
 func (d *DB) SetJobRunning(ctx context.Context, id string) error {
 	now := time.Now().Unix()

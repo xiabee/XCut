@@ -168,6 +168,16 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
+	// Deletion cascades queued/running job rows — refuse while work is in
+	// flight rather than killing a running encode mid-publish.
+	if active, err := s.DB.HasActiveJobs(r.Context(), p.ID); err != nil {
+		writeErr(w, err)
+		return
+	} else if active {
+		writeErr(w, xcerr.E(xcerr.CodeConflict,
+			"project has queued or running jobs — wait for them to finish before deleting", nil))
+		return
+	}
 	if err := s.DB.DeleteProject(r.Context(), p.ID); err != nil {
 		writeErr(w, err)
 		return

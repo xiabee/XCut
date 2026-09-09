@@ -298,3 +298,36 @@ func TestPruneJobHistory(t *testing.T) {
 		t.Fatalf("keep=0: %v", err)
 	}
 }
+
+func TestHasActiveJobs(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	p, err := db.CreateProject(ctx, "guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active, err := db.HasActiveJobs(ctx, p.ID); err != nil || active {
+		t.Fatalf("empty project: active=%v err=%v", active, err)
+	}
+
+	j, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active, err := db.HasActiveJobs(ctx, p.ID); err != nil || !active {
+		t.Fatalf("queued render: active=%v err=%v", active, err)
+	}
+	if err := db.SetJobRunning(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := db.HasActiveJobs(ctx, p.ID); err != nil || !active {
+		t.Fatalf("running render: active=%v err=%v", active, err)
+	}
+	if err := db.FinishJob(ctx, j.ID, StatusFailed, "x", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := db.HasActiveJobs(ctx, p.ID); err != nil || active {
+		t.Fatalf("terminal render: active=%v err=%v", active, err)
+	}
+}

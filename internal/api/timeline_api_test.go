@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/xiabee/XCut/internal/pipeline"
+	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/timeline"
 )
 
@@ -209,5 +210,34 @@ func TestTimelinePutRejectsAbsurdSpeed(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "validation") {
 			t.Fatalf("%s speed: error must be validation-coded: %s", name, rec.Body.String())
 		}
+	}
+}
+
+// TestProjectDeleteWithActiveJobs: deleting a project that still has
+// queued/running work must 409 (the cascade would silently kill the job),
+// and must succeed once the work is terminal.
+func TestProjectDeleteWithActiveJobs(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "del-guard"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "del-guard")
+
+	if _, err := s.DB.CreateJob(t.Context(), "render", p.ID, "CPU_HEAVY", ""); err != nil {
+		t.Fatal(err)
+	}
+	if rec, out := do(t, s, "DELETE", "/api/v1/projects/"+p.ID, ""); rec.Code != http.StatusConflict {
+		t.Fatalf("delete with active job: %d (want 409): %v", rec.Code, out)
+	}
+
+	// Terminal state frees the project for deletion.
+	js, _ := s.DB.ListJobs(t.Context(), p.ID)
+	for i := range js {
+		if err := s.DB.FinishJob(t.Context(), js[i].ID, storage.StatusCancelled, "cancelled", "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rec, out := do(t, s, "DELETE", "/api/v1/projects/"+p.ID, ""); rec.Code != http.StatusOK {
+		t.Fatalf("delete after terminal jobs: %d (want 200): %v", rec.Code, out)
 	}
 }

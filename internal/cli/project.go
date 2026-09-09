@@ -85,6 +85,13 @@ func cmdProject(a *App, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Same guard as the API: deletion would cascade in-flight job rows.
+		if active, err := db.HasActiveJobs(ctx, p.ID); err != nil {
+			return err
+		} else if active {
+			return xcerr.E(xcerr.CodeConflict,
+				"project has queued or running jobs — wait for them to finish before deleting", nil)
+		}
 		if err := db.DeleteProject(ctx, p.ID); err != nil {
 			return err
 		}
