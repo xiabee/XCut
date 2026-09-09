@@ -51,6 +51,7 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-10 | session #4 re-check: render (concat path) | 10s 1-clip 720p30 | 3.3 s wall | **0.33x** output duration | identical to the pre-M20 baseline binary (3.1–3.5 s both, A/B against bf45b52): the 1.7 s row above was measured under different conditions, not comparable; no regression from tonight's changes |
 | 2026-09-10 | session #4 re-check: serve idle RAM | — | 12.9 MB WS / 49.2 MB private | — | **met** (<100 MB, stretch <50 MB for WS) |
 | 2026-09-10 | session #4 re-check: serve idle CPU | 10 s idle | Δ0.000 s (~0%) | — | **met** |
+| 2026-09-10 | session #4 audio bench A/B (same host, same command) | 60s aac | RMS 0.40 s, onset 0.56 s | ~0.007x | baseline binary (bf45b52) measures the same (0.56/0.46 s): the faster 2026-09-08 rows were a different machine/context (i7-10875H note), not a code regression — tonight's limiter/cap changes are free on these paths |
 
 Analysis proxies (session #3): the win is on **repeated** analysis (style
 changes, re-runs, multi-project sharing) — analyzer passes drop from
