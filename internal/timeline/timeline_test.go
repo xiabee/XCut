@@ -56,6 +56,9 @@ func TestValidateFailures(t *testing.T) {
 		"empty range":     func(tl *Timeline) { tl.Tracks[0].Clips[0].SourceEnd = 0 },
 		"reversed range":  func(tl *Timeline) { tl.Tracks[0].Clips[0].SourceEnd = 1; tl.Tracks[0].Clips[0].SourceStart = 2 },
 		"zero speed":      func(tl *Timeline) { tl.Tracks[0].Clips[0].Speed = 0 },
+		"tiny speed":      func(tl *Timeline) { tl.Tracks[0].Clips[0].Speed = 0.001 },
+		"subnormal speed": func(tl *Timeline) { tl.Tracks[0].Clips[0].Speed = 1e-320 },
+		"clip over cap":   func(tl *Timeline) { tl.Tracks[0].Clips[0].SourceEnd = 100000; tl.Tracks[0].Clips[0].Speed = 0.1 },
 		"volume too high": func(tl *Timeline) { tl.Tracks[0].Clips[0].Volume = 1.5 },
 		"nan timeline":    func(tl *Timeline) { tl.Tracks[0].Clips[0].TimelineStart = math.Inf(1) },
 		"overlap":         func(tl *Timeline) { tl.Tracks[0].Clips[1].TimelineStart = 1 },
@@ -200,4 +203,31 @@ func TestValidateRejectsGap(t *testing.T) {
 	if err := flush.Validate(nil); err != nil {
 		t.Fatalf("flush join must stay valid: %v", err)
 	}
+}
+
+// TestValidateRejectsOverlongTimeline: many sub-cap clips must not compose
+// an over-cap timeline (the per-clip cap alone would not catch it).
+func TestValidateRejectsOverlongTimeline(t *testing.T) {
+	tl := validTimeline()
+	// Each clip is 10000s at speed 0.1... keep speeds legal: 1000s source
+	// range at speed 0.1 is 10000s playback; five of them ≈ 14h < 24h, so
+	// use twenty ≈ 55h total.
+	tl.Tracks[0].Clips = nil
+	for i := 0; i < 20; i++ {
+		tl.Tracks[0].Clips = append(tl.Tracks[0].Clips, Clip{
+			ID: fmt.Sprintf("c%d", i), AssetID: "a1",
+			SourceStart: 0, SourceEnd: 1000, TimelineStart: float64(i) * 10000,
+			Speed: 0.1, Volume: 1,
+		})
+	}
+	err := tl.Validate(FixedLookup(map[string]float64{"a1": 1000}))
+	if err == nil {
+		t.Fatal("55h timeline must be rejected")
+	}
+	for _, d := range err.(*MultiError).Details() {
+		if strings.Contains(d, "render cap") {
+			return
+		}
+	}
+	t.Fatalf("error must name the cap: %v", err)
 }

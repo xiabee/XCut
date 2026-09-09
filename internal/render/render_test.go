@@ -180,3 +180,23 @@ func TestRenderTempBudgetAborts(t *testing.T) {
 		t.Fatalf("render over-budget-free scratch failed: %v", ok)
 	}
 }
+
+func TestDurationTolerance(t *testing.T) {
+	// Two frames + 5% relative: tight enough to catch truncated short
+	// renders, loose enough for container round-off.
+	if tol := durationTolerance(2.0, 15); !(tol > 0.2 && tol < 0.3) {
+		t.Fatalf("tolerance(2s,15fps) = %.3f, want ~0.23", tol)
+	}
+	// A 1.52s probe for a 2s timeline must fail (old floor passed it).
+	if diff := absF(1.52 - 2.0); diff <= durationTolerance(2.0, 15) {
+		t.Fatal("24%% truncated short render would pass verify")
+	}
+	// Frame-boundary round-off stays inside the window.
+	if diff := absF(1.97 - 2.0); diff > durationTolerance(2.0, 15) {
+		t.Fatal("healthy 2s render would fail verify")
+	}
+	// Long content stays generous (5% dominates).
+	if tol := durationTolerance(3600, 30); !(tol > 100 && tol < 200) {
+		t.Fatalf("tolerance(1h,30fps) = %.1f, want ~180", tol)
+	}
+}

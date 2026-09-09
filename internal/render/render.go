@@ -309,12 +309,19 @@ func verify(ctx context.Context, tl *timeline.Timeline, path string, tools media
 				probe.Width, probe.Height, tl.Canvas.Width, tl.Canvas.Height), nil)
 	}
 	want := tl.Duration()
-	tol := 0.5 + want*0.05
-	if diff := absF(probe.DurationSec - want); diff > tol {
+	if diff := absF(probe.DurationSec - want); diff > durationTolerance(want, tl.Canvas.FPS) {
 		return xcerr.E(xcerr.CodeRenderFailure,
 			fmt.Sprintf("render duration %.2fs too far from timeline %.2fs", probe.DurationSec, want), nil)
 	}
 	return nil
+}
+
+// durationTolerance is the verify() acceptance window: two frames of
+// container/encoder jitter plus 5% relative for long content. The old flat
+// 0.5s floor let a 2s timeline pass verify at 1.5s — a truncated render
+// published as "verified".
+func durationTolerance(want, fps float64) float64 {
+	return want*0.05 + 2/fps
 }
 
 func runFFmpeg(ctx context.Context, bin string, args []string) error {

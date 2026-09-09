@@ -21,6 +21,11 @@ func FixedLookup(durations map[string]float64) MediaLookup {
 
 const eps = 1e-6
 
+// maxTimelineSeconds caps the total timeline length (24h). Anything beyond
+// is a hand-editing accident, not a highlight cut: it would pin a render
+// job for many hours and fill the temp budget before failing.
+const maxTimelineSeconds = 24.0 * 60 * 60
+
 // Validate checks the whole timeline against the schema contract. All
 // violations are collected and reported together. lookup may be nil (skips
 // source-vs-media duration checks).
@@ -35,6 +40,7 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 	}
 
 	seenClips := map[string]bool{}
+	var maxEnd float64
 	for ti, tr := range t.Tracks {
 		if tr.ID == "" {
 			errs = append(errs, fmt.Sprintf("track[%d]: empty id", ti))
@@ -69,14 +75,22 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				errs = append(errs, fmt.Sprintf("%s: source range [%g,%g] not positive", ctx, c.SourceStart, c.SourceEnd))
 				continue
 			}
-			if c.Speed <= 0 || c.Speed > 10 {
-				errs = append(errs, fmt.Sprintf("%s: speed %g out of (0,10]", ctx, c.Speed))
+			// 0.1 is the practical floor: the atempo chain handles it, and
+			// anything smaller turns a typo into a many-hour render (a 60s
+			// source at 0.001 is a 16-hour clip). Values near the underflow
+			// boundary make Duration() overflow to +Inf, which then died in
+			// JSON serialization with a 500 instead of this validation error.
+			if c.Speed < 0.1 || c.Speed > 10 {
+				errs = append(errs, fmt.Sprintf("%s: speed %g out of [0.1,10]", ctx, c.Speed))
 			}
 			if c.Volume < 0 || c.Volume > 1 {
 				errs = append(errs, fmt.Sprintf("%s: volume %g out of [0,1]", ctx, c.Volume))
 			}
 			if c.Duration() <= 0 {
 				errs = append(errs, fmt.Sprintf("%s: non-positive duration", ctx))
+			}
+			if d := c.Duration(); d > maxTimelineSeconds {
+				errs = append(errs, fmt.Sprintf("%s: clip duration %gs exceeds the %gs render cap — raise the clip speed or trim the source range", ctx, d, maxTimelineSeconds))
 			}
 			if c.TimelineStart < 0 {
 				errs = append(errs, fmt.Sprintf("%s: timeline_start %g < 0", ctx, c.TimelineStart))
@@ -107,6 +121,9 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			if end > prevEnd {
 				prevEnd = end
 			}
+			if end > maxEnd {
+				maxEnd = end
+			}
 			prev = &tr.Clips[ci]
 
 			if c.Transition != nil {
@@ -119,6 +136,10 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				}
 			}
 		}
+	}
+
+	if maxEnd > maxTimelineSeconds {
+		errs = append(errs, fmt.Sprintf("timeline duration %.6gs exceeds the %gs render cap — select fewer or shorter clips", maxEnd, maxTimelineSeconds))
 	}
 
 	if lookup != nil {

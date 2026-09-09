@@ -174,3 +174,40 @@ func TestTimelineRestoreBackup(t *testing.T) {
 		t.Fatalf("restored timeline should hold the backup document, got %s", got)
 	}
 }
+
+// TestTimelinePutRejectsAbsurdSpeed: a hand-edited timeline with a tiny
+// speed must be a 400 validation error, not a 500 from serializing the
+// +Inf clip duration it used to produce.
+func TestTimelinePutRejectsAbsurdSpeed(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "speed-guard"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "speed-guard")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, speed := range map[string]float64{"tiny": 0.001, "subnormal": 1e-320} {
+		tl := &timeline.Timeline{
+			Version: timeline.Version,
+			Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []timeline.Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []timeline.Clip{{
+					ID: "c1", AssetID: asset.ID, SourceStart: 0, SourceEnd: 10,
+					TimelineStart: 0, Speed: speed, Volume: 1,
+				}},
+			}},
+		}
+		rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s speed: PUT returned %d (want 400): %v", name, rec.Code, out)
+		}
+		if !strings.Contains(rec.Body.String(), "validation") {
+			t.Fatalf("%s speed: error must be validation-coded: %s", name, rec.Body.String())
+		}
+	}
+}
