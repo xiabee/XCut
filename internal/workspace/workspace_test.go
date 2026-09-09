@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func newTestWS(t *testing.T) *Workspace {
@@ -157,5 +159,45 @@ func TestCleanupPartials(t *testing.T) {
 	}
 	if count, _, err := w.CleanupPartials(false); err != nil || count != 0 {
 		t.Fatalf("second cleanup: count=%d err=%v", count, err)
+	}
+}
+
+func TestNewTempDirBudget(t *testing.T) {
+	ws := newTestWS(t)
+	// Stuff temp/ beyond a tiny budget (simulates failed-run debris).
+	junk := filepath.Join(ws.TempDir(), "render-dead")
+	if err := os.MkdirAll(junk, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(junk, "clip.mp4"), make([]byte, 200), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws.MaxTempBytes = 100
+	_, err := ws.NewTempDir("render")
+	if !xcerr.IsCode(err, xcerr.CodeResourceLimit) {
+		t.Fatalf("err = %v, want resource_limit", err)
+	}
+	if msg := xcerr.UserMessage(err); !strings.Contains(msg, "xcut cleanup") {
+		t.Fatalf("error message %q must point at the remedy", msg)
+	}
+
+	// Raising the budget admits new scratch.
+	ws.MaxTempBytes = 1000
+	d, err := ws.NewTempDir("render")
+	if err != nil {
+		t.Fatalf("NewTempDir under budget: %v", err)
+	}
+	if d == "" {
+		t.Fatal("empty temp dir path")
+	}
+
+	// 0 disables the gate entirely.
+	ws.MaxTempBytes = 0
+	if _, err := ws.NewTempDir("render"); err != nil {
+		t.Fatalf("NewTempDir with budget off: %v", err)
+	}
+	if got := ws.TempUsage(); got < 200 {
+		t.Fatalf("TempUsage = %d, want >= 200", got)
 	}
 }

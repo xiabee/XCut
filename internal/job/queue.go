@@ -18,7 +18,8 @@ import (
 )
 
 // ResourceClass is a coarse scheduling weight for future resource-aware
-// scheduling. Phase 1 records it; enforcement is a single global semaphore.
+// scheduling. Phase 1 records it; enforcement is a single global semaphore
+// plus a render-specific bound (MaxRenderWorkers).
 type ResourceClass string
 
 const (
@@ -29,24 +30,45 @@ const (
 	ClassGPUHeavy  ResourceClass = "GPU_HEAVY"
 )
 
+// Job type names (stored in the jobs table, matched by callers).
+const (
+	TypeImport   = "import"
+	TypeAnalyze  = "analyze"
+	TypeTimeline = "timeline"
+	TypeRender   = "render"
+)
+
 // Queue runs jobs with bounded concurrency.
 type Queue struct {
 	db    *storage.DB
 	log   *slog.Logger
 	slots chan struct{}
-	wg    sync.WaitGroup
+	// renders bounds concurrent TypeRender jobs independently of slots
+	// (resource.max_render_workers): renders hold an ffmpeg process nearly
+	// continuously, so one crowded generic slot pool must not mean four
+	// simultaneous encodes. nil when the bound is >= the generic pool.
+	renders chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewQueue builds a queue allowing at most maxConcurrent simultaneously
-// running jobs (>=1 enforced).
-func NewQueue(db *storage.DB, maxConcurrent int, log *slog.Logger) *Queue {
+// running jobs (>=1 enforced), of which at most maxRenderWorkers are render
+// jobs (>=1 enforced).
+func NewQueue(db *storage.DB, maxConcurrent, maxRenderWorkers int, log *slog.Logger) *Queue {
 	if maxConcurrent < 1 {
 		maxConcurrent = 1
+	}
+	if maxRenderWorkers < 1 {
+		maxRenderWorkers = 1
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent)}
+	q := &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent)}
+	if maxRenderWorkers < maxConcurrent {
+		q.renders = make(chan struct{}, maxRenderWorkers)
+	}
+	return q
 }
 
 // Runner executes the job body. progress reports 0..1 (calls are throttled).
@@ -119,14 +141,24 @@ func (q *Queue) RunAsync(ctx context.Context, typ, projectID string, class Resou
 // async paths). It returns the job's terminal error (nil on success) so the
 // inline path can propagate it; async callers only persist it.
 func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner) error {
+	// Render jobs take the render-worker slot first so a queued render never
+	// holds a generic slot while waiting for its class bound.
+	if typ == TypeRender && q.renders != nil {
+		select {
+		case q.renders <- struct{}{}:
+			defer func() { <-q.renders }()
+		case <-ctx.Done():
+			q.finishBeforeStart(ctx, id, "cancelled waiting for render slot")
+			return xcerr.E(xcerr.CodeCancelled, "job cancelled before start", ctx.Err())
+		}
+	}
+
 	// Acquire a concurrency slot (cancellation-aware).
 	select {
 	case q.slots <- struct{}{}:
 		defer func() { <-q.slots }()
 	case <-ctx.Done():
-		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), "cancelled before start")
+		q.finishBeforeStart(ctx, id, "cancelled before start")
 		return xcerr.E(xcerr.CodeCancelled, "job cancelled before start", ctx.Err())
 	}
 
@@ -173,6 +205,14 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 		q.log.Error("job failed", "job_id", id, "type", typ, "error_code", code, "err", runErr)
 		return runErr
 	}
+}
+
+// finishBeforeStart persists a "cancelled before the job body ran" outcome
+// with its own fresh timeout (the caller's ctx is already done).
+func (q *Queue) finishBeforeStart(ctx context.Context, id, msg string) {
+	cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), msg)
 }
 
 // ReconcileOrphans marks jobs left queued/running by a previous dead process

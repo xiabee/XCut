@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -31,6 +30,10 @@ type Options struct {
 	TempDir    string // scratch dir for normalized clips (caller owns lifecycle)
 	CRF        int    // x264 quality; 0 → default 20
 	OnProgress func(done, total int)
+	// TempBudgetBytes caps this render's own scratch (normalized clips).
+	// Checked after every clip; 0 disables the check. The caller derives it
+	// from resource.max_temp_gb minus current temp/ usage.
+	TempBudgetBytes int64
 }
 
 // Render executes the timeline to outPath. The output appears atomically
@@ -116,6 +119,13 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 			return err
 		}
 		parts[i] = part
+		if opts.TempBudgetBytes > 0 {
+			if used := dirBytes(opts.TempDir); used > opts.TempBudgetBytes {
+				return xcerr.E(xcerr.CodeResourceLimit,
+					fmt.Sprintf("render scratch exceeded its budget (%s in use, budget %s) — raise resource.max_temp_gb or use a shorter timeline",
+						humanBytes(used), humanBytes(opts.TempBudgetBytes)), nil)
+			}
+		}
 		opts.OnProgress(i+1, len(clips)+1)
 	}
 
@@ -310,8 +320,8 @@ func verify(ctx context.Context, tl *timeline.Timeline, path string, tools media
 func runFFmpeg(ctx context.Context, bin string, args []string) error {
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, bin, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := media.RunCombined(cctx, bin, args...)
+	if err != nil {
 		if cctx.Err() != nil {
 			return xcerr.E(xcerr.CodeRenderFailure, "render timed out or was cancelled", cctx.Err())
 		}
@@ -326,6 +336,35 @@ func threadCap(n int) int {
 		return 2
 	}
 	return n
+}
+
+// dirBytes sums file sizes under dir (best-effort; 0 when absent). Only used
+// for budget accounting, so walk errors are ignored.
+func dirBytes(dir string) int64 {
+	var total int64
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if fi, ierr := d.Info(); ierr == nil {
+				total += fi.Size()
+			}
+		}
+		return nil
+	})
+	return total
+}
+
+// humanBytes renders a byte count for user-facing messages.
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 func absF(f float64) float64 {

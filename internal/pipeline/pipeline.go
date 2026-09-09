@@ -45,7 +45,7 @@ func NewDeps(ctx context.Context, db *storage.DB, ws *workspace.Workspace, cfg *
 		WS:    ws,
 		Cfg:   cfg,
 		Log:   log,
-		Queue: job.NewQueue(db, cfg.Resource.MaxConcurrentJobs, log),
+		Queue: job.NewQueue(db, cfg.Resource.MaxConcurrentJobs, cfg.Resource.MaxRenderWorkers, log),
 	}
 }
 
@@ -116,7 +116,7 @@ func (d Deps) ImportAsset(project *storage.Project, path string) (*storage.Asset
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
 	}
-	_, jerr := d.Queue.RunInline(d.Ctx, "import", project.ID, job.ClassIOHeavy,
+	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeImport, project.ID, job.ClassIOHeavy,
 		map[string]any{"path": abs}, d.importBody(project, abs))
 	if jerr != nil {
 		return nil, jerr
@@ -131,7 +131,7 @@ func (d Deps) ImportAssetAsync(project *storage.Project, path string) (string, e
 	if err != nil {
 		return "", xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
 	}
-	return d.Queue.RunAsync(d.Ctx, "import", project.ID, job.ClassIOHeavy,
+	return d.Queue.RunAsync(d.Ctx, job.TypeImport, project.ID, job.ClassIOHeavy,
 		map[string]any{"path": abs}, d.importBody(project, abs))
 }
 
@@ -196,14 +196,14 @@ func (d Deps) latestAssetByName(projectID, filename string) (*storage.Asset, err
 // recorded job (blocking). onAsset (optional) fires after each asset. When
 // onlyIDs is non-empty, only those asset IDs are analyzed.
 func (d Deps) AnalyzeProject(project *storage.Project, onAsset func(AnalyzedAsset), onlyIDs ...string) error {
-	_, jerr := d.Queue.RunInline(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
+	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeAnalyze, project.ID, job.ClassCPUHeavy,
 		map[string]any{"assets": len(onlyIDs)}, d.analyzeBody(project, onAsset, onlyIDs))
 	return jerr
 }
 
 // AnalyzeProjectAsync is the non-blocking variant.
 func (d Deps) AnalyzeProjectAsync(project *storage.Project, onAsset func(AnalyzedAsset), onlyIDs ...string) (string, error) {
-	return d.Queue.RunAsync(d.Ctx, "analyze", project.ID, job.ClassCPUHeavy,
+	return d.Queue.RunAsync(d.Ctx, job.TypeAnalyze, project.ID, job.ClassCPUHeavy,
 		map[string]any{"assets": len(onlyIDs)}, d.analyzeBody(project, onAsset, onlyIDs))
 }
 
@@ -308,7 +308,7 @@ func firstErr(ch chan error) error {
 // writes it to the project directory atomically (recorded job, blocking).
 func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeline.Timeline, error) {
 	result := &timeline.Timeline{}
-	_, jerr := d.Queue.RunInline(d.Ctx, "timeline", project.ID, job.ClassCPULight,
+	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
 		map[string]any{"style": styleName}, d.timelineBody(project, styleName, result))
 	if jerr != nil {
 		return nil, jerr
@@ -318,7 +318,7 @@ func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeli
 
 // BuildTimelineAsync is the non-blocking variant.
 func (d Deps) BuildTimelineAsync(project *storage.Project, styleName string) (string, error) {
-	return d.Queue.RunAsync(d.Ctx, "timeline", project.ID, job.ClassCPULight,
+	return d.Queue.RunAsync(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
 		map[string]any{"style": styleName}, d.timelineBody(project, styleName, &timeline.Timeline{}))
 }
 
@@ -453,7 +453,7 @@ func (d Deps) RenderProject(project *storage.Project, outPath string, onProgress
 	if err := d.guardRenderOut(project, outPath); err != nil {
 		return err
 	}
-	_, jerr := d.Queue.RunInline(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
+	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeRender, project.ID, job.ClassCPUHeavy,
 		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
 	return jerr
 }
@@ -463,7 +463,7 @@ func (d Deps) RenderProjectAsync(project *storage.Project, outPath string, onPro
 	if err := d.guardRenderOut(project, outPath); err != nil {
 		return "", err
 	}
-	return d.Queue.RunAsync(d.Ctx, "render", project.ID, job.ClassCPUHeavy,
+	return d.Queue.RunAsync(d.Ctx, job.TypeRender, project.ID, job.ClassCPUHeavy,
 		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
 }
 
@@ -506,10 +506,22 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 			}
 		}()
 
+		// This render may add scratch up to the whole temp budget minus what
+		// temp/ already holds (older failure debris). 0 (budget off) leaves
+		// the renderer's check disabled too.
+		var scratchBudget int64
+		if max := d.WS.MaxTempBytes; max > 0 {
+			scratchBudget = max - d.WS.TempUsage()
+			if scratchBudget <= 0 {
+				scratchBudget = 1 // just over the floor: fail at the first check
+			}
+		}
+
 		last := 0
 		err = render.Render(jctx, tl, render.Options{
-			Tools:   d.tools(),
-			TempDir: tempDir,
+			Tools:           d.tools(),
+			TempDir:         tempDir,
+			TempBudgetBytes: scratchBudget,
 			OnProgress: func(done, total int) {
 				if total > 0 && onProgress != nil {
 					pct := done * 100 / total

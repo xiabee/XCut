@@ -108,7 +108,7 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 	}
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	_, stderr, runErr := media.RunLimited(cctx, tools.FFmpeg, args...)
+	_, stderr, runErr := media.Run(cctx, tools.FFmpeg, args...)
 	if runErr != nil {
 		_ = os.Remove(tmpName)
 		if cctx.Err() != nil {

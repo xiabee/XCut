@@ -15,6 +15,7 @@ package workspace
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,6 +27,10 @@ import (
 // Workspace is a handle on an XCut data directory.
 type Workspace struct {
 	Root string
+	// MaxTempBytes caps scratch space under temp/ (resource.max_temp_gb).
+	// NewTempDir refuses to add new scratch once the budget is reached.
+	// 0 disables the gate (tests).
+	MaxTempBytes int64
 }
 
 // Subdirectory names (never change: they appear on disk).
@@ -161,8 +166,18 @@ func isWindowsReservedName(elem string) bool {
 	return false
 }
 
-// NewTempDir creates temp/<prefix>-<rand> for a job's scratch files.
+// NewTempDir creates temp/<prefix>-<rand> for a job's scratch files. When
+// MaxTempBytes is set and temp/ already sits at or over the budget, it
+// refuses (resource_limit): failed renders keep their scratch for debugging,
+// so without this gate repeated failures could fill the disk silently.
 func (w *Workspace) NewTempDir(prefix string) (string, error) {
+	if w.MaxTempBytes > 0 {
+		if used := w.TempUsage(); used >= w.MaxTempBytes {
+			return "", xcerr.E(xcerr.CodeResourceLimit,
+				fmt.Sprintf("temp budget exhausted (%s in use, budget %s) — run 'xcut cleanup' to reclaim failed-run scratch, or raise resource.max_temp_gb",
+					humanBytes(used), humanBytes(w.MaxTempBytes)), nil)
+		}
+	}
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		return "", xcerr.E(xcerr.CodeInternal, "cannot generate temp dir id", err)
@@ -172,6 +187,35 @@ func (w *Workspace) NewTempDir(prefix string) (string, error) {
 		return "", xcerr.E(xcerr.CodeInternal, "cannot create temp dir", err)
 	}
 	return dir, nil
+}
+
+// TempUsage reports bytes currently stored under temp/ (best-effort walk;
+// 0 when the directory does not exist).
+func (w *Workspace) TempUsage() int64 {
+	var total int64
+	_ = filepath.WalkDir(w.TempDir(), func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if fi, ierr := d.Info(); ierr == nil {
+				total += fi.Size()
+			}
+		}
+		return nil
+	})
+	return total
+}
+
+// humanBytes renders a byte count for user-facing messages.
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // CleanupTemp removes everything under temp/ (it is disposable by definition).

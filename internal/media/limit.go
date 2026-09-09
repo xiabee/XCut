@@ -2,13 +2,16 @@ package media
 
 import (
 	"context"
+	"os/exec"
 	"sync"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // processLimiter caps concurrent ffmpeg/ffprobe processes process-wide.
-// The CLI wires it from config (resource.max_ffmpeg_processes); queue-level
+// media.Run / RunCombined / StreamStdout acquire it internally, so every
+// product exec path (probe, analyzers, proxy, render) is capped by
+// resource.max_ffmpeg_processes. The CLI wires it from config; queue-level
 // job limits bound concurrency above this. Phase 1: one global limiter —
 // honest and sufficient for a single-process tool.
 var (
@@ -43,12 +46,15 @@ func acquire(ctx context.Context) (release func(), err error) {
 	}
 }
 
-// RunLimited executes bin like Run but under the process limiter.
-func RunLimited(ctx context.Context, bin string, args ...string) (stdout, stderr []byte, err error) {
+// RunCombined executes bin like Run but collects stdout and stderr into one
+// buffer, under the process limiter. Used where the child's diagnostic output
+// only matters on failure (renders).
+func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error) {
 	release, err := acquire(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer release()
-	return Run(ctx, bin, args...)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	return cmd.CombinedOutput()
 }

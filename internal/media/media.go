@@ -65,11 +65,17 @@ func Version(ctx context.Context, bin string) (string, error) {
 }
 
 // Run executes an ffmpeg/ffprobe-style tool with args under ctx, capturing
-// combined output. It enforces the package security contract.
+// combined output. It enforces the package security contract and runs under
+// the global process limiter (resource.max_ffmpeg_processes).
 func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte, err error) {
 	if bin == "" {
 		return nil, nil, xcerr.E(xcerr.CodeInternal, "empty binary path", nil)
 	}
+	release, err := acquire(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

@@ -276,7 +276,11 @@ func firstNonEmpty(vals ...string) string {
 }
 
 // Workspace builds the workspace handle from effective config.
-func (a *App) Workspace() *workspace.Workspace { return workspace.New(a.Cfg.Workspace) }
+func (a *App) Workspace() *workspace.Workspace {
+	ws := workspace.New(a.Cfg.Workspace)
+	ws.MaxTempBytes = int64(a.Cfg.Resource.MaxTempGB * (1 << 30))
+	return ws
+}
 
 // Pipeline builds the shared pipeline operations bound to an open DB.
 func (a *App) Pipeline(db *storage.DB) pipeline.Deps {
@@ -325,7 +329,7 @@ func (a *App) OpenDB() (*storage.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Log)
+	q := job.NewQueue(db, a.Cfg.Resource.MaxConcurrentJobs, a.Cfg.Resource.MaxRenderWorkers, a.Log)
 	ctx, cancel := context.WithTimeout(a.Ctx, 15*time.Second)
 	defer cancel()
 	if _, err := q.ReconcileOrphans(ctx, a.Cfg.Job.StaleRunningAfter.Duration); err != nil {

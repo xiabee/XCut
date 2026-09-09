@@ -20,7 +20,7 @@ func testQueue(t *testing.T, maxConcurrent int) (*Queue, *storage.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return NewQueue(db, maxConcurrent, slog.New(slog.NewTextHandler(&testWriter{t}, nil))), db
+	return NewQueue(db, maxConcurrent, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil))), db
 }
 
 type testWriter struct{ t *testing.T }
@@ -150,5 +150,93 @@ func TestReconcileOrphans(t *testing.T) {
 		var gotID string
 		_ = db.QueryRow(`SELECT id FROM jobs LIMIT 1`).Scan(&gotID)
 		t.Fatalf("job row missing after reconcile: count=%d first_id=%q want=%q", cnt, gotID, id)
+	}
+}
+
+func TestRenderWorkerBound(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	// Generic pool admits 3; renders are capped at 1.
+	q := NewQueue(db, 3, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
+	ctx := context.Background()
+
+	var running, maxRunning atomic.Int64
+	runner := func(ctx context.Context, progress func(float64)) error {
+		cur := running.Add(1)
+		for {
+			old := maxRunning.Load()
+			if cur <= old || maxRunning.CompareAndSwap(old, cur) {
+				break
+			}
+		}
+		time.Sleep(60 * time.Millisecond)
+		running.Add(-1)
+		return nil
+	}
+
+	for i := 0; i < 4; i++ {
+		if _, err := q.RunAsync(ctx, TypeRender, "", ClassCPUHeavy, nil, runner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q.Wait()
+	if got := maxRunning.Load(); got != 1 {
+		t.Fatalf("max concurrent renders = %d, want 1", got)
+	}
+}
+
+func TestRenderBoundLeavesOtherJobsFree(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	// Pool of 4: the parked render holds one generic slot, leaving exactly
+	// three for the analyze jobs below.
+	q := NewQueue(db, 4, 1, slog.New(slog.NewTextHandler(&testWriter{t}, nil)))
+	ctx := context.Background()
+
+	// A render parked in the generic pool must not stop non-render jobs:
+	// if the render bound were a shared class semaphore, analyze jobs would
+	// queue behind it forever.
+	release := make(chan struct{})
+	if _, err := q.RunAsync(ctx, TypeRender, "", ClassCPUHeavy, nil,
+		func(ctx context.Context, progress func(float64)) error {
+			<-release
+			return nil
+		}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // let the render job start
+
+	var running, maxRunning atomic.Int64
+	var analyzed sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		analyzed.Add(1)
+		if _, err := q.RunAsync(ctx, TypeAnalyze, "", ClassCPUHeavy, nil,
+			func(ctx context.Context, progress func(float64)) error {
+				defer analyzed.Done()
+				cur := running.Add(1)
+				for {
+					old := maxRunning.Load()
+					if cur <= old || maxRunning.CompareAndSwap(old, cur) {
+						break
+					}
+				}
+				time.Sleep(40 * time.Millisecond)
+				running.Add(-1)
+				return nil
+			}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	analyzed.Wait() // would hang if analyze jobs were blocked behind the render slot
+	close(release)
+	q.Wait()
+	if got := maxRunning.Load(); got != 3 {
+		t.Fatalf("max concurrent analyze jobs = %d, want 3", got)
 	}
 }

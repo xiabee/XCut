@@ -10,6 +10,7 @@ import (
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/testmedia"
 	"github.com/xiabee/XCut/internal/timeline"
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func requireTools(t *testing.T) media.Tools {
@@ -148,4 +149,34 @@ func TestRenderRespectsContextCancellation(t *testing.T) {
 		t.Fatal("expected cancellation error")
 	}
 	_ = time.Millisecond
+}
+
+func TestRenderTempBudgetAborts(t *testing.T) {
+	tools := requireTools(t)
+	src := fixture(t)
+	tl := twoClipTimeline(src)
+	out := filepath.Join(t.TempDir(), "out.mp4")
+
+	// A 1-byte budget fails at the first post-clip check — before any
+	// combine stage, with no final file.
+	err := Render(context.Background(), tl, Options{
+		Tools: tools, TempDir: t.TempDir(), TempBudgetBytes: 1,
+	}, out)
+	if err == nil {
+		t.Fatal("expected budget error")
+	}
+	if !xcerr.IsCode(err, xcerr.CodeResourceLimit) {
+		t.Fatalf("err = %v, want resource_limit", err)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Fatal("final file must not exist after budget abort")
+	}
+
+	// A generous budget renders normally.
+	ok := Render(context.Background(), twoClipTimeline(src), Options{
+		Tools: tools, TempDir: t.TempDir(), TempBudgetBytes: 1 << 30,
+	}, out)
+	if ok != nil {
+		t.Fatalf("render over-budget-free scratch failed: %v", ok)
+	}
 }
