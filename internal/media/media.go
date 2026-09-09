@@ -64,9 +64,34 @@ func Version(ctx context.Context, bin string) (string, error) {
 	return m[1], nil
 }
 
+// maxCapturedOutput caps how much child stdout/stderr is retained (last
+// bytes win — ffmpeg prints its error summary last). Diagnostics only ever
+// reach users through tail-limited excerpts, so the cap costs nothing and
+// stops a chatty stderr (per-packet decode errors from corrupt media) from
+// growing host memory for the child's whole runtime.
+const maxCapturedOutput = 1 << 20
+
+// cappedBuffer retains the LAST max bytes written to it.
+type cappedBuffer struct {
+	b   []byte
+	max int
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if len(p) >= c.max {
+		c.b = append(c.b[:0], p[len(p)-c.max:]...)
+		return len(p), nil
+	}
+	c.b = append(c.b, p...)
+	if over := len(c.b) - c.max; over > 0 {
+		c.b = append(c.b[:0], c.b[over:]...)
+	}
+	return len(p), nil
+}
+
 // Run executes an ffmpeg/ffprobe-style tool with args under ctx, capturing
-// combined output. It enforces the package security contract and runs under
-// the global process limiter (resource.max_ffmpeg_processes).
+// capped stdout/stderr. It enforces the package security contract and runs
+// under the global process limiter (resource.max_ffmpeg_processes).
 func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte, err error) {
 	if bin == "" {
 		return nil, nil, xcerr.E(xcerr.CodeInternal, "empty binary path", nil)
@@ -77,11 +102,12 @@ func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte
 	}
 	defer release()
 	cmd := exec.CommandContext(ctx, bin, args...)
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
+	outBuf := &cappedBuffer{max: maxCapturedOutput}
+	errBuf := &cappedBuffer{max: maxCapturedOutput}
+	cmd.Stdout = outBuf
+	cmd.Stderr = errBuf
 	if err := cmd.Run(); err != nil {
-		return outBuf.Bytes(), errBuf.Bytes(), err
+		return outBuf.b, errBuf.b, err
 	}
-	return outBuf.Bytes(), errBuf.Bytes(), nil
+	return outBuf.b, errBuf.b, nil
 }

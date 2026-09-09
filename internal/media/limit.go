@@ -47,8 +47,8 @@ func acquire(ctx context.Context) (release func(), err error) {
 }
 
 // RunCombined executes bin like Run but collects stdout and stderr into one
-// buffer, under the process limiter. Used where the child's diagnostic output
-// only matters on failure (renders).
+// capped buffer (last bytes win), under the process limiter. Used where the
+// child's diagnostic output only matters on failure (renders).
 func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error) {
 	release, err := acquire(ctx)
 	if err != nil {
@@ -56,5 +56,8 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	}
 	defer release()
 	cmd := exec.CommandContext(ctx, bin, args...)
-	return cmd.CombinedOutput()
+	buf := &cappedBuffer{max: maxCapturedOutput}
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	return buf.b, cmd.Run()
 }

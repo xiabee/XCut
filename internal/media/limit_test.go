@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -155,4 +156,55 @@ func readMarks(path string) ([]markInterval, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].start < out[j].start })
 	return out, nil
+}
+
+// TestHelperChattyWriter is re-executed by the output-cap tests: it floods
+// one stream with filler + an END marker, then exits with a configured code.
+func TestHelperChattyWriter(t *testing.T) {
+	if os.Getenv("XCUT_TEST_CHATTY") == "" {
+		return
+	}
+	filler := strings.Repeat("a", 5<<20)
+	switch os.Getenv("XCUT_TEST_CHATTY") {
+	case "stderr":
+		fmt.Fprint(os.Stderr, filler+"\nEND-MARKER\n")
+	case "stdout":
+		fmt.Fprint(os.Stdout, filler+"\nEND-MARKER\n")
+	}
+	if os.Getenv("XCUT_TEST_CHATTY_EXIT") == "1" {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// TestRunCapsCapturedOutput: a corrupt-input-style flood of diagnostics
+// must not grow host memory with the child's runtime, and the retained
+// bytes must keep the END of the stream (the error summary ffmpeg prints
+// last is the part users see).
+func TestRunCapsCapturedOutput(t *testing.T) {
+	t.Setenv("XCUT_TEST_CHATTY", "stderr")
+	t.Setenv("XCUT_TEST_CHATTY_EXIT", "1")
+	_, stderr, err := Run(context.Background(), os.Args[0],
+		"-test.run=TestHelperChattyWriter$", "-test.v")
+	if err == nil {
+		t.Fatal("chatty failing child must report failure")
+	}
+	if len(stderr) != maxCapturedOutput {
+		t.Fatalf("captured stderr = %d bytes, want capped at %d", len(stderr), maxCapturedOutput)
+	}
+	if !bytes.Contains(stderr, []byte("END-MARKER")) {
+		t.Fatal("capped capture must keep the last bytes (tail semantics)")
+	}
+
+	// Same flood on stdout with a clean exit must not fail the call.
+	t.Setenv("XCUT_TEST_CHATTY", "stdout")
+	t.Setenv("XCUT_TEST_CHATTY_EXIT", "0")
+	stdout, _, err := Run(context.Background(), os.Args[0],
+		"-test.run=TestHelperChattyWriter$", "-test.v")
+	if err != nil {
+		t.Fatalf("chatty successful child must succeed: %v", err)
+	}
+	if len(stdout) != maxCapturedOutput || !bytes.Contains(stdout, []byte("END-MARKER")) {
+		t.Fatal("stdout cap must keep the last bytes")
+	}
 }
