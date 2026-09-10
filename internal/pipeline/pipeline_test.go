@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/storage"
@@ -204,5 +205,97 @@ func TestTimelineBackupAndRestore(t *testing.T) {
 	got, err = os.ReadFile(cur)
 	if err != nil || string(got) == string(manual) {
 		t.Fatalf("second restore must bring back the regenerated doc, got %q", got)
+	}
+}
+
+// TestRenderCancelledCleansScratch: cancelling a running render must remove
+// its scratch — a user who cancels repeatedly would otherwise exhaust the
+// temp budget with debris that only "xcut cleanup" can reclaim, which is
+// lock-refused while serve runs. Timed-out/failed runs keep their scratch
+// (post-mortem); cancelled runs do not.
+func TestRenderCancelledCleansScratch(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d := NewDeps(ctx, db, ws, cfg, logger)
+
+	p, err := db.CreateProject(context.Background(), "cancel-render")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path, err := testmedia.Generate(dir, "fx.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(root, "out.mp4")
+	jobID, err := d.RenderProjectAsync(p, out, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until the render actually created scratch, then cancel mid-run.
+	wsTemp := ws.TempDir()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		entries, _ := os.ReadDir(wsTemp)
+		if len(entries) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("render never created scratch")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !d.Queue.Cancel(jobID) {
+		t.Fatal("Cancel reported false for the running render")
+	}
+	d.Queue.Wait()
+
+	j, err := db.GetJob(context.Background(), jobID)
+	if err != nil || j == nil {
+		t.Fatalf("GetJob: %+v, %v", j, err)
+	}
+	if j.Status != storage.StatusCancelled {
+		t.Fatalf("render status = %s, want cancelled", j.Status)
+	}
+	if entries, _ := os.ReadDir(wsTemp); len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Fatalf("cancelled render left scratch in temp/: %v", names)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("cancelled render produced an output file")
 	}
 }

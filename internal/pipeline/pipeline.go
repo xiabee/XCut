@@ -7,6 +7,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -501,7 +502,13 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 			return err
 		}
 		defer func() {
-			if jctx.Err() == nil {
+			// Scratch of a cancelled (or shutting-down) render is worthless
+			// debris: the run was abandoned, and serve holds the workspace
+			// lock, so "run xcut cleanup" is not actionable until restart —
+			// repeated cancels would quietly exhaust the temp budget. Only
+			// a timed-out run keeps its scratch (post-mortem, like failures).
+			err := jctx.Err()
+			if err == nil || errors.Is(err, context.Canceled) {
 				_ = os.RemoveAll(tempDir)
 			}
 		}()
