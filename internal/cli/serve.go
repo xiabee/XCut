@@ -65,6 +65,18 @@ func cmdServe(a *App, args []string) error {
 		fmt.Fprintf(a.Stdout, "reconciled %d orphaned job(s) left by a previous run\n", n)
 	}
 
+	// Same safety argument as the job sweep: with the writer lock held, all
+	// previous writers are provably dead, so every temp/ entry is crash or
+	// cancellation debris. Sweep it before listening — otherwise debris sits
+	// against the temp budget and the only remover (xcut cleanup) is
+	// lock-refused while serve runs.
+	if removed, bytes, err := a.Workspace().CleanupTemp(false); err != nil {
+		a.Log.Warn("startup temp sweep failed", "err", err)
+	} else if len(removed) > 0 {
+		a.Log.Info("swept temp debris at startup", "entries", len(removed), "bytes", bytes)
+		fmt.Fprintf(a.Stdout, "reclaimed %d temp entries (%d bytes)\n", len(removed), bytes)
+	}
+
 	httpServer := newHTTPServer(addr, srv.Handler())
 
 	ln, err := net.Listen("tcp", addr)
