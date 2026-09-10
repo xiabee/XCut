@@ -94,12 +94,12 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "unknown asset for this project", nil))
 		return
 	}
-	fi, err := os.Stat(a.Path)
+	fi, err := os.Stat(a.Path) // #nosec G703 -- a.Path is the DB asset row written only by the import API (loopback-only server by design); serving the operator's own imported media is the feature
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "asset media file is missing on disk", err))
 		return
 	}
-	f, err := os.Open(a.Path)
+	f, err := os.Open(a.Path) // #nosec G703 -- same DB-asset-row path as above; local-first product model (no auth needed for what the operator imported)
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open asset media file", err))
 		return

@@ -238,7 +238,7 @@ func loadConfig(flagPath, flagWorkspace string) (*config.Config, string, error) 
 		if sameFile(wsCfgPath, path) {
 			return cfg, path, nil
 		}
-		if _, err := os.Stat(wsCfgPath); err == nil {
+		if _, err := os.Stat(wsCfgPath); err == nil { // #nosec G703 -- wsCfgPath is <workspace>/config.json under the operator-chosen workspace root (flag/env); no remote input reaches here
 			wsCfg, err := config.Load(wsCfgPath)
 			if err != nil {
 				return nil, "", err
@@ -261,8 +261,8 @@ func sameFile(a, b string) bool {
 	if filepath.Clean(a) == filepath.Clean(b) {
 		return true
 	}
-	fa, err1 := os.Stat(a)
-	fb, err2 := os.Stat(b)
+	fa, err1 := os.Stat(a) // #nosec G703 -- both paths are operator CLI args; the result is only compared via os.SameFile, nothing is opened or served from them
+	fb, err2 := os.Stat(b) // #nosec G703 -- same operator-supplied paths as above; comparison only
 	return err1 == nil && err2 == nil && os.SameFile(fa, fb)
 }
 

@@ -100,6 +100,16 @@ if ($Mode -eq "full") {
     else {
         Write-Host "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped"
     }
+
+    # Static security analysis: HIGH severity + HIGH confidence findings fail
+    # the gate. Suppressions live in the source as `#nosec GXXX -- reason`
+    # (each with a written justification), never as blanket rule exclusions.
+    if (Get-Command gosec -ErrorAction SilentlyContinue) {
+        Invoke-Step "gosec" { gosec -severity high -confidence high -tests=false ./... }
+    }
+    else {
+        Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped"
+    }
 }
 
 Write-Host "== gate ($Mode): PASS"
