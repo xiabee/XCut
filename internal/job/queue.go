@@ -230,8 +230,25 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 		return xcerr.E(xcerr.CodeCancelled, "job cancelled before start", ctx.Err())
 	}
 
+	// The select above may legally pick the slot case even when Done is
+	// already closed (both ready → runtime chooses freely). A job that
+	// arrives here cancelled must still reach a terminal state — without
+	// this guard it would die in SetJobRunning below and leave a phantom
+	// queued row that blocks the project's exclusive-job slot until restart.
+	if ctx.Err() != nil {
+		q.finishBeforeStart(ctx, id, "cancelled before start")
+		return xcerr.E(xcerr.CodeCancelled, "job cancelled before start", ctx.Err())
+	}
+
 	if err := q.db.SetJobRunning(ctx, id); err != nil {
 		q.log.Error("job start bookkeeping failed", "job_id", id, "err", err)
+		// Best-effort terminal write: without it the row stays queued
+		// forever (blocking exclusive types), with no cancel handle left.
+		fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer fcancel()
+		if ferr := q.db.FinishJob(fctx, id, storage.StatusFailed, string(xcerr.CodeStorageFailure), "job start could not be recorded"); ferr != nil {
+			q.log.Error("job failure bookkeeping failed", "job_id", id, "err", ferr)
+		}
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot record job start", err)
 	}
 	q.log.Info("job started", "job_id", id, "type", typ, "project_id", projectID)
@@ -266,7 +283,11 @@ func (q *Queue) runJob(ctx context.Context, id, typ, projectID string, fn Runner
 		q.log.Info("job succeeded", "job_id", id, "type", typ)
 		return nil
 	case ctx.Err() != nil:
-		_ = q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), "cancelled")
+		if err := q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), "cancelled"); err != nil {
+			// Same diagnosability rule as finishBeforeStart: a job stuck
+			// "running" after its body returned must leave a trace.
+			q.log.Error("job cancel bookkeeping failed", "job_id", id, "err", err)
+		}
 		return xcerr.E(xcerr.CodeCancelled, "job cancelled", runErr)
 	default:
 		code := xcerr.CodeOf(runErr)
@@ -293,11 +314,15 @@ func (q *Queue) pruneHistory() {
 }
 
 // finishBeforeStart persists a "cancelled before the job body ran" outcome
-// with its own fresh timeout (the caller's ctx is already done).
+// with its own fresh timeout (the caller's ctx is already done). Failure is
+// logged, never silent: a row stuck in queued would keep blocking the
+// project's exclusive-job slot with no visible cause.
 func (q *Queue) finishBeforeStart(ctx context.Context, id, msg string) {
 	cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), msg)
+	if err := q.db.FinishJob(cctx, id, storage.StatusCancelled, string(xcerr.CodeCancelled), msg); err != nil {
+		q.log.Error("job cancel bookkeeping failed", "job_id", id, "err", err)
+	}
 }
 
 // ReconcileOrphans marks jobs left queued/running by a previous dead process

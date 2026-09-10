@@ -341,8 +341,9 @@ func TestCancelRunningJob(t *testing.T) {
 	}
 	<-started
 
-	// Wait for the row to be marked running before cancelling.
-	deadline := time.Now().Add(2 * time.Second)
+	// Wait for the row to be marked running before cancelling (generous:
+	// the CI node runs every package in parallel).
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		j, err := db.GetJob(ctx, id)
 		if err != nil || j == nil {
@@ -411,9 +412,10 @@ func TestCancelQueuedJobBeforeStart(t *testing.T) {
 	}
 
 	// B must reach the cancelled terminal state without ever running; poll
-	// (bounded) instead of q.Wait, which would deadlock on A holding the
-	// slot until releaseA closes below.
-	deadline := time.Now().Add(5 * time.Second)
+	// (bounded, generously — the CI node runs every package in parallel and
+	// the bookkeeping write carries its own 5s budget) instead of q.Wait,
+	// which would deadlock on A holding the slot until releaseA closes below.
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		j, err := db.GetJob(ctx, idB)
 		if err != nil || j == nil {
