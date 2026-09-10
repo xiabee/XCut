@@ -86,11 +86,18 @@ process-per-worker, localhost-only, etc.).
 
 - One `xcut` process owns the job scheduler; FFmpeg/ffprobe/workers are child
   processes with `exec.CommandContext`, per-process thread caps, and a global
-  concurrency semaphore (config `resource.*`).
+  concurrency semaphore (config `resource.*`). Async jobs carry a per-job
+  cancel context: `POST /jobs/{id}/cancel` (web UI button) stops queued jobs
+  before they start and kills running jobs' ffmpeg children; cancelled
+  renders reclaim their scratch.
 - Nothing unbounded: jobs, ffmpeg processes, cache bytes, temp bytes, log size
   all have configured ceilings.
-- Startup reconciles orphaned `running` jobs (crash recovery); temp dirs have a
-  lifecycle (`xcut cleanup`).
+- Startup reconciles orphaned `running` jobs (crash recovery): CLI opens use
+  an age gate (`job.stale_running_after`) so a live writer's rows are never
+  touched by readers; `serve` holds the workspace writer lock, so it sweeps
+  every queued/running row and all `temp/` debris before listening — anything
+  it sees at startup belonged to a dead process. Temp dirs have a lifecycle
+  (`xcut cleanup`).
 
 ## Security Model
 
