@@ -36,6 +36,12 @@ type LockInfo struct {
 	Host      string    `json:"host"`
 	Command   string    `json:"command"`
 	CreatedAt time.Time `json:"created_at"`
+	// PIDStart is the owner's process start stamp as an opaque
+	// platform-specific string (empty for lock files written before this
+	// field existed). Windows reuses PIDs aggressively: a crashed owner's
+	// PID can be live again under an unrelated process within minutes, so
+	// liveness is judged by (PID, start stamp) equality, not the PID alone.
+	PIDStart string `json:"pid_start,omitempty"`
 }
 
 // lock holds this process's acquired locks (recursive re-entry allowed).
@@ -77,6 +83,9 @@ func (w *Workspace) Acquire(command string) (release func(), err error) {
 	return nil, err
 }
 
+// pidStartTime returns the current process's start stamp (see LockInfo).
+var pidStartTime = sync.OnceValue(func() string { return currentProcessStart() })
+
 // tryAcquire creates the lock file atomically (O_EXCL). A concurrent loser
 // gets a conflict error.
 func (w *Workspace) tryAcquire(lockPath, command string) (func(), error) {
@@ -85,6 +94,7 @@ func (w *Workspace) tryAcquire(lockPath, command string) (func(), error) {
 		Host:      hostname(),
 		Command:   command,
 		CreatedAt: time.Now().UTC(),
+		PIDStart:  pidStartTime(),
 	}
 	b, err := json.Marshal(info)
 	if err != nil {
@@ -95,8 +105,11 @@ func (w *Workspace) tryAcquire(lockPath, command string) (func(), error) {
 	if err != nil {
 		if os.IsExist(err) {
 			if owner, rerr := readLock(lockPath); rerr == nil {
-				if owner.PID == os.Getpid() && owner.Host == hostname() {
-					// Our own lock from a prior handle — re-entry.
+				if owner.PID == os.Getpid() && owner.Host == hostname() &&
+					(owner.PIDStart == "" || owner.PIDStart == pidStartTime()) {
+					// Our own lock from a prior handle — re-entry. An empty
+					// PIDStart means a pre-existing lock file from an older
+					// build; the PID+host match keeps that path working.
 					locksMu.Lock()
 					heldLocks[lockPath] = &owner
 					locksMu.Unlock()
@@ -140,16 +153,28 @@ func (w *Workspace) release(lockPath string) {
 }
 
 // removeStaleLock deletes the lock file when its owner is provably dead
-// (no such process on this host) or impossibly old. Returns nil when a stale
-// lock was removed and the caller may retry.
+// (no such process on this host, or the PID now belongs to a different
+// process — reuse) or impossibly old. Returns nil when a stale lock was
+// removed and the caller may retry.
 func (w *Workspace) removeStaleLock(lockPath string) error {
 	owner, err := readLock(lockPath)
 	if err != nil {
 		return err // unreadable → treat as a live conflict
 	}
-	if owner.Host == hostname() && !processAlive(owner.PID) {
-		_ = os.Remove(lockPath)
-		return nil
+	if owner.Host == hostname() {
+		if !processAlive(owner.PID) {
+			_ = os.Remove(lockPath)
+			return nil
+		}
+		// The PID is alive, but is it the SAME process? A reused PID must
+		// not keep a crashed owner's lock alive for a day. If either side
+		// lacks a start stamp (legacy lock file), fall back to the age rule.
+		if owner.PIDStart != "" {
+			if cur, ok := processStartTime(owner.PID); ok && cur != owner.PIDStart {
+				_ = os.Remove(lockPath)
+				return nil
+			}
+		}
 	}
 	if time.Since(owner.CreatedAt) > staleAfter {
 		_ = os.Remove(lockPath)

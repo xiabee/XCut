@@ -127,3 +127,52 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// TestLockReusedPIDStartStampReclaimed: a lock whose owner PID is alive but
+// whose start stamp differs (Windows PID reuse) must be reclaimed on the
+// stale-cleanup retry — the PID alone used to keep a crashed owner's lock
+// alive for up to 24h. Simulated with the CURRENT process as the "reused"
+// owner: definitely alive, definitely a different stamp than the fake.
+func TestLockReusedPIDStartStampReclaimed(t *testing.T) {
+	w := New(t.TempDir())
+	foreign := LockInfo{
+		PID:       os.Getpid(), // alive by construction
+		Host:      hostname(),
+		Command:   "previous-crashed-owner",
+		CreatedAt: time.Now().UTC().Add(-time.Hour), // far inside the 24h window
+		PIDStart:  pidStartTime() + "-stale",
+	}
+	b, _ := json.Marshal(foreign)
+	if err := os.WriteFile(filepath.Join(w.Root, lockFileName), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	release, err := w.Acquire("test")
+	if err != nil {
+		t.Fatalf("stale lock with a reused-but-alive PID not reclaimed: %v", err)
+	}
+	release()
+}
+
+// TestLockOwnPIDMatchingStampReenters: acquiring over a lock file carrying
+// OUR OWN pid + host + start stamp is recursive re-entry — the start stamp
+// is what distinguishes re-entry from a reused PID now owned by an
+// unrelated process.
+func TestLockOwnPIDMatchingStampReenters(t *testing.T) {
+	w := New(t.TempDir())
+	own := LockInfo{
+		PID:       os.Getpid(),
+		Host:      hostname(),
+		Command:   "earlier-command-in-this-process",
+		CreatedAt: time.Now().UTC().Add(-time.Minute),
+		PIDStart:  pidStartTime(),
+	}
+	b, _ := json.Marshal(own)
+	if err := os.WriteFile(filepath.Join(w.Root, lockFileName), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	release, err := w.Acquire("test")
+	if err != nil {
+		t.Fatalf("own-pid matching-stamp lock must re-enter: %v", err)
+	}
+	release()
+}
