@@ -21,7 +21,13 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] `xcut serve`: localhost HTTP API (`/api/v1`: health, projects, assets, jobs) — web UI still pending
 - [x] Proxy generation for analysis (configurable resolution/fps decision logic)
 - [x] Cache eviction (LRU, size-capped) + `xcut cache` tooling
-- [ ] Cross-platform CI (Windows/Linux amd64+arm64), release packaging
+- [x] Cross-platform CI (Windows/Linux amd64+arm64), release packaging
+  (CI matrix runs ubuntu+windows with `-race` plus a packaging job on
+  manual dispatch — D11; linux amd64+arm64 compile-checked every full
+  gate; Linux runtime verified end-to-end via WSL kali + ffmpeg 8.1.1 in
+  session #1 and re-verified in session #5; the "full mode on the MR
+  node" ops item stays tracked in the night backlog — that node's
+  transport is `local` and cannot be driven remotely)
 
 ## Phase 3 — Rust worker & vertical depth
 
