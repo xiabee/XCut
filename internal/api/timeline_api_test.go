@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/pipeline"
@@ -296,5 +297,68 @@ func TestTimelineRevisionGuard(t *testing.T) {
 	// A blind save without any revision (old-style overwrite) is refused too.
 	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(0)); rec.Code != http.StatusConflict {
 		t.Fatalf("revision-less save: %d (want 409)", rec.Code)
+	}
+}
+
+// TestTimelineRevisionGuardConcurrent: N writers PUTting the same revision
+// concurrently — exactly one may win, the rest must 409 (the guard's
+// check-and-write is serialized; lost updates are impossible by design).
+func TestTimelineRevisionGuardConcurrent(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "rev-race"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "rev-race")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+
+	mk := func(rev int64) string {
+		tl := &timeline.Timeline{
+			Version:  timeline.Version,
+			Revision: rev,
+			Canvas:   timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []timeline.Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []timeline.Clip{{
+					ID: "c1", AssetID: asset.ID, SourceStart: 0, SourceEnd: 5,
+					TimelineStart: 0, Speed: 1, Volume: 1,
+				}},
+			}},
+		}
+		return marshalTimeline(t, tl)
+	}
+	// Seed revision 1.
+	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(0)); rec.Code != http.StatusOK {
+		t.Fatalf("seed save: %d", rec.Code)
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(1))
+			codes[i] = rec.Code
+		}(i)
+	}
+	wg.Wait()
+	wins, conflicts := 0, 0
+	for _, c := range codes {
+		switch c {
+		case http.StatusOK:
+			wins++
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Fatalf("unexpected status %d (want 200 or 409)", c)
+		}
+	}
+	if wins != 1 || conflicts != n-1 {
+		t.Fatalf("wins=%d conflicts=%d, want exactly 1 win", wins, conflicts)
 	}
 }
