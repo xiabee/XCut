@@ -131,6 +131,13 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				if tt.Type != "cut" && tt.Type != "fade" && tt.Type != "xfade" {
 					errs = append(errs, fmt.Sprintf("%s: transition type %q unsupported", ctx, tt.Type))
 				}
+				// xfade blends into the NEXT clip; on the last clip there is
+				// nothing to blend with and the renderer would silently drop
+				// the declared transition — refuse instead (a fade-out wants
+				// type "fade", which IS honored on the last clip).
+				if tt.Type == "xfade" && ci == len(tr.Clips)-1 {
+					errs = append(errs, fmt.Sprintf("%s: trailing xfade has no following clip to blend with — use fade for a fade-out", ctx))
+				}
 				if !finite(tt.Duration) || tt.Duration < 0 || tt.Duration > c.Duration() {
 					errs = append(errs, fmt.Sprintf("%s: transition duration %g invalid", ctx, tt.Duration))
 				}

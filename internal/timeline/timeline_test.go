@@ -231,3 +231,57 @@ func TestValidateRejectsOverlongTimeline(t *testing.T) {
 	}
 	t.Fatalf("error must name the cap: %v", err)
 }
+
+// TestValidateRejectsTrailingXfade: an xfade on the LAST clip has no
+// following clip to blend with — the renderer used to silently drop it
+// (declared transition ≠ rendered output). Validation refuses; a trailing
+// fade stays legal (it is the fade-out).
+func TestValidateRejectsTrailingXfade(t *testing.T) {
+	mk := func(lastType *Transition) *Timeline {
+		return &Timeline{
+			Version: Version,
+			Canvas:  Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []Clip{
+					{ID: "c1", AssetID: "a", SourceStart: 0, SourceEnd: 4, TimelineStart: 0, Speed: 1, Volume: 1},
+					{ID: "c2", AssetID: "a", SourceStart: 0, SourceEnd: 4, TimelineStart: 4, Speed: 1, Volume: 1, Transition: lastType},
+				},
+			}},
+		}
+	}
+	lookup := FixedLookup(map[string]float64{"a": 10})
+
+	tl := mk(&Transition{Type: "xfade", Duration: 1})
+	err := tl.Validate(lookup)
+	if err == nil {
+		t.Fatal("trailing xfade accepted")
+	}
+	var me *MultiError
+	if !asMulti(err, &me) {
+		t.Fatalf("not a MultiError: %v", err)
+	}
+	found := false
+	for _, d := range me.Details() {
+		if strings.Contains(d, "trailing xfade") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("details do not mention trailing xfade: %v", me.Details())
+	}
+
+	// A trailing fade remains the legal fade-out.
+	tl = mk(&Transition{Type: "fade", Duration: 1})
+	if err := tl.Validate(lookup); err != nil {
+		t.Fatalf("trailing fade rejected: %v", err)
+	}
+
+	// xfade between clips (not trailing) stays legal.
+	tl = mk(nil)
+	tl.Tracks[0].Clips[0].Transition = &Transition{Type: "xfade", Duration: 1}
+	if err := tl.Validate(lookup); err != nil {
+		t.Fatalf("mid xfade rejected: %v", err)
+	}
+}
