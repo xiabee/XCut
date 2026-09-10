@@ -3,6 +3,54 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-10/11 nightly session #5
+
+### Added
+- Job cancellation: `POST /api/v1/jobs/{id}/cancel` plus a Cancel button on
+  every queued/running job row in the web UI. Queued jobs cancel before
+  their body runs; running jobs lose their ffmpeg children with the job
+  context and land in the `cancelled` terminal state. Cancelled renders
+  reclaim their scratch; a second cancel on a terminal job is a `409`.
+- serve startup sweeps: orphaned queued/running job rows are reconciled
+  regardless of age (serve holds the workspace writer lock, so any row it
+  sees was left by a dead process) and `temp/` crash debris is reclaimed,
+  both reported on stdout. Previously a crash could leave a phantom
+  "running" job blocking its project with `409`s for up to
+  `job.stale_running_after` (2h), and scratch piled against the temp
+  budget while the only remover (`xcut cleanup`) was lock-refused.
+- gosec (HIGH severity, HIGH confidence) is wired into the full local
+  gate; findings are suppressed only per-site with written justifications.
+- UI: job polling self-heals after the server disappears — capped backoff
+  retries, a banner after repeated failures, and `watchUntilDone` gives up
+  on vanished job rows instead of polling them at 1 Hz forever.
+
+### Fixed
+- A cancelled job that wins the concurrency-slot race no longer leaves a
+  phantom queued row: the slot-acquisition select can legally pick the
+  slot while cancellation is already pending, and `SetJobRunning` then
+  failed on the cancelled context without any terminal bookkeeping. The
+  job now re-checks cancellation after acquiring a slot, and a failed
+  start write falls back to a best-effort `failed` finish; all job
+  bookkeeping failures log loudly instead of being discarded.
+- Timeline saves are revision-guarded: `PUT /timeline` must send the
+  revision it read (GET returns it); a mismatch — another tab saved, or
+  the timeline was regenerated — is a `409` instead of silently destroying
+  the other writer's clips. Regeneration bumps the revision too, and
+  revision-less blind overwrites of an existing document are refused.
+- serve sets full HTTP timeouts (read/write/idle): a stalled reader of a
+  media response no longer pins a handler goroutine forever, and a second
+  Ctrl+C force-exits a wedged graceful drain.
+- Applying a rally-mode style (badminton_highlight) to media without audio
+  streams fails early, naming the missing signal, instead of burning a
+  full analysis pass and dying on the generic "no events satisfy…" error.
+- Validation refuses a trailing xfade (nothing to blend with — the
+  renderer used to silently drop the declared transition); a trailing
+  fade stays legal as the fade-out.
+
+### Docs
+- README: the knob table now lists every configuration knob (8 were
+  undocumented); the migration count in PROJECT_STATE matches the code.
+
 ## [Unreleased] — 2026-09-09/10 nightly session #4
 
 ### Added
