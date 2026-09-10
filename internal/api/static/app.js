@@ -154,13 +154,29 @@ async function refreshJobs() {
     meta.className = "meta";
     meta.textContent = j.error_message || j.id;
     li.append(status, type, meta);
+    if (j.status === "running" || j.status === "queued") {
+      running = true;
+      const cancel = document.createElement("button");
+      cancel.className = "cancel";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => cancelJob(j.id));
+      li.append(cancel);
+    }
     ul.appendChild(li);
-    if (j.status === "running" || j.status === "queued") running = true;
   }
   busy(running);
   // Refresh assets once after a batch of work likely changed them.
   if (!running) refreshAssetsSoon();
   schedulePoll(running ? 800 : 2500);
+}
+
+async function cancelJob(jobID) {
+  try {
+    await post(`/api/v1/jobs/${jobID}/cancel`, {});
+  } catch (e) {
+    banner(`Cancel failed: ${e.message}`);
+  }
+  refreshJobs();
 }
 
 let assetsTimer = null;

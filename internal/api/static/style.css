@@ -69,6 +69,11 @@ td { padding: 4px 6px; border-top: 1px solid var(--line); }
 .jobs .running .status { color: var(--run); }
 .jobs .queued .status { color: var(--dim); }
 .jobs .meta { color: var(--dim); font-size: 12px; margin-left: auto; }
+.jobs button.cancel {
+  padding: 1px 8px; font-weight: 400; font-size: 12px;
+  background: transparent; color: var(--err); border: 1px solid var(--err);
+}
+.jobs button.cancel:hover { background: var(--err); color: var(--bg); }
 
 video { width: 100%; max-height: 360px; border-radius: 6px; background: #000; }
 a { color: var(--acc); }

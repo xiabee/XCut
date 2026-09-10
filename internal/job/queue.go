@@ -53,6 +53,15 @@ type Queue struct {
 	// prunes as jobs finish. <=0 disables pruning (tests).
 	maxHistory int
 	wg         sync.WaitGroup
+
+	// cancels holds one CancelFunc per active async job (queued or running),
+	// registered synchronously in RunAsync before the runner goroutine starts
+	// and removed at terminal state. Cancel(id) cancels the job's derived
+	// context; the standard terminal bookkeeping in runJob persists
+	// StatusCancelled. Inline jobs (CLI) are not registered — their owner
+	// process cancels them with Ctrl+C.
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc
 }
 
 // NewQueue builds a queue allowing at most maxConcurrent simultaneously
@@ -69,7 +78,8 @@ func NewQueue(db *storage.DB, maxConcurrent, maxRenderWorkers, maxHistory int, l
 	if log == nil {
 		log = slog.Default()
 	}
-	q := &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent), maxHistory: maxHistory}
+	q := &Queue{db: db, log: log, slots: make(chan struct{}, maxConcurrent), maxHistory: maxHistory,
+		cancels: make(map[string]context.CancelFunc)}
 	if maxRenderWorkers < maxConcurrent {
 		q.renders = make(chan struct{}, maxRenderWorkers)
 	}
@@ -156,12 +166,43 @@ func (q *Queue) RunAsync(ctx context.Context, typ, projectID string, class Resou
 	if err != nil {
 		return "", err
 	}
+	// Register the cancel handle synchronously so a Cancel arriving between
+	// row creation and goroutine start still lands (the runner goroutine
+	// removes it at terminal state).
+	jobCtx, cancel := context.WithCancel(ctx)
+	q.mu.Lock()
+	q.cancels[rec.ID] = cancel
+	q.mu.Unlock()
 	q.wg.Add(1)
 	go func() {
 		defer q.wg.Done()
-		q.runJob(ctx, rec.ID, typ, projectID, fn)
+		defer q.unregister(rec.ID)
+		q.runJob(jobCtx, rec.ID, typ, projectID, fn)
 	}()
 	return rec.ID, nil
+}
+
+// Cancel requests cancellation of an active async job. It reports whether
+// the job was found among this process's active (queued or running) jobs;
+// false also covers jobs that already finished (their handle is gone).
+// Cancellation is cooperative: the runner observes context cancellation
+// (ffmpeg children die with it) and the queue persists StatusCancelled on
+// the way out, so the caller should poll the job row for the terminal state.
+func (q *Queue) Cancel(id string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	cancel, ok := q.cancels[id]
+	if !ok {
+		return false
+	}
+	cancel()
+	return true
+}
+
+func (q *Queue) unregister(id string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.cancels, id)
 }
 
 // runJob executes one recorded job to a terminal state (shared by inline and

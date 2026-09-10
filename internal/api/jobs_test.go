@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -369,4 +371,138 @@ func getJobs(t *testing.T, baseURL, projectID string) []any {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return out.Jobs
+}
+
+// TestJobCancelEndpoint covers POST /api/v1/jobs/{id}/cancel: a running job
+// is accepted (202) and reaches the cancelled terminal state, a terminal job
+// conflicts (409), an unknown id is 404, and an active row with no live
+// runner in this process (crash leftover) conflicts with the remediation in
+// the message. No ffmpeg needed — the runner is a stub.
+func TestJobCancelEndpoint(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	_ = config.Resolve(cfg)
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	defer s.Shutdown()
+
+	ctx := t.Context()
+	started := make(chan struct{})
+	jobID, err := s.Pipe.Queue.RunAsync(ctx, "import", "", "IO_HEAVY", nil,
+		func(ctx context.Context, progress func(float64)) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	// Wait for running.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(ts.URL + "/api/v1/jobs/" + jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct {
+			Job struct {
+				Status string `json:"status"`
+			} `json:"job"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if out.Job.Status == "running" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job never started, status=%s", out.Job.Status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Cancel → 202.
+	resp, err := http.Post(ts.URL+"/api/v1/jobs/"+jobID+"/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("cancel → %d, want 202", resp.StatusCode)
+	}
+
+	// Terminal state is cancelled.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(ts.URL + "/api/v1/jobs/" + jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct {
+			Job struct {
+				Status string `json:"status"`
+			} `json:"job"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if out.Job.Status == "cancelled" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job did not cancel in time, status=%s", out.Job.Status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Cancel again → 409 (already terminal).
+	resp, err = http.Post(ts.URL+"/api/v1/jobs/"+jobID+"/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("second cancel → %d, want 409", resp.StatusCode)
+	}
+
+	// Unknown id → 404.
+	resp, err = http.Post(ts.URL+"/api/v1/jobs/job_nope/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown cancel → %d, want 404", resp.StatusCode)
+	}
+
+	// Active row with no live runner (crash leftover) → 409 with remediation.
+	orphan, err := db.CreateJob(ctx, "render", "", "CPU_HEAVY", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Post(ts.URL+"/api/v1/jobs/"+orphan.ID+"/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("orphan cancel → %d, want 409", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "reconciled") {
+		t.Fatalf("orphan cancel message lacks remediation: %s", body)
+	}
 }

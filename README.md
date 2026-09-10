@@ -134,12 +134,15 @@ curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
+curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
 curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
 ```
 
 Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
 Only one analyze/timeline/render job may be queued or running per project — a
-duplicate trigger returns `409` (imports are never deduplicated).
+duplicate trigger returns `409` (imports are never deduplicated). Active jobs
+show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
+cancelled with Ctrl+C.
 Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
 authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
 measured 12 MB RAM, ~0% CPU (docs/PERFORMANCE.md).

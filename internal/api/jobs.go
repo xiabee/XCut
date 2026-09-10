@@ -24,6 +24,38 @@ func (s *Server) handleJobGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"job": j})
 }
 
+// handleJobCancel requests cancellation of an active job. The response is
+// 202 (request accepted; poll the job row for the terminal state), 404 for
+// an unknown id, and 409 for a job that already finished or one whose row is
+// active but has no live runner in this process (left by a crashed previous
+// instance — those are reconciled at startup).
+func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	j, err := s.DB.GetJob(r.Context(), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if j == nil {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "job not found", nil))
+		return
+	}
+	if j.Status != storage.StatusQueued && j.Status != storage.StatusRunning {
+		writeErr(w, xcerr.E(xcerr.CodeConflict,
+			"job already "+j.Status+" — nothing to cancel", nil))
+		return
+	}
+	if !s.Pipe.Queue.Cancel(id) {
+		writeErr(w, xcerr.E(xcerr.CodeConflict,
+			"job row is active but no live runner holds it in this process (left by a previous crashed instance) — it is reconciled on next startup", nil))
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"cancelling": true,
+		"job_id":     id,
+	})
+}
+
 // requireProjectRow resolves the {id} path value to a project (404 when
 // unknown). Returns nil after writing the error response.
 func (s *Server) requireProjectRow(w http.ResponseWriter, r *http.Request) *storage.Project {

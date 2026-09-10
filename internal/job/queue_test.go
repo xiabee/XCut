@@ -319,3 +319,136 @@ func TestQueuePrunesHistory(t *testing.T) {
 		t.Fatalf("terminal job rows = %d, want 2 (max_history)", n)
 	}
 }
+
+func TestCancelRunningJob(t *testing.T) {
+	q, db := testQueue(t, 2)
+	ctx := context.Background()
+
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetProjectByName(ctx, "p")
+
+	started := make(chan struct{})
+	id, err := q.RunAsync(ctx, TypeRender, p.ID, ClassCPUHeavy, nil,
+		func(ctx context.Context, progress func(float64)) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	// Wait for the row to be marked running before cancelling.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		j, err := db.GetJob(ctx, id)
+		if err != nil || j == nil {
+			t.Fatalf("GetJob: %+v, %v", j, err)
+		}
+		if j.Status == storage.StatusRunning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job never started: %+v", j)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if !q.Cancel(id) {
+		t.Fatal("Cancel reported false for a running job")
+	}
+	q.Wait()
+
+	j, err := db.GetJob(ctx, id)
+	if err != nil || j == nil {
+		t.Fatalf("GetJob: %+v, %v", j, err)
+	}
+	if j.Status != storage.StatusCancelled {
+		t.Fatalf("status = %s, want cancelled", j.Status)
+	}
+	if j.ErrorCode != string(xcerr.CodeCancelled) || j.FinishedAt == nil {
+		t.Fatalf("cancelled job: %+v", j)
+	}
+	// The handle is gone at terminal state — a second cancel is a no-op.
+	if q.Cancel(id) {
+		t.Fatal("Cancel reported true for a finished job")
+	}
+}
+
+func TestCancelQueuedJobBeforeStart(t *testing.T) {
+	q, db := testQueue(t, 1)
+	ctx := context.Background()
+
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetProjectByName(ctx, "p")
+
+	releaseA := make(chan struct{})
+	if _, err := q.RunAsync(ctx, TypeAnalyze, p.ID, ClassCPUHeavy, nil,
+		func(ctx context.Context, progress func(float64)) error {
+			<-releaseA // hold the only slot until the test is done
+			return nil
+		}); err != nil {
+		t.Fatal(err)
+	}
+
+	var ranB atomic.Bool
+	idB, err := q.RunAsync(ctx, TypeRender, p.ID, ClassCPUHeavy, nil,
+		func(ctx context.Context, progress func(float64)) error {
+			ranB.Store(true)
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !q.Cancel(idB) {
+		t.Fatal("Cancel reported false for a queued job")
+	}
+
+	// B must reach the cancelled terminal state without ever running; poll
+	// (bounded) instead of q.Wait, which would deadlock on A holding the
+	// slot until releaseA closes below.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		j, err := db.GetJob(ctx, idB)
+		if err != nil || j == nil {
+			t.Fatalf("GetJob: %+v, %v", j, err)
+		}
+		if j.Status == storage.StatusCancelled {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("queued job never cancelled, status=%s", j.Status)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if ranB.Load() {
+		t.Fatal("cancelled-before-start job body ran")
+	}
+
+	close(releaseA)
+	q.Wait()
+}
+
+func TestCancelUnknownAndTerminal(t *testing.T) {
+	q, _ := testQueue(t, 1)
+	ctx := context.Background()
+
+	if q.Cancel("job_doesnotexist") {
+		t.Fatal("Cancel reported true for an unknown job")
+	}
+
+	id, err := q.RunAsync(ctx, TypeImport, "", ClassIOHeavy, nil, noopRunner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Wait()
+	if q.Cancel(id) {
+		t.Fatal("Cancel reported true for a terminal job")
+	}
+}
