@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/xiabee/XCut/internal/api"
@@ -63,13 +65,7 @@ func cmdServe(a *App, args []string) error {
 		fmt.Fprintf(a.Stdout, "reconciled %d orphaned job(s) left by a previous run\n", n)
 	}
 
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-		// No write/idle timeouts yet: long requests (future render triggers)
-		// will need explicit budgets; revisit with the job-running endpoints.
-	}
+	httpServer := newHTTPServer(addr, srv.Handler())
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -91,12 +87,38 @@ func cmdServe(a *App, args []string) error {
 		return xcerr.E(xcerr.CodeInternal, "server error", err)
 	case <-a.Ctx.Done():
 		a.Log.Info("server shutting down")
+		// Graceful drain waits for in-flight jobs; a wedged drain must not
+		// own the terminal — the second Ctrl+C is a hard exit.
+		forceCh := make(chan os.Signal, 1)
+		signal.Notify(forceCh, os.Interrupt)
+		defer signal.Stop(forceCh)
+		go func() {
+			<-forceCh
+			fmt.Fprintln(a.Stdout, "forced exit (second signal)")
+			os.Exit(130)
+		}()
+		fmt.Fprintln(a.Stdout, "shutting down — press ctrl+c again to force quit")
 		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shCtx)
 		srv.Shutdown() // wait for in-flight async jobs
 		fmt.Fprintln(a.Stdout, "server stopped")
 		return nil
+	}
+}
+
+// newHTTPServer builds the loopback API server with its full timeout set.
+// WriteTimeout bounds wedged response writers (a stalled reader of a media
+// response would otherwise pin the handler goroutine forever); it is generous
+// because loopback transfers complete quickly even for large MP4s.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
 
