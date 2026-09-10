@@ -25,7 +25,8 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 - **Workspace lock** (`xcut.lock`, O_EXCL): writer commands serialize;
   readers lock-free; stale locks of dead PIDs auto-reclaimed (crash-safe);
   E2E verified with serve + CLI + forced kill.
-- **Storage**: SQLite (modernc, no CGO), WAL, migrations v1, FK, cascade.
+- **Storage**: SQLite (modernc, no CGO), WAL, migrations v2 (v2 adds the
+  partial unique index for exclusive active jobs), FK, cascade.
 - **Jobs**: DB-backed queue; bounded concurrency; sync (CLI) + async (API);
   panic→failed; startup orphan reconciliation.
 - **Pipeline** (`internal/pipeline`): import/analyze/timeline/render shared

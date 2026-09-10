@@ -62,13 +62,15 @@ Verify the result with any player or `ffprobe`.
 defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
 < CLI flags.
 
-Key knobs (see `docs/ARCHITECTURE.md` for the full model):
+Knobs (the complete resource/config surface; defaults shown):
 
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | `~/.xcut` | data directory (DB, cache, temp, projects) |
 | `resource.max_concurrent_jobs` | 2 | hard cap on parallel jobs |
 | `resource.max_ffmpeg_processes` | 2 | hard cap on parallel ffmpeg/ffprobe |
+| `resource.max_render_workers` | 1 | independent cap on concurrent render jobs |
+| `resource.max_analysis_workers` | 2 | per-analysis ffmpeg call concurrency |
 | `resource.ffmpeg_threads` | 2 | per-process `-threads` |
 | `resource.frame_sample_fps` | 2 | analysis sampling rate |
 | `resource.analysis_width` | 640 | analysis downscale width |
@@ -77,8 +79,13 @@ Key knobs (see `docs/ARCHITECTURE.md` for the full model):
 | `resource.proxy_threads` | inherit | one-shot proxy encode threads (decode-bound; higher cuts cold-start) |
 | `resource.analyzer_call_timeout` | `30m` | per-analyzer ffmpeg budget (hang protection) |
 | `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
+| `jobs.max_history` | 500 | terminal job rows kept (pruned as jobs finish) |
+| `job.stale_running_after` | `2h` | age-gate for CLI startup orphan reconciliation |
+| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve log file rotation |
 | `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
+| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar binary (capability-detected) |
+| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | toolchain override (or `XCUT_FFMPEG`/`XCUT_FFPROBE`) |
 
 Nothing runs unbounded: jobs, processes, cache, proxies, temp and logs all
 have configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space;
