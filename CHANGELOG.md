@@ -3,6 +3,53 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-09/10 nightly session #4
+
+### Added
+- `resource.max_render_workers` (default 1) now bounds concurrent render
+  jobs with a dedicated queue semaphore; previously renders shared the
+  generic job pool, so `max_concurrent_jobs=4` meant up to four
+  simultaneous ffmpeg encodes.
+- `resource.max_temp_gb` is enforced: no new scratch is created once
+  `temp/` sits at the budget (the error names `xcut cleanup` / stopping
+  `xcut serve`), and a render aborts if its own scratch outgrows the
+  remaining allowance.
+- Duplicate-trigger protection: at most one queued/running analyze,
+  timeline or render job per project — API duplicates get `409`, backed by
+  a partial UNIQUE index (migration v2). Imports stay concurrent.
+- Job history retention: `jobs.max_history` (default 500) prunes terminal
+  job rows as jobs finish; the jobs list no longer grows forever.
+- UI: regenerating the timeline now asks twice ("Replace timeline?
+  Click again") — regeneration overwrites manual editor edits; the
+  pre-regeneration document remains recoverable via Restore backup.
+- Project deletion guard: `DELETE /api/v1/projects/{id}` and
+  `xcut project delete` refuse while the project has queued/running jobs.
+
+### Fixed
+- `resource.max_ffmpeg_processes` is now real: `media.Run` acquires the
+  global process limiter internally and renders run through it too —
+  previously only proxy generation and onset streaming were capped while
+  probe, analyzers and all three render stages bypassed it.
+- `POST /render` with an empty body works; a malformed body returns one
+  clean 400 and queues nothing (previously the client got a double-written
+  response while the render ran anyway).
+- Analysis proxies are keyed by source fingerprint + analysis geometry:
+  raising `analysis_width` / changing `frame_sample_fps` regenerates
+  instead of silently reusing a proxy built for the old canvas.
+- Cache eviction never deletes another writer's in-flight `.tmp-*` scratch
+  (on Linux that made concurrent analyses fail with rename ENOENT).
+- Clip `speed` is bounded to [0.1, 10] with a 24h per-clip/total render
+  cap: tiny speeds used to overflow clip duration to +Inf (timeline PUT
+  returned 500) or turn a typo into a many-hour render.
+- Render verify tolerance is now two frames + 5% relative; the old flat
+  0.5s floor let a 24%-truncated 2s render publish as "verified".
+- Worker calls honor `resource.analyzer_call_timeout` (the built-in
+  10-minute cap used to win regardless of configuration), and a sidecar
+  that answers but never exits no longer holds the call until the deadline.
+- Child ffmpeg/ffprobe output capture is capped at 1 MB (last bytes win):
+  corrupt media spewing per-packet decode errors can no longer grow host
+  memory for the whole render.
+
 ## [Unreleased] — 2026-09-08/09 nightly session #3
 
 ### Fixed
