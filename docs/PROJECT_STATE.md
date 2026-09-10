@@ -153,16 +153,20 @@ Updated: 2026-09-11 02:15 (+08:00) — nightly session #5, mid-night
   remains the fallback). This machine's windows-gnu gcc satisfies it since
   session #3.
 - serve has no auth: loopback-only by construction; remote bind refused.
-- Manual timeline edits are overwritten by style regeneration (by design,
-  still to be surfaced in UI copy).
+- Manual timeline edits are overwritten by style regeneration (by design;
+  the UI two-step confirm warns, a backup keeps one level of undo, and the
+  document revision gives stale editors a loud 409 instead of silent loss).
 - This machine's WDAC policy intermittently blocks freshly built test
   binaries in %TEMP% (`go test -c -o <path>` + direct run works around it;
   go run may fail) — environmental, not a product issue.
 
 ## Performance (measured — docs/PERFORMANCE.md)
 
-- serve idle: 12.3 MB RAM / ~0% CPU (session #1; goals met)
-- analyze 30-min 720p30: **0.035x realtime**, ffmpeg child peak RSS ~33 MB
+- serve idle: 14.2 MB WS / ~0% CPU (session #5 re-check; goals met)
+- analyze 30-min 1080p30: 35.9 s wall / **0.12x realtime** (session #4
+  re-check after limiter + capped output capture; no regression)
+- render (concat): 3.3 s wall for a 10 s 720p30 clip (session #4 A/B
+  against the pre-M20 baseline: identical, no regression)
 - audio onset 0.121 s / RMS 0.176 s per 60 s audio (decode-bound)
 
 ## Next Priorities
@@ -173,7 +177,7 @@ Updated: 2026-09-11 02:15 (+08:00) — nightly session #5, mid-night
 2. AI sidecar: first real analyzer (Whisper transcript → event labels) on
    top of protocol v1 if a local Whisper exists; else capability remains
    honestly absent.
-3. Timeline UX: per-clip preview + trim handles (manual editing is the
-   fallback when algorithms disagree).
-4. Optional: re-enable push/PR CI when quota recovers (restore notes in
+3. Optional: re-enable push/PR CI when quota recovers (restore notes in
    ci.yml; consider concurrency cancel + docs-only paths-ignore).
+4. Phase 4 (desktop packaging, model registry, FFmpeg sandbox) — needs
+   maintainer decisions; deliberately untouched by night work.
