@@ -134,40 +134,51 @@ async function refreshAssets() {
 }
 
 /* ---------- jobs ---------- */
+// Polling must survive transient failures (serve restart, laptop sleep):
+// one unhandled rejection used to stop rescheduling forever, silently
+// freezing the job panel and leaving busy() buttons stuck.
+let pollFailures = 0;
 async function refreshJobs() {
   if (!currentProject) return;
-  const { jobs } = await api(`/api/v1/projects/${currentProject.id}/jobs`);
-  const ul = $("jobs");
-  ul.innerHTML = "";
-  let running = false;
-  for (const j of jobs.slice(0, 12)) {
-    const li = document.createElement("li");
-    li.className = j.status;
-    const pct = j.status === "running" ? ` ${Math.round((j.progress || 0) * 100)}%` : "";
-    // error_message may echo hostile input (e.g. filenames): textContent only.
-    const status = document.createElement("span");
-    status.className = "status";
-    status.textContent = `${j.status}${pct}`;
-    const type = document.createElement("span");
-    type.textContent = j.type;
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = j.error_message || j.id;
-    li.append(status, type, meta);
-    if (j.status === "running" || j.status === "queued") {
-      running = true;
-      const cancel = document.createElement("button");
-      cancel.className = "cancel";
-      cancel.textContent = "Cancel";
-      cancel.addEventListener("click", () => cancelJob(j.id));
-      li.append(cancel);
+  try {
+    const { jobs } = await api(`/api/v1/projects/${currentProject.id}/jobs`);
+    pollFailures = 0;
+    const ul = $("jobs");
+    ul.innerHTML = "";
+    let running = false;
+    for (const j of jobs.slice(0, 12)) {
+      const li = document.createElement("li");
+      li.className = j.status;
+      const pct = j.status === "running" ? ` ${Math.round((j.progress || 0) * 100)}%` : "";
+      // error_message may echo hostile input (e.g. filenames): textContent only.
+      const status = document.createElement("span");
+      status.className = "status";
+      status.textContent = `${j.status}${pct}`;
+      const type = document.createElement("span");
+      type.textContent = j.type;
+      const meta = document.createElement("span");
+      meta.className = "meta";
+      meta.textContent = j.error_message || j.id;
+      li.append(status, type, meta);
+      if (j.status === "running" || j.status === "queued") {
+        running = true;
+        const cancel = document.createElement("button");
+        cancel.className = "cancel";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => cancelJob(j.id));
+        li.append(cancel);
+      }
+      ul.appendChild(li);
     }
-    ul.appendChild(li);
+    busy(running);
+    // Refresh assets once after a batch of work likely changed them.
+    if (!running) refreshAssetsSoon();
+    schedulePoll(running ? 800 : 2500);
+  } catch (e) {
+    pollFailures++;
+    if (pollFailures === 5) banner("Lost contact with the server — retrying…");
+    schedulePoll(Math.min(2500 * pollFailures, 15000));
   }
-  busy(running);
-  // Refresh assets once after a batch of work likely changed them.
-  if (!running) refreshAssetsSoon();
-  schedulePoll(running ? 800 : 2500);
 }
 
 async function cancelJob(jobID) {
@@ -207,17 +218,28 @@ function jobIdOf(id) { return id; }
 
 async function watchUntilDone(jobID) {
   // refreshJobs polls anyway; this re-enables once nothing is running.
+  // A job row that is gone for good (pruned, or serve restarted mid-job)
+  // must not keep this timer polling a 404 at 1Hz forever.
+  let misses = 0;
   const timer = setInterval(async () => {
+    let job;
     try {
-      const { job } = await api(`/api/v1/jobs/${jobID}`);
-      if (["succeeded", "failed", "cancelled"].includes(job.status)) {
-        clearInterval(timer);
-        if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
-        if (job.status === "succeeded" && job.type === "render") showPlayer();
-        busy(false);
-        refreshJobs();
-      }
-    } catch (_) { /* transient */ }
+      job = (await api(`/api/v1/jobs/${jobID}`)).job;
+      misses = 0;
+    } catch (_) {
+      if (++misses < 5) return; // transient — the poll loop also retries
+      clearInterval(timer);
+      busy(false);
+      refreshJobs();
+      return;
+    }
+    if (["succeeded", "failed", "cancelled"].includes(job.status)) {
+      clearInterval(timer);
+      if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
+      if (job.status === "succeeded" && job.type === "render") showPlayer();
+      busy(false);
+      refreshJobs();
+    }
   }, 1000);
 }
 
