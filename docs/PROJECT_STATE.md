@@ -82,8 +82,10 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 - CLI: `version|config show|init|doctor|cleanup [--dry-run]|cache
   stats|clear [--dry-run]|project create|list|show|delete|jobs|import|
   analyze [assetIDs]|timeline|render|auto|serve|eval`
-- HTTP `/api/v1`: health, projects CRUD, jobs, async triggers, timeline
-  GET/PUT, styles list, render download (range-capable playback)
+- HTTP `/api/v1`: health, projects CRUD (delete guarded while jobs are
+  active → 409), jobs, async triggers (one active analyze/timeline/render
+  per project — duplicates → 409), timeline GET/PUT, styles list, render
+  download (range-capable playback)
 - Full E2E paths re-verified this session: `xcut auto` (generic), render
   refusing `--out` onto source media (source byte-identical after), mixed
   transition renders (xfade+cut, xfade+fade), proxy-backed analyze
