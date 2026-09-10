@@ -54,11 +54,17 @@ type Track struct {
 
 // Timeline is the root document.
 type Timeline struct {
-	Version   int               `json:"version"`
-	ProjectID string            `json:"project_id,omitempty"`
-	Canvas    Canvas            `json:"canvas"`
-	Tracks    []Track           `json:"tracks"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
+	Version   int     `json:"version"`
+	ProjectID string  `json:"project_id,omitempty"`
+	Canvas    Canvas  `json:"canvas"`
+	Tracks    []Track `json:"tracks"`
+	// Revision is a server-managed document counter (bumped on every saved
+	// write, absent until the first save). Writers must send the revision
+	// they read; a mismatch means the document changed underneath them and
+	// the save is refused — without this, two editors silently destroy each
+	// other's clips. Not part of the schema version above.
+	Revision int64             `json:"revision,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // Duration returns the total timeline length (end of the last clip).

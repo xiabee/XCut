@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
@@ -20,6 +21,11 @@ import (
 type Server struct {
 	DB   *storage.DB
 	Pipe pipeline.Deps
+
+	// timelineMu serializes timeline check-and-write (revision guard) across
+	// concurrent PUTs and regeneration inside this process; the process
+	// itself owns the workspace writer lock.
+	timelineMu sync.Mutex
 }
 
 // Shutdown waits for in-flight async jobs (bounded by the caller's timeout).

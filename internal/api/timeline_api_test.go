@@ -241,3 +241,60 @@ func TestProjectDeleteWithActiveJobs(t *testing.T) {
 		t.Fatalf("delete after terminal jobs: %d (want 200): %v", rec.Code, out)
 	}
 }
+
+// TestTimelineRevisionGuard: PUTs carry the revision they read; a stale
+// revision (another tab saved, or the timeline was regenerated) is refused
+// with 409 instead of silently destroying the other writer's document.
+func TestTimelineRevisionGuard(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "rev"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "rev")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+
+	mk := func(rev int64) string {
+		tl := &timeline.Timeline{
+			Version:  timeline.Version,
+			Revision: rev,
+			Canvas:   timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []timeline.Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []timeline.Clip{{
+					ID: "c1", AssetID: asset.ID, SourceStart: 0, SourceEnd: 5,
+					TimelineStart: 0, Speed: 1, Volume: 1,
+				}},
+			}},
+		}
+		return marshalTimeline(t, tl)
+	}
+
+	// First save: no stored document, revision 0 accepted → doc at revision 1.
+	rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(0))
+	if rec.Code != http.StatusOK || out["revision"].(float64) != 1 {
+		t.Fatalf("first save: %d %v (want revision 1)", rec.Code, out)
+	}
+
+	// Matching revision → accepted, revision increments.
+	if rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(1)); rec.Code != http.StatusOK || out["revision"].(float64) != 2 {
+		t.Fatalf("second save: %d %v (want revision 2)", rec.Code, out)
+	}
+
+	// Stale revision → 409, stored document untouched.
+	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(1)); rec.Code != http.StatusConflict {
+		t.Fatalf("stale save: %d (want 409)", rec.Code)
+	}
+	rec, out = do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	if rec.Code != http.StatusOK || out["timeline"].(map[string]any)["revision"].(float64) != 2 {
+		t.Fatalf("stale save clobbered the document: %v", out)
+	}
+
+	// A blind save without any revision (old-style overwrite) is refused too.
+	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(0)); rec.Code != http.StatusConflict {
+		t.Fatalf("revision-less save: %d (want 409)", rec.Code)
+	}
+}

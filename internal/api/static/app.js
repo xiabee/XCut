@@ -387,6 +387,9 @@ async function saveTimeline() {
   const kept = clipEdits.filter(c => !c._removed);
   if (kept.length === 0) { banner("Cannot save: every clip is removed"); return; }
   const doc = JSON.parse(JSON.stringify(timelineDoc));
+  // Optimistic concurrency: send the revision we read; a mismatch (another
+  // tab saved, or the timeline was regenerated) is refused with 409.
+  doc.revision = timelineDoc.revision || 0;
   doc.tracks[0].clips = kept.map((c, i) => {
     const copy = { ...c };
     delete copy._removed;
@@ -404,7 +407,13 @@ async function saveTimeline() {
       body: JSON.stringify(doc),
     });
     const body = await resp.json();
-    if (!resp.ok) { banner(`Save rejected: ${body.message || resp.statusText}`); return; }
+    if (!resp.ok) {
+      banner(resp.status === 409
+        ? "Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits"
+        : `Save rejected: ${body.message || resp.statusText}`);
+      return;
+    }
+    timelineDoc.revision = body.revision;
     banner(`Timeline saved (${body.clips} clips)`);
     await refreshTimeline();
   } catch (e) { banner(`Save failed: ${e.message}`); }

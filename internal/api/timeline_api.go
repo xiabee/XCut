@@ -38,7 +38,10 @@ func (s *Server) handleTimelineGet(w http.ResponseWriter, r *http.Request) {
 
 // handleTimelinePut replaces the project timeline with the posted document.
 // The document must validate against the project's real assets before it is
-// stored — a bad edit can never reach the renderer.
+// stored — a bad edit can never reach the renderer. Saves are guarded by the
+// document's server-managed Revision: a client must send the revision it
+// read; a mismatch (another tab saved, or the timeline was regenerated)
+// refuses the save with 409 instead of silently destroying those changes.
 func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
@@ -68,21 +71,43 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := json.MarshalIndent(tl, "", "  ")
-	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err))
-		return
-	}
+	// Serialize the read-check-write against other PUTs and regeneration
+	// (single serve process owns the workspace, so an in-process mutex is
+	// the whole story).
+	s.timelineMu.Lock()
+	defer s.timelineMu.Unlock()
+
 	path, err := s.Pipe.TimelinePath(p.ID)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	current, err := timeline.LoadFile(path)
+	if err != nil && !xcerr.IsCode(err, xcerr.CodeNotFound) {
+		writeErr(w, err)
+		return
+	}
+	var storedRev int64
+	if current != nil {
+		if tl.Revision != current.Revision {
+			writeErr(w, xcerr.E(xcerr.CodeConflict,
+				"timeline changed since you loaded it (saved revision differs) — GET the current document and reapply your edits", nil))
+			return
+		}
+		storedRev = current.Revision
+	}
+	tl.Revision = storedRev + 1
+
+	b, err := json.MarshalIndent(tl, "", "  ")
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err))
 		return
 	}
 	if err := pipeline.WriteAtomic(path, b); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "clips": countClips(tl)})
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "clips": countClips(tl), "revision": tl.Revision})
 }
 
 func countClips(tl *timeline.Timeline) int {

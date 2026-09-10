@@ -372,10 +372,6 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		if err != nil {
 			return err
 		}
-		b, err := json.MarshalIndent(tl, "", "  ")
-		if err != nil {
-			return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
-		}
 		outPath, err := d.WS.SafeJoin(filepath.Join("projects", project.ID, "timeline.json"))
 		if err != nil {
 			return err
@@ -383,6 +379,7 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		// One-level undo: regeneration is the machine overwriting whatever
 		// the user last had (manual edits included), so keep the previous
 		// document around before replacing it.
+		var prevRevision int64
 		if prev, rerr := os.ReadFile(outPath); rerr == nil {
 			backupPath, err := d.TimelineBackupPath(project.ID)
 			if err != nil {
@@ -391,6 +388,17 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 			if err := WriteAtomic(backupPath, prev); err != nil {
 				return err
 			}
+			var prevDoc timeline.Timeline
+			if json.Unmarshal(prev, &prevDoc) == nil {
+				prevRevision = prevDoc.Revision
+			}
+		}
+		// Regeneration advances the document revision so stale editors get
+		// the same 409 protection against it that they get against PUTs.
+		tl.Revision = prevRevision + 1
+		b, err := json.MarshalIndent(tl, "", "  ")
+		if err != nil {
+			return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
 		}
 		if err := WriteAtomic(outPath, b); err != nil {
 			return err
