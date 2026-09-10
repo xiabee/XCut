@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/testmedia"
 	"github.com/xiabee/XCut/internal/workspace"
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // analyzeSetup builds a Deps with a real workspace/DB and imports n fixtures.
@@ -297,5 +299,57 @@ func TestRenderCancelledCleansScratch(t *testing.T) {
 	}
 	if _, err := os.Stat(out); err == nil {
 		t.Fatal("cancelled render produced an output file")
+	}
+}
+
+// TestTimelineRallyStyleWithoutAudio: a rally-mode style (badminton) applied
+// to media with no audio stream must fail early with a message that names
+// the missing signal, not the generic "no events satisfy..." from deep in
+// style.Build.
+func TestTimelineRallyStyleWithoutAudio(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d := NewDeps(context.Background(), db, ws, cfg, logger)
+
+	p, err := db.CreateProject(context.Background(), "silent-rally")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path, err := testmedia.GenerateVideoOnly(dir, "silent.mp4", 320, 240, 30, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, path); err != nil {
+		t.Fatal(err)
+	}
+	assets, err := db.ListAssets(context.Background(), p.ID)
+	if err != nil || len(assets) != 1 || assets[0].HasAudio {
+		t.Fatalf("fixture should import as video-only: hasAudio=%v err=%v", len(assets) > 0 && assets[0].HasAudio, err)
+	}
+
+	_, err = d.BuildTimeline(p, "badminton_highlight")
+	if err == nil {
+		t.Fatal("rally style accepted silent media")
+	}
+	if !strings.Contains(xcerr.UserMessage(err), "audio") {
+		t.Fatalf("error does not mention audio: %q", xcerr.UserMessage(err))
 	}
 }

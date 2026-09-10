@@ -261,3 +261,26 @@ func GenerateRally(dir, name string, width, height, fps int, duration float64, r
 	}
 	return out, nil
 }
+
+// GenerateVideoOnly writes an H.264 MP4 with NO audio stream (probe reports
+// has_audio=false) exercising scene changes via testsrc2. Deterministic.
+func GenerateVideoOnly(dir, name string, width, height, fps, seconds int) (string, error) {
+	out := filepath.Join(dir, name)
+	d := formatFloat(float64(seconds))
+	args := []string{
+		"-hide_banner", "-v", "error",
+		"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=s=%dx%d:r=%d:d=%s", width, height, fps, d),
+		"-map", "0:v",
+		"-an",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+		"-y", out,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}

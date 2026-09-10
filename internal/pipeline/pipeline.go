@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -335,6 +336,22 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		preset, err := style.Load(styleName, filepath.Join(d.WS.Root, "styles"))
 		if err != nil {
 			return err
+		}
+		// Rally segmentation keys off audio transients: with no audio stream
+		// anywhere the run would burn a full analysis pass only to die later
+		// with an opaque "no events satisfy the style's clip constraints".
+		if preset.EventConfig.Mode == event.ModeRally {
+			hasAudio := false
+			for i := range assets {
+				if assets[i].HasAudio {
+					hasAudio = true
+					break
+				}
+			}
+			if !hasAudio {
+				return xcerr.E(xcerr.CodeValidation,
+					fmt.Sprintf("style %q uses rally segmentation, which needs audio transients, but no imported asset has an audio stream", preset.Name), nil)
+			}
 		}
 		analyzers, err := d.analyzers()
 		if err != nil {
