@@ -3,12 +3,12 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
+Updated: 2026-09-11 02:15 (+08:00) — nightly session #5, mid-night
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: 23befdf+ (local commits; not pushed — CI is workflow_dispatch-only,
+- HEAD: f855dd0+ (local commits; not pushed — CI is workflow_dispatch-only,
   D11; push decision for the maintainer)
 - Branch: main
 - CI: quota-constrained (D11). `ci.yml` is workflow_dispatch-only;
@@ -28,7 +28,12 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
 - **Storage**: SQLite (modernc, no CGO), WAL, migrations v2 (v2 adds the
   partial unique index for exclusive active jobs), FK, cascade.
 - **Jobs**: DB-backed queue; bounded concurrency; sync (CLI) + async (API);
-  panic→failed; startup orphan reconciliation.
+  panic→failed; startup orphan reconciliation (age-gated for CLI opens;
+  serve sweeps ALL rows — it holds the writer lock, so any row it sees at
+  startup is dead-process debris, fresh or not); **job cancellation**
+  (`POST /api/v1/jobs/{id}/cancel` + UI button): per-job cancel contexts,
+  queued jobs cancel before their body runs, running jobs' ffmpeg children
+  die with the context, cancelled renders reclaim their scratch.
 - **Pipeline** (`internal/pipeline`): import/analyze/timeline/render shared
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
   Render outputs are guarded against overwriting source media, timeline-
@@ -59,10 +64,13 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   scoring weights (zero = legacy).
 - **Presets**: generic_highlight, badminton_highlight v2 (rally mode),
   ktv_mv v2 (onset-density weighted). Optional motion_roi block.
-- **Timeline → Render**: versioned timeline IR, strict validation (xfade
-  overlaps validated against transition duration), manual editing (GET/PUT
-  + UI editor), renderer with trim/normalize/concat **or a single join
-  filtergraph chaining xfade+acrossfade (transition joins) and concat
+- **Timeline → Render**: versioned timeline IR + server-managed document
+  **Revision** (PUT saves must send the revision they read; mismatch → 409;
+  regeneration bumps it too — stale editors can no longer silently destroy
+  a doc), strict validation (xfade overlaps validated against transition
+  duration; trailing xfade refused — nothing to blend with), manual editing
+  (GET/PUT + UI editor), renderer with trim/normalize/concat **or a single
+  join filtergraph chaining xfade+acrossfade (transition joins) and concat
   (hard joins) — cut/fade/xfade may be mixed freely within one timeline**,
   ffprobe verify, atomic publish; render output refused if it would
   overwrite a source media file, a timeline-referenced clip source, or the
@@ -84,13 +92,23 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   stats|clear [--dry-run]|project create|list|show|delete|jobs|import|
   analyze [assetIDs]|timeline|render|auto|serve|eval`
 - HTTP `/api/v1`: health, projects CRUD (delete guarded while jobs are
-  active → 409), jobs, async triggers (one active analyze/timeline/render
-  per project — duplicates → 409), timeline GET/PUT, styles list, render
-  download (range-capable playback)
+  active → 409), jobs (+ `POST /jobs/{id}/cancel`: 202 / 404 / 409
+  terminal-or-orphan), async triggers (one active analyze/timeline/render
+  per project — duplicates → 409), timeline GET/PUT (revision-guarded
+  saves; stale revision → 409), styles list, render download
+  (range-capable playback)
+- Web UI: project CRUD, import, analyze/timeline/render with per-job
+  Cancel button and polling that self-heals after serve restarts
+  (capped backoff + reconnect banner); two-step regenerate confirm;
+  per-clip preview, drag reorder, speed-aware durations
 - Full E2E paths re-verified this session: `xcut auto` (generic), render
   refusing `--out` onto source media (source byte-identical after), mixed
   transition renders (xfade+cut, xfade+fade), proxy-backed analyze
-  (proxy generated, original untouched), `xcut cache` stats/clear
+  (proxy generated, original untouched), `xcut cache` stats/clear,
+  cancel-mid-analyze on the release binary (zero leftover ffmpeg
+  processes), crash recovery (kill -9 serve mid-analyze → restart sweeps
+  the orphan and accepts a new analyze immediately), serve startup temp
+  sweep (seeded debris reclaimed)
 
 ## Actually Tested
 
@@ -101,9 +119,11 @@ Updated: 2026-09-09 00:15 (+08:00) — nightly session #3, end of feature work
   gate's cgo requirement
 - govulncheck clean on go1.26.6 (session #3 bumped the toolchain from
   go1.26.4: four stdlib advisories in crypto/tls, net/http, encoding/asn1
-  affected called code)
-- Remote acceptance: `night-automation ci run XCut --node remote-node` PASS twice
-  (after N1–N3 and again after N4)
+  affected called code); gosec HIGH/HIGH clean in the full gate since
+  session #5 (5 path-taint findings annotated with written justifications)
+- Remote acceptance: `night-automation ci run XCut --node remote-node` PASS after
+  every milestone (38 consecutive passes cumulative through session #5);
+  the node caught one real concurrency bug local runs had missed (M37)
 - `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
   toolchain fallback — no MSVC Build Tools on this machine)
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
