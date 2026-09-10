@@ -74,3 +74,39 @@ func TestServeLoggerWritesToFile(t *testing.T) {
 		t.Fatalf("log file missing record: %q", string(b))
 	}
 }
+
+// TestFileLoggerRotationReopenFailureWarns: when the rotated log file cannot
+// be reopened (here: a directory sits where the file belongs), the logger
+// TestFileLoggerRotationReopenFailureWarns: when the rotated log file cannot
+// be reopened, the logger prints exactly one warning to stderr instead of
+// dead-ending silently (every later write used to fail with no trace).
+func TestFileLoggerRotationReopenFailureWarns(t *testing.T) {
+	dir := t.TempDir()
+	fl, err := newFileLogger(dir, "serve", 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { fl.Close() })
+	if _, err := fl.Write([]byte("first")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sabotage the reopen: point the path at a directory that does not
+	// exist, and force the next write past the rotation threshold.
+	fl.mu.Lock()
+	fl.path = filepath.Join(dir, "rotated-away", "serve.log")
+	fl.written = fl.maxBytes
+	fl.mu.Unlock()
+
+	r, w, _ := os.Pipe()
+	old := os.Stderr
+	os.Stderr = w
+	_, _ = fl.Write([]byte("trigger rotation"))
+	_, _ = fl.Write([]byte("and again"))
+	w.Close()
+	os.Stderr = old
+	out, _ := io.ReadAll(r)
+	if n := strings.Count(string(out), "log rotation failed"); n != 1 {
+		t.Fatalf("stderr warnings = %d, want exactly 1 (%q)", n, string(out))
+	}
+}

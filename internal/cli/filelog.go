@@ -21,6 +21,7 @@ type fileLogger struct {
 	keep     int
 	f        *os.File
 	written  int64
+	warned   bool
 }
 
 func newFileLogger(dir, name string, maxMB, keep int) (*fileLogger, error) {
@@ -86,7 +87,13 @@ func (l *fileLogger) rotateLocked() {
 	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep+1))
 	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
-		return // logging is best-effort; nothing sane to do without a file
+		// Logging is best-effort, but never silently: a failed reopen used
+		// to dead-end the logger (every later write fails with no trace).
+		if !l.warned {
+			l.warned = true
+			fmt.Fprintf(os.Stderr, "xcut: log rotation failed — file logging is disabled for the rest of this session: %v\n", err)
+		}
+		return
 	}
 	l.f = f
 	l.written = 0
