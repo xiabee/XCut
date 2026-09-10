@@ -85,3 +85,5 @@ timeline duration (render). Wall time includes process startup.
 - Optimization requires evidence: benchmark → profile (pprof / cargo flamegraph)
   → hotspot → optimize → benchmark again. No rewrites on vibes; Rust ports must
   beat the Go baseline measurably.
+| 2026-09-11 | **session #5 re-check: serve idle RAM** | — | 14.2 MB WS / ~49 MB private | — | after M32-M48 (cancel registry, revision mutex, startup sweeps): **met** |
+| 2026-09-11 | **session #5 re-check: serve idle CPU** | 8 s idle | 0.078 s total since start, ~0% while idle | — | **met** |
