@@ -51,6 +51,18 @@ func cmdServe(a *App, args []string) error {
 	a.Log = slogSvc
 
 	srv := &api.Server{DB: db, Pipe: a.Pipeline(db)}
+
+	// The workspace writer lock is held for serve's lifetime, so every
+	// queued/running row visible at startup was left by a dead process.
+	// Sweep them all now: OpenDB's age-gated sweep alone would leave a fresh
+	// orphan "running" until stale_running_after passes, wedging its project
+	// behind duplicate-job 409s and the delete guard with no way to clear it.
+	if n, err := srv.Pipe.Queue.ReconcileOrphans(a.Ctx, 0); err != nil {
+		a.Log.Warn("startup job sweep failed", "err", err)
+	} else if n > 0 {
+		fmt.Fprintf(a.Stdout, "reconciled %d orphaned job(s) left by a previous run\n", n)
+	}
+
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),

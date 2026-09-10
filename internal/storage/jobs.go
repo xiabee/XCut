@@ -166,12 +166,18 @@ func (d *DB) FinishJob(ctx context.Context, id, status, errCode, errMsg string) 
 
 // ReconcileStale fails queued/running jobs older than the cutoff. Called at
 // startup: a CLI process that died leaves rows behind that will never run.
-// Returns the reconciled job ids.
+// olderThan <= 0 disables the age gate and sweeps every queued/running row —
+// only safe for a caller that provably outlives all previous writers (serve
+// holds the exclusive workspace lock, so any row it sees at startup was left
+// by a dead process). Returns the reconciled job ids.
 func (d *DB) ReconcileStale(ctx context.Context, olderThan time.Duration) ([]string, error) {
-	cutoff := time.Now().Add(-olderThan).Unix()
-	rows, err := d.QueryContext(ctx,
-		`SELECT id FROM jobs WHERE status IN (?, ?) AND created_at <= ?`,
-		StatusQueued, StatusRunning, cutoff)
+	q := `SELECT id FROM jobs WHERE status IN (?, ?)`
+	args := []any{StatusQueued, StatusRunning}
+	if olderThan > 0 {
+		q += ` AND created_at <= ?`
+		args = append(args, time.Now().Add(-olderThan).Unix())
+	}
+	rows, err := d.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeStorageFailure, "cannot scan stale jobs", err)
 	}

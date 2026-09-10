@@ -452,3 +452,54 @@ func TestCancelUnknownAndTerminal(t *testing.T) {
 		t.Fatal("Cancel reported true for a terminal job")
 	}
 }
+
+// TestReconcileOrphansFullSweep covers the serve-startup path: ReconcileOrphans
+// with a zero age gate clears even freshly created rows (safe only because
+// serve holds the workspace writer lock, so every row it sees at startup was
+// left by a dead process). The age-gated variant must leave the same rows
+// untouched — that gate protects readers opening a live writer's DB.
+func TestReconcileOrphansFullSweep(t *testing.T) {
+	q, db := testQueue(t, 1)
+	ctx := context.Background()
+
+	fresh := func(typ string) string {
+		id, err := q.RunInline(ctx, typ, "", ClassCPUHeavy, nil, noopRunner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE jobs SET status = 'running', started_at = ?, finished_at = NULL WHERE id = ?`,
+			time.Now().Unix(), id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	idA := fresh("render")
+	idB := fresh("analyze")
+
+	// Age gate: fresh rows survive.
+	n, err := q.ReconcileOrphans(ctx, 2*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("age-gated sweep touched %d fresh rows, want 0", n)
+	}
+
+	// Full sweep (serve startup): both rows are failed immediately.
+	n, err = q.ReconcileOrphans(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("full sweep reconciled %d, want 2", n)
+	}
+	for _, id := range []string{idA, idB} {
+		j, err := db.GetJob(ctx, id)
+		if err != nil || j == nil {
+			t.Fatalf("GetJob %s: %+v, %v", id, j, err)
+		}
+		if j.Status != storage.StatusFailed {
+			t.Fatalf("job %s status = %s, want failed", id, j.Status)
+		}
+	}
+}
