@@ -154,9 +154,10 @@ func (q *Queue) WaitContext(ctx context.Context) error {
 // are legitimate. Must stay in sync with migration v2's partial unique
 // index, which enforces the same rule at the storage layer.
 var exclusiveTypes = map[string]bool{
-	TypeAnalyze:  true,
-	TypeTimeline: true,
-	TypeRender:   true,
+	TypeAnalyze:   true,
+	TypeTimeline:  true,
+	TypeRender:    true,
+	TypeSubtitles: true,
 }
 
 // RunAsync records a job row and executes fn in a background goroutine,

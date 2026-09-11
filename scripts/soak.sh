@@ -20,8 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 
 # --- instance lock: mkdir is atomic; a stale lock self-heals after 30 min ---
-LOCK="$TEMP/xcut-soak.lock"
-[ -z "$TEMP" ] && LOCK="/tmp/xcut-soak.lock"
+LOCK="${TEMP:-/tmp}/xcut-soak.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
     if [ -d "$LOCK" ] && [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
         rm -rf "$LOCK"
@@ -88,7 +87,7 @@ wait_job() { # wait_job TYPE -> prints final status; bounded 90s
 import json,sys
 d=json.load(sys.stdin)
 js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$PROJ_ID' and j.get('type')=='$typ']
-js.sort(key=lambda j: j.get('id',''))
+js.sort(key=lambda j: (j.get('created_at',0), j.get('id','')))
 print(js[-1]['status'] if js else '')" 2>/dev/null)
         case "$st" in succeeded|failed|cancelled) echo "$st"; return 0;; esac
         n=$((n+1)); sleep 0.5
@@ -118,14 +117,21 @@ for round in $(seq 1 "$ROUNDS"); do
         *)   err="analyze code $code";;
     esac
 
-    # 2. two render triggers: at least one 409, at most one queued
+    # 2. two render triggers: exactly one accepted, one 409 — the soak's
+    #    headline exclusivity guarantee, now actually asserted.
     c1=$(post_code "/projects/$PROJ_ID/render" '{}')
     c2=$(post_code "/projects/$PROJ_ID/render" '{}')
+    accepted=0; conflicts=0
     for c in $c1 $c2; do
-        case "$c" in 202|200) renderQueued=$((renderQueued+1));; 409) dup409=$((dup409+1));; esac
+        case "$c" in 202|200) accepted=$((accepted+1)); renderQueued=$((renderQueued+1));; 409) conflicts=$((conflicts+1)); dup409=$((dup409+1));; *) err="$err render-pair $c";; esac
     done
-    # let the accepted render run (short fixture) or cancel it via the next
-    # exclusive trigger anyway; timeline regen below is a different type.
+    if [ "$accepted" -gt 1 ] || [ "$conflicts" -lt 1 ]; then
+        err="$err render-dedup broken (accepted=$accepted conflicts=$conflicts)"
+    fi
+    if [ "$accepted" -ge 1 ]; then
+        st=$(wait_job render)
+        [ "$st" = "succeeded" ] || err="$err render ended $st"
+    fi
 
     # 3. regenerate timeline (exclusive type, waits its turn)
     code=$(post_code "/projects/$PROJ_ID/timeline" '{"style":"generic_highlight"}')

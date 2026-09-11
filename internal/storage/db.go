@@ -147,6 +147,18 @@ ON jobs(project_id, type)
 WHERE status IN ('queued', 'running')
   AND type IN ('analyze', 'timeline', 'render');
 `},
+	// v3: transcription joins the exclusive set. Two concurrent transcribes
+	// write the same subtitles.{srt,ass} pair — interleaved runs could pair
+	// one run's .srt with another's .ass (and the loser's stale-cleanup
+	// could delete the winner's karaoke file). Append-only: v2's index
+	// stays as applied; this replaces it with the wider type list.
+	{id: 3, name: "exclusive-active-subtitles", stmt: `
+DROP INDEX IF EXISTS idx_jobs_active_exclusive;
+CREATE UNIQUE INDEX idx_jobs_active_exclusive
+ON jobs(project_id, type)
+WHERE status IN ('queued', 'running')
+  AND type IN ('analyze', 'timeline', 'render', 'subtitles');
+`},
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is

@@ -78,12 +78,18 @@ func TestSubtitlesFlow(t *testing.T) {
 		t.Fatalf("file before transcribe: %d, want 404", rec.Code)
 	}
 
-	// Trigger transcription and wait for the job to finish.
+	// Trigger transcription; a duplicate trigger while the first is queued
+	// must 409 (subtitles joined the exclusive job set — concurrent runs
+	// would pair one run's .srt with another's .ass).
 	rec, out = do(t, s, "POST", "/api/v1/projects/"+p.ID+"/subtitles", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("transcribe trigger: %d %v", rec.Code, out)
 	}
 	jobID := out["job_id"].(string)
+	recDup, outDup := do(t, s, "POST", "/api/v1/projects/"+p.ID+"/subtitles", "")
+	if recDup.Code != http.StatusConflict {
+		t.Fatalf("duplicate transcribe: %d %v (want 409)", recDup.Code, outDup)
+	}
 	// 30s: on AV-scanned machines a cold python sidecar start can be slow
 	// (the remote-node node flaked once at 15s; the immediate re-run passed).
 	deadline := time.Now().Add(30 * time.Second)

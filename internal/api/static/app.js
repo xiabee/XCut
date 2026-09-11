@@ -25,7 +25,7 @@ async function post(path, body) {
 }
 
 function busy(on) {
-  for (const id of ["btn-analyze", "btn-timeline", "btn-render"]) {
+  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-subtitles"]) {
     $(id).disabled = on;
   }
 }
@@ -181,6 +181,9 @@ async function refreshJobs() {
       ul.appendChild(li);
     }
     busy(running);
+    // A subtitles job in the batch (started anywhere — CLI, another tab)
+    // means the artifacts may have just changed: refresh the panel.
+    if (jobs.some((j) => j.type === "subtitles")) refreshSubtitlesStatus();
     // Refresh assets once after a batch of work likely changed them.
     if (!running) refreshAssetsSoon();
     schedulePoll(running ? 800 : 2500);
@@ -248,8 +251,6 @@ async function watchUntilDone(jobID) {
       if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
       if (job.status === "succeeded" && job.type === "render") showPlayer();
       if (job.type === "subtitles") await refreshSubtitlesStatus();
-      busy(false);
-      refreshJobs();
     }
   }, 1000);
 }

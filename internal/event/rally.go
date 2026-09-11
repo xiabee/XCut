@@ -23,7 +23,7 @@ const (
 // Rally defaults applied when Config selects rally mode without parameters
 // (presets may set them explicitly; zero values never disable a rally run).
 const (
-	defaultRallyGap = 2.5  // s the onset rate must stay below exit before a rally closes
+	defaultRallyGap = 2.5  // s the onset rate must stay at/below exit before a rally closes
 	defaultRallyPad = 1.2  // s padded before/after the first/last hit
 	defaultMinHits  = 4    // transients required inside one rally
 	defaultMaxRally = 30.0 // s — longer dense spans chunk into pieces of this size
@@ -147,9 +147,9 @@ func chunkBounds(start, end, max float64) [][2]float64 {
 	if dur <= max {
 		return [][2]float64{{start, end}}
 	}
-	n := int(dur/max) + 1
-	if float64(n)*max < dur { // guard float edge cases
-		n++
+	n := int(math.Ceil(dur / max))
+	if n < 1 {
+		n = 1
 	}
 	out := make([][2]float64, 0, n)
 	step := dur / float64(n)

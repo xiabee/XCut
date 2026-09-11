@@ -271,3 +271,17 @@ func TestValidateRejectsInvertedRallyRates(t *testing.T) {
 		t.Fatalf("valid rates rejected: %v", err)
 	}
 }
+
+// TestChunkBoundsExactMultiple: a span exactly 2x the max chunk size must
+// split into 2 full chunks, not 3 ragged ones (ceil, not int+1).
+func TestChunkBoundsExactMultiple(t *testing.T) {
+	got := chunkBounds(10, 70, 30)
+	if len(got) != 2 {
+		t.Fatalf("chunks = %d (%v), want 2", len(got), got)
+	}
+	for _, ch := range got {
+		if ch[1]-ch[0] > 30+1e-9 {
+			t.Fatalf("chunk %v exceeds max 30", ch)
+		}
+	}
+}

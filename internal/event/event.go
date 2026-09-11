@@ -59,14 +59,14 @@ type Config struct {
 	// keep firing the onset detector through every break — so rallies are
 	// separated by transient *density*, not by absolute quiet: a rally opens
 	// when the onset rate reaches RallyEnterRate and closes only after the
-	// rate has stayed below RallyExitRate for RallyGap seconds. A dense span
+	// rate has stayed at or below RallyExitRate for RallyGap seconds. A dense span
 	// longer than one rally is chunked into consecutive rally-sized pieces,
 	// never truncated.
 	RallyGap       float64 `json:"rally_gap,omitempty"`        // seconds below exit rate that close a rally
 	RallyPad       float64 `json:"rally_pad,omitempty"`        // padding after first/last hit
 	MinHits        int     `json:"min_hits,omitempty"`         // transients required per rally
 	RallyEnterRate float64 `json:"rally_enter_rate,omitempty"` // hits/sec that open a rally
-	RallyExitRate  float64 `json:"rally_exit_rate,omitempty"`  // hits/sec below which a rally is ending
+	RallyExitRate  float64 `json:"rally_exit_rate,omitempty"`  // hits/sec at/below which a rally is ending
 }
 
 // DefaultConfig is a conservative generic baseline.

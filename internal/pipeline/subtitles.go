@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/storage"
@@ -119,7 +120,17 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 				return err
 			}
 		} else {
-			_ = os.Remove(assPath) // stale karaoke file must not outlive its data
+			// Stale karaoke file must not outlive its data: resolution
+			// prefers .ass, so a scanner-blocked remove gets a short retry.
+			for i := 0; i < 4; i++ {
+				if os.Remove(assPath) == nil {
+					break
+				}
+				if _, statErr := os.Stat(assPath); statErr != nil {
+					break // already gone
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
 		}
 		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings())
 		progress(1.0)

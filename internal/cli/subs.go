@@ -134,8 +134,9 @@ func cmdSubtitles(a *App, args []string) error {
 	return nil
 }
 
-// sidecarOffers reports whether the capabilities payload lists an analyze
-// op and a transcript-capable model entry.
+// sidecarOffers reports whether the capabilities payload advertises a
+// transcript model entry (a sidecar without the analyze op fails later in
+// AIAnalyze with its own error).
 func sidecarOffers(c *worker.AICapabilities, analyzer string) bool {
 	for _, m := range c.Models {
 		if strings.HasPrefix(m.Name, analyzer) {

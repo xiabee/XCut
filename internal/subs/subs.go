@@ -59,11 +59,12 @@ func Parse(raw []byte) (*Transcript, error) {
 				fmt.Sprintf("transcript segment has invalid times (%g..%g)", s.Start, s.End), nil)
 		}
 		for _, w := range s.Words {
-			if !finite(w.Start) || !finite(w.End) || w.End < w.Start {
+			if !finite(w.Start) || !finite(w.End) || w.End < w.Start || w.Start < 0 {
 				return nil, xcerr.E(xcerr.CodeValidation,
 					"transcript word timing is invalid", nil)
 			}
 		}
+		sort.Slice(s.Words, func(i, j int) bool { return s.Words[i].Start < s.Words[j].Start })
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
