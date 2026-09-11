@@ -132,6 +132,15 @@ async function refreshAssets() {
     tr.append(tdName, tdDur, tdSize, tdCodec);
     tbody.appendChild(tr);
   }
+  // The transcribe picker mirrors the asset list (first = default).
+  const sel = $("subs-asset");
+  sel.innerHTML = "";
+  for (const a of assets) {
+    const o = document.createElement("option");
+    o.value = a.id;
+    o.textContent = a.filename;
+    sel.appendChild(o);
+  }
 }
 
 /* ---------- jobs ---------- */
@@ -504,7 +513,7 @@ async function refreshSubtitlesStatus() {
 
 $("btn-subtitles").addEventListener("click", async () => {
   try {
-    await trigger("/subtitles", {});
+    await trigger("/subtitles", { asset: $("subs-asset").value || undefined });
     banner("Transcription queued — status updates when the job finishes");
   } catch (e) { banner(`Transcribe failed: ${e.message}`); busy(false); }
 });

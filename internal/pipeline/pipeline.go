@@ -264,9 +264,22 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 			if err := jctx.Err(); err != nil {
 				break
 			}
+			// Cancellation-aware slot acquire: a worker waiting for a free
+			// slot must not outlive the job context.
+			var acquired bool
+			select {
+			case sem <- struct{}{}:
+				acquired = true
+			case <-jctx.Done():
+			}
+			if jctx.Err() != nil {
+				if acquired {
+					<-sem
+				}
+				break
+			}
 			asset := assets[i]
 			wg.Add(1)
-			sem <- struct{}{}
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
