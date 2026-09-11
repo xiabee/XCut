@@ -1,6 +1,6 @@
 # XCut Command Reference
 
-_Generated from `xcut <command> --help` output (commit fecd00e)._
+_Generated from `xcut <command> --help` output (commit 68f7fa7)._
 
 Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
 
@@ -90,7 +90,7 @@ list jobs of a project
 
 ## xcut render
 ```
-usage: xcut render <project> [--out path]
+usage: xcut render <project> [--out path] [--subs file]
 
 render a project timeline to MP4
 ```

@@ -1,0 +1,18 @@
+﻿{
+    "rounds":  1,
+    "errors":  1,
+    "dup409":  0,
+    "stale409":  0,
+    "goodPUT":  0,
+    "renderQueued":  0,
+    "subsStatusOK":  0,
+    "startedAt":  "2026-09-12T03:44:34.2330266+08:00",
+    "samples":  [
+                    {
+                        "round":  1,
+                        "ok":  false,
+                        "error":  "远程服务器返回错误: (404) 未找到。"
+                    }
+                ],
+    "finishedAt":  "2026-09-12T03:44:34.2959919+08:00"
+}
