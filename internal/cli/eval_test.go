@@ -171,3 +171,49 @@ func TestEvalManifestErrors(t *testing.T) {
 		t.Errorf("stderr should mention the failure: %s", stderr.String())
 	}
 }
+
+// TestEvalCaseNameCollision: two manifest cases whose names sanitize
+// identically ("a b" and "a/b" -> "a_b") must both run — the project name
+// is disambiguated instead of the second case dying on the UNIQUE
+// name constraint with a raw storage error.
+func TestEvalCaseNameCollision(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	if _, err := testmedia.Generate(root, "fx.mp4", testmedia.DefaultFixture(), 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(root, "manifest.json")
+	manifest := `{
+		"version": 1,
+		"cases": [
+			{"name": "a b", "media": "fx.mp4", "expected": [{"start": 0, "end": 3}]},
+			{"name": "a/b", "media": "fx.mp4", "expected": [{"start": 0, "end": 3}]}
+		]
+	}`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resultsPath := filepath.Join(root, "results.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"eval", manifestPath, "--out", resultsPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("eval failed (%d)\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	b, err := os.ReadFile(resultsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No case may carry an error, and both sanitized-colliding names ran.
+	if strings.Contains(string(b), `"error"`) {
+		t.Fatalf("cases must succeed without storage errors:\n%s", b)
+	}
+	for _, name := range []string{`"name": "a b"`, `"name": "a/b"`} {
+		if !strings.Contains(string(b), name) {
+			t.Fatalf("case %s missing from results:\n%s", name, b)
+		}
+	}
+}

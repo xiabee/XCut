@@ -174,3 +174,24 @@ func TestMaxHistoryKnob(t *testing.T) {
 		t.Fatalf("negative max_history must repair to 500, got %d", cfg3.Job.MaxHistory)
 	}
 }
+
+// TestResolveClampsAbsurdDiskBudgets: a huge float budget (1e18 GB) used to
+// overflow the GB→bytes int64 conversion downstream, silently disabling the
+// budget; Resolve must clamp to an honest ceiling.
+func TestResolveClampsAbsurdDiskBudgets(t *testing.T) {
+	cfg := Default()
+	cfg.Resource.MaxCacheGB = 1e18
+	cfg.Resource.MaxTempGB = 1e18
+	cfg.Resource.MaxProxyGB = 1e18
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	const maxDiskGB = 1e6
+	if cfg.Resource.MaxCacheGB > maxDiskGB || cfg.Resource.MaxTempGB > maxDiskGB || cfg.Resource.MaxProxyGB > maxDiskGB {
+		t.Fatalf("absurd budgets not clamped: %+v", cfg.Resource)
+	}
+	// The downstream conversion must stay positive.
+	if b := int64(cfg.Resource.MaxTempGB * (1 << 30)); b <= 0 {
+		t.Fatalf("temp budget bytes overflow: %d", b)
+	}
+}

@@ -171,7 +171,21 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]eval
 	if _, err := os.Stat(c.Media); err != nil {
 		return nil, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
 	}
-	projectName := "eval_" + sanitizeProjectName(c.Name)
+	// Sanitized names can collide ("a b" and "a/b" both → "a_b") and the
+	// projects table enforces unique names; disambiguate with a counter
+	// instead of failing the case with a raw storage error.
+	base := "eval_" + sanitizeProjectName(c.Name)
+	projectName := base
+	for i := 2; ; i++ {
+		existing, err := db.GetProjectByName(ea.Ctx, projectName)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			break
+		}
+		projectName = fmt.Sprintf("%s_%d", base, i)
+	}
 	if _, err := db.CreateProject(ea.Ctx, projectName); err != nil {
 		return nil, err
 	}

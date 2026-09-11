@@ -164,12 +164,12 @@ func (s *Server) handleSubtitlesFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	fi, err := os.Stat(path)
+	fi, err := os.Stat(path) // #nosec G703 -- format is whitelist-validated to "ass"|"srt" above and path is built through WS.SafeJoin, so no client-controlled traversal is possible
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no "+format+" subtitles for this project (transcribe first)", nil))
 		return
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G703 -- same whitelist + SafeJoin-constructed path as the Stat above
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open subtitle file", err))
 		return

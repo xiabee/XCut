@@ -254,6 +254,19 @@ func Resolve(cfg *Config) error {
 	if r.MaxProxyGB <= 0 {
 		r.MaxProxyGB = 2
 	}
+	// Absurd disk budgets (e.g. 1e18) overflow the GB→bytes int64
+	// conversion downstream and silently disable the budget; 1e6 GB (1 PB)
+	// is far past any honest local disk.
+	const maxDiskGB = 1e6
+	if r.MaxCacheGB > maxDiskGB {
+		r.MaxCacheGB = maxDiskGB
+	}
+	if r.MaxTempGB > maxDiskGB {
+		r.MaxTempGB = maxDiskGB
+	}
+	if r.MaxProxyGB > maxDiskGB {
+		r.MaxProxyGB = maxDiskGB
+	}
 	if r.FrameSampleFPS < 0.1 || r.FrameSampleFPS > 30 {
 		r.FrameSampleFPS = 2.0
 	}
