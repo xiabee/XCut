@@ -146,10 +146,16 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
   two strictly separated. Proxy decision is width-based only — a
   high-resolution low-fps source still benefits, a tiny-fps source
   already decodes cheaply.
-- Badminton v2's rally detection is validated on synthetic fixtures only —
-  real annotated match footage is the missing ingredient (use
-  `xcut eval` + docs/EVAL.md workflow; court ROI needs per-source manual
-  rects).
+- Badminton v2's rally detection got its first real-footage validation in
+  session #6 (owner's 10-min fixed-camera men's-singles recording): the
+  original gap-clustering collapsed on real court audio — ambience keeps
+  firing onsets through every break, so the whole video clustered as ONE
+  rally and every constraint killed it. Rally mode now clusters by onset
+  density with hysteresis (enter/exit rates + sustained-low close) and
+  chunks over-dense spans instead of truncating. The fix produced a
+  60s/8-clip highlight from that match end-to-end; annotated multi-source
+  evaluation (xcut eval) is still the missing ingredient for tuning, and
+  court ROI still needs per-source manual rects.
 - Race detector on Windows hosts needs a cgo/C toolchain (gcc); the gate
   runs it when one is present and skips loudly otherwise (docker runner
   remains the fallback). This machine's windows-gnu gcc satisfies it since

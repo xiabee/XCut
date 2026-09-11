@@ -23,10 +23,16 @@ const (
 // Rally defaults applied when Config selects rally mode without parameters
 // (presets may set them explicitly; zero values never disable a rally run).
 const (
-	defaultRallyGap = 2.5  // s of quiet between hits that splits rallies
+	defaultRallyGap = 2.5  // s the onset rate must stay below exit before a rally closes
 	defaultRallyPad = 1.2  // s padded before/after the first/last hit
 	defaultMinHits  = 4    // transients required inside one rally
-	defaultMaxRally = 30.0 // s — longer clusters are degenerate
+	defaultMaxRally = 30.0 // s — longer dense spans chunk into pieces of this size
+
+	defaultEnterRate = 1.0 // hits/sec that open a rally
+	defaultExitRate  = 0.5 // hits/sec below which a rally is ending
+
+	rateWindow = 2.0 // s sliding window the onset rate is measured over
+	rateStep   = 0.5 // s window advance per step
 )
 
 // buildRallies clusters onsets into rally segments.
@@ -42,80 +48,158 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 	if minHits <= 0 {
 		minHits = defaultMinHits
 	}
+	enter := firstNonZero(cfg.RallyEnterRate, defaultEnterRate)
+	exit := firstNonZero(cfg.RallyExitRate, defaultExitRate)
 
-	// Cluster: consecutive hits closer than gap belong to the same rally.
-	type cluster struct {
-		hits []analysis.Sample
+	// Density walk: the onset rate over a sliding window, with hysteresis —
+	// open at the enter rate, close only once the rate has stayed below the
+	// exit rate for `gap` seconds. Real court audio fires on footsteps and
+	// speech through every break, so absolute-quiet splits never trigger;
+	// density is the signal that survives (rallies are 2-4 hits/sec, breaks
+	// are ambient noise alone).
+	countBetween := func(lo, hi float64) int {
+		// Half-open [lo, hi): a hit exactly hi seconds after lo belongs to
+		// the next window, or evenly spaced noise can look dense.
+		loI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= lo })
+		hiI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= hi })
+		return hiI - loI
 	}
-	var clusters []cluster
-	cur := cluster{hits: []analysis.Sample{hits[0]}}
-	flush := func() {
-		if len(cur.hits) >= minHits {
-			clusters = append(clusters, cur)
-		}
+
+	lastT := hits[len(hits)-1].T
+	enterCount := int(enter * rateWindow)
+	if float64(enterCount) < enter*rateWindow {
+		enterCount++ // ceil: the documented rate is a floor
 	}
-	for _, h := range hits[1:] {
-		if h.T-cur.hits[len(cur.hits)-1].T > gap {
-			flush()
-			cur = cluster{hits: []analysis.Sample{h}}
+	exitCount := int(exit * rateWindow)
+
+	type rawSpan struct{ start, end float64 }
+	var spans []rawSpan
+	inside := false
+	openT, belowSince, lastInsideT := 0.0, -1.0, 0.0
+	for t := 0.0; t <= lastT+rateWindow; t += rateStep {
+		r := countBetween(t, t+rateWindow)
+		if !inside {
+			if r >= enterCount {
+				inside, openT, belowSince, lastInsideT = true, t, -1, t
+			}
 			continue
 		}
-		cur.hits = append(cur.hits, h)
+		if r > exitCount {
+			belowSince, lastInsideT = -1, t
+			continue
+		}
+		// At or below the exit rate: the rally is ending. The span stays
+		// open only until `gap` seconds have passed in this state.
+		if belowSince < 0 {
+			belowSince = t
+		}
+		if t-belowSince >= gap {
+			spans = append(spans, rawSpan{start: openT, end: lastInsideT + rateWindow})
+			inside = false
+		}
 	}
-	flush()
+	if inside {
+		spans = append(spans, rawSpan{start: openT, end: lastInsideT + rateWindow})
+	}
 
+	// Each span's hits become candidate rallies; a dense span longer than
+	// one rally chunks into consecutive pieces instead of being truncated
+	// (the old cap silently discarded everything past 30s of continuous
+	// play).
 	var segments []Segment
-	for _, c := range clusters {
-		start := c.hits[0].T - pad
-		end := c.hits[len(c.hits)-1].T + pad
+	for _, sp := range spans {
+		loI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= sp.start })
+		hiI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= sp.end })
+		spanHits := hits[loI:hiI]
+		if len(spanHits) < minHits {
+			continue
+		}
+		start := spanHits[0].T - pad
+		end := spanHits[len(spanHits)-1].T + pad
 		if start < 0 {
 			start = 0
 		}
 		if end > duration {
 			end = duration
 		}
-		if end-start > defaultMaxRally {
-			end = start + defaultMaxRally
+		chunks := chunkBounds(start, end, defaultMaxRally)
+		for _, ch := range chunks {
+			loC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[0] })
+			hiC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[1] })
+			chunkHits := spanHits[loC:hiC]
+			if len(chunkHits) < minHits {
+				continue
+			}
+			if seg, ok := scoreRally(motion, audio, cfg, ch[0], ch[1], chunkHits); ok {
+				segments = append(segments, seg)
+			}
 		}
-		if end-start < cfg.MinDuration {
-			continue
-		}
-		// Motion support: a rally with no on-screen motion is not watchable.
-		meanMotion := intervalMean(motion, start, end)
-		if meanMotion < cfg.MotionFloor {
-			continue
-		}
-		if math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
-			continue
-		}
-		meanDB := silentDB
-		if audio != nil {
-			meanDB = intervalMeanDB(audio, start, end)
-		}
-		count := len(c.hits)
-		dur := end - start
-		density := float64(count) / dur
-		hitsN := clamp(float64(count)/12.0, 0, 1)
-		densN := clamp(density/1.5, 0, 1)
-		motionN := clamp(meanMotion/0.30, 0, 1)
-		durN := clamp(dur/12.0, 0, 1)
-		sc := 0.40*hitsN + 0.30*densN + 0.20*motionN + 0.10*durN
-		if math.IsNaN(sc) || math.IsInf(sc, 0) {
-			sc = 0
-		}
-		segments = append(segments, Segment{
-			Start:       round4(start),
-			End:         round4(end),
-			Score:       round4(sc),
-			MeanMotion:  round4(meanMotion),
-			MeanAudioDB: round4(meanDB),
-			Kind:        ModeRally,
-			HitCount:    count,
-			HitDensity:  round4(density),
-		})
 	}
 	sort.Slice(segments, func(i, j int) bool { return segments[i].Start < segments[j].Start })
 	return segments, nil
+}
+
+// chunkBounds splits [start, end] into ceil(dur/max) consecutive pieces of
+// at most max seconds (a piece is dropped only by hit-count/motion gates,
+// never by the cap itself).
+func chunkBounds(start, end, max float64) [][2]float64 {
+	dur := end - start
+	if dur <= max {
+		return [][2]float64{{start, end}}
+	}
+	n := int(dur/max) + 1
+	if float64(n)*max < dur { // guard float edge cases
+		n++
+	}
+	out := make([][2]float64, 0, n)
+	step := dur / float64(n)
+	for i := 0; i < n; i++ {
+		lo := start + float64(i)*step
+		hi := lo + step
+		if i == n-1 {
+			hi = end
+		}
+		out = append(out, [2]float64{lo, hi})
+	}
+	return out
+}
+
+// scoreRally applies the watchability gates (duration floor, motion floor)
+// and builds the explainable rally segment for one hit window.
+func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample) (Segment, bool) {
+	if end-start < cfg.MinDuration {
+		return Segment{}, false
+	}
+	// Motion support: a rally with no on-screen motion is not watchable.
+	meanMotion := intervalMean(motion, start, end)
+	if meanMotion < cfg.MotionFloor || math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
+		return Segment{}, false
+	}
+	meanDB := silentDB
+	if audio != nil {
+		meanDB = intervalMeanDB(audio, start, end)
+	}
+	count := len(chunkHits)
+	dur := end - start
+	density := float64(count) / dur
+	hitsN := clamp(float64(count)/12.0, 0, 1)
+	densN := clamp(density/1.5, 0, 1)
+	motionN := clamp(meanMotion/0.30, 0, 1)
+	durN := clamp(dur/12.0, 0, 1)
+	sc := 0.40*hitsN + 0.30*densN + 0.20*motionN + 0.10*durN
+	if math.IsNaN(sc) || math.IsInf(sc, 0) {
+		sc = 0
+	}
+	return Segment{
+		Start:       round4(start),
+		End:         round4(end),
+		Score:       round4(sc),
+		MeanMotion:  round4(meanMotion),
+		MeanAudioDB: round4(meanDB),
+		Kind:        ModeRally,
+		HitCount:    count,
+		HitDensity:  round4(density),
+	}, true
 }
 
 // onsetSamples extracts sorted, deduplicated onset samples.

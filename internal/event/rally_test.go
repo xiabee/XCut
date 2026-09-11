@@ -191,3 +191,83 @@ func TestOnsetSamplesDedupAndSort(t *testing.T) {
 		t.Error("nil track must give nil samples")
 	}
 }
+
+// TestBuildRallyChunksContinuousPlay: real court audio fires on ambience
+// through every break, so a long recording can be one dense onset stream.
+// The detector must chunk it into consecutive rally-sized pieces — the old
+// cap truncated the span and silently discarded everything past 30s.
+func TestBuildRallyChunksContinuousPlay(t *testing.T) {
+	cfg := rallyConfig()
+	cfg.RallyGap = 2.5
+	var times []float64
+	for t := 0.5; t < 130.0; t += 0.4 {
+		times = append(times, t)
+	}
+	tracks := []analysis.FeatureTrack{*flatMotion(130, 0.15), *hitsAt(times...)}
+	segs, err := Build(tracks, 130, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 4 {
+		t.Fatalf("got %d rallies, want chunked coverage of a 130s dense span", len(segs))
+	}
+	covered := 0.0
+	for _, s := range segs {
+		if s.Duration() > 30.0+1e-9 {
+			t.Fatalf("rally %v exceeds the 30s rally size", s)
+		}
+		if s.HitCount < 3 {
+			t.Fatalf("rally %v below min hits", s)
+		}
+		covered += s.Duration()
+	}
+	if covered < 120 {
+		t.Fatalf("chunks cover only %gs of a 130s dense span", covered)
+	}
+}
+
+// TestBuildRallySplitsOnLowDensityBreaks: a dip in onset density sustained
+// past rally_gap closes the rally even though isolated noise hits keep
+// arriving — absolute-quiet splits never fire on real court audio.
+func TestBuildRallySplitsOnLowDensityBreaks(t *testing.T) {
+	cfg := rallyConfig()
+	cfg.RallyGap = 2.5
+	var times []float64
+	// Rally 1: dense 4..14 (0.4s spacing). Break: one stray hit every ~2s
+	// (below exit rate) from 14..30. Rally 2: dense again 30..40.
+	for t := 4.0; t <= 14.0; t += 0.4 {
+		times = append(times, t)
+	}
+	for t := 15.0; t < 30.0; t += 2.0 {
+		times = append(times, t)
+	}
+	for t := 30.0; t <= 40.0; t += 0.4 {
+		times = append(times, t)
+	}
+	tracks := []analysis.FeatureTrack{*flatMotion(45, 0.15), *hitsAt(times...)}
+	segs, err := Build(tracks, 45, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 2 {
+		t.Fatalf("got %d rallies, want the two dense regions separated", len(segs))
+	}
+	if segs[0].End > 17 || segs[len(segs)-1].Start < 28 {
+		t.Fatalf("rallies must hug the dense regions: first end %g, last start %g",
+			segs[0].End, segs[len(segs)-1].Start)
+	}
+}
+
+func TestValidateRejectsInvertedRallyRates(t *testing.T) {
+	cfg := rallyConfig()
+	cfg.RallyEnterRate = 0.5
+	cfg.RallyExitRate = 1.0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("exit rate above enter rate must be rejected")
+	}
+	cfg = rallyConfig()
+	cfg.RallyEnterRate, cfg.RallyExitRate = 1.0, 0.5
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid rates rejected: %v", err)
+	}
+}
