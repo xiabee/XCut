@@ -12,8 +12,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/xiabee/XCut/internal/analysis"
@@ -646,9 +648,39 @@ func WriteAtomic(path string, b []byte) error {
 		_ = os.Remove(tmpName)
 		return xcerr.E(xcerr.CodeInternal, "cannot close temp file", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := renameWithRetry(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
 		return xcerr.E(xcerr.CodeInternal, "cannot finalize output file", err)
 	}
 	return nil
+}
+
+// renameWithRetry absorbs the Windows reality that Defender (and the
+// indexer) briefly hold freshly written files, making an os.Rename over
+// them fail with a sharing violation / access denied — a document rewritten
+// in rapid succession (timeline saves, regenerations) used to surface that
+// as a spurious 500. A short escalating backoff clears the scanner window.
+func renameWithRetry(src, dst string) error {
+	var err error
+	for attempt := 0; attempt < 6; attempt++ {
+		if err = os.Rename(src, dst); err == nil {
+			return nil
+		}
+		if runtime.GOOS != "windows" || !isWindowsRettableRename(err) {
+			return err
+		}
+		time.Sleep(time.Duration(20*(attempt+1)) * time.Millisecond)
+	}
+	return err
+}
+
+// isWindowsRettableRename matches the errnos a rename over a held file
+// produces on Windows: ERROR_ACCESS_DENIED (5), ERROR_SHARING_VIOLATION (32),
+// ERROR_LOCK_VIOLATION (33).
+func isWindowsRettableRename(err error) bool {
+	var errno syscall.Errno
+	if !errors.As(err, &errno) {
+		return false
+	}
+	return errno == 5 || errno == 32 || errno == 33
 }
