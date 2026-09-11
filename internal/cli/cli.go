@@ -7,6 +7,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -162,7 +163,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "xcut %s: cancelled\n", name)
 			return 130
 		}
-		fmt.Fprintf(stderr, "xcut %s: %s\n", name, err)
+		// Display the user-safe message only; the wrapped causes (absolute
+		// paths, ffmpeg stderr tails) stay in the debug log for -v runs.
+		// A plain error carries no safe/unsafe split — its text IS the
+		// message the code chose to show.
+		var xe *xcerr.Error
+		msg := err.Error()
+		if errors.As(err, &xe) {
+			msg = xcerr.UserMessage(err)
+		}
+		fmt.Fprintf(stderr, "xcut %s: %s\n", name, msg)
 		log.Debug("command failed", "cmd", name, "err", err)
 		return exitFailure
 	}

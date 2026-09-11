@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/testmedia"
@@ -173,5 +174,45 @@ func TestE2EAutoWithProxy(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Fatal("source media was modified by proxy-backed analysis")
+	}
+}
+
+// TestCLIErrorOutputStaysUserSafe: a failing command must print the
+// user-safe message only — the wrapped cause (absolute paths, tool
+// diagnostics) belongs to the -v debug log, not the default error line.
+func TestCLIErrorOutputStaysUserSafe(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) int {
+		stdout.Reset()
+		stderr.Reset()
+		return Run(args, &stdout, &stderr)
+	}
+	if code := run("init"); code != 0 {
+		t.Fatalf("init failed: %s", stderr.String())
+	}
+	if code := run("project", "create", "errfmt"); code != 0 {
+		t.Fatalf("project create failed: %s", stderr.String())
+	}
+
+	// The missing file lives under a marker directory: the os.Stat cause
+	// embeds the absolute path, the user-safe message ("file does not
+	// exist") must not.
+	marker := filepath.Join(root, "LEAKMARKER", "clip.mp4")
+	if code := run("import", "errfmt", marker); code == 0 {
+		t.Fatal("import of a missing file must fail")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("file does not exist")) {
+		t.Fatalf("stderr must carry the user-safe message, got: %s", stderr.String())
+	}
+	// The dispatch's own error line must stay user-safe. Structured log
+	// lines (level=...) are the diagnostics channel by design and do carry
+	// the full cause — that is what "-v debug" documents, not a leak.
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if strings.HasPrefix(line, "xcut ") && strings.Contains(line, "LEAKMARKER") {
+			t.Fatalf("user-facing error line leaked the raw cause: %s", line)
+		}
 	}
 }
