@@ -117,7 +117,16 @@ func cmdServe(a *App, args []string) error {
 		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shCtx)
-		srv.Shutdown() // wait for in-flight async jobs
+		// Job contexts derive from the app context, so they were cancelled
+		// by the signal and are winding down; give the cleanup a generous
+		// bound. A job wedged outside its cancellation must not own the
+		// shutdown — the startup sweep reconciles whatever it leaves.
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer drainCancel()
+		if err := srv.Shutdown(drainCtx); err != nil {
+			a.Log.Warn("job drain timed out; startup sweep will reconcile", "err", err)
+			fmt.Fprintln(a.Stdout, "warning: some jobs did not finish winding down (startup sweep will reconcile them)")
+		}
 		fmt.Fprintln(a.Stdout, "server stopped")
 		return nil
 	}

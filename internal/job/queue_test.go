@@ -505,3 +505,43 @@ func TestReconcileOrphansFullSweep(t *testing.T) {
 		}
 	}
 }
+
+// TestWaitContextBounded: the drain wait must honor its deadline — a job
+// wedged outside its own cancellation (here: one that ignores its context)
+// makes WaitContext report the timeout instead of owning shutdown forever.
+func TestWaitContextBounded(t *testing.T) {
+	q, db := testQueue(t, 2)
+	ctx := context.Background()
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetProjectByName(ctx, "p")
+
+	release := make(chan struct{})
+	_, err := q.RunAsync(ctx, "analyze", p.ID, ClassCPUHeavy, nil, func(jctx context.Context, progress func(float64)) error {
+		// Deliberately context-blind: the wedge WaitContext defends against.
+		select {
+		case <-release:
+		case <-time.After(2 * time.Second):
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A 50 ms budget is not enough for the wedged job → deadline error.
+	drainCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	if err := q.WaitContext(drainCtx); err == nil {
+		t.Fatal("WaitContext returned nil while a job was still wedged")
+	}
+
+	// Given enough time the drain completes normally.
+	close(release)
+	drainCtx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel2()
+	if err := q.WaitContext(drainCtx2); err != nil {
+		t.Fatalf("WaitContext after release: %v", err)
+	}
+}

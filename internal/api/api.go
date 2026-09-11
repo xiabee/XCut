@@ -6,6 +6,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -29,9 +30,12 @@ type Server struct {
 	TimelineMu sync.Mutex
 }
 
-// Shutdown waits for in-flight async jobs (bounded by the caller's timeout).
-func (s *Server) Shutdown() {
-	s.Pipe.Queue.Wait()
+// Shutdown waits for in-flight async jobs, bounded by ctx: the serve caller
+// derives it from a generous timeout so a wedged job (one that ignored its
+// own cancellation) cannot own the shutdown path. Whatever a timed-out drain
+// leaves behind is reconciled by the next startup's orphan sweep.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.Pipe.Queue.WaitContext(ctx)
 }
 
 // statusFor maps xcerr codes to HTTP statuses.

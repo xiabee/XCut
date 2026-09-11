@@ -52,7 +52,7 @@ func TestAsyncJobFlow(t *testing.T) {
 	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-	defer s.Shutdown()
+	defer func() { _ = s.Shutdown(context.Background()) }()
 
 	post := func(path, body string) map[string]any {
 		t.Helper()
@@ -160,7 +160,7 @@ func TestRenderOverwriteGuardHTTP(t *testing.T) {
 	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-	defer s.Shutdown()
+	defer func() { _ = s.Shutdown(context.Background()) }()
 
 	post := func(path, body string) map[string]any {
 		t.Helper()
@@ -260,7 +260,7 @@ func TestRenderBodyAndDuplicateGuard(t *testing.T) {
 	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-	defer s.Shutdown()
+	defer func() { _ = s.Shutdown(context.Background()) }()
 
 	// Project row (created through the API for realism).
 	resp, err := http.Post(ts.URL+"/api/v1/projects", "application/json", bytes.NewBufferString(`{"name":"dup-guard"}`))
@@ -397,7 +397,7 @@ func TestJobCancelEndpoint(t *testing.T) {
 	s := &Server{DB: db, Pipe: pipeline.NewDeps(t.Context(), db, ws, cfg, logger)}
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-	defer s.Shutdown()
+	defer func() { _ = s.Shutdown(context.Background()) }()
 
 	ctx := t.Context()
 	started := make(chan struct{})
@@ -504,5 +504,38 @@ func TestJobCancelEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "reconciled") {
 		t.Fatalf("orphan cancel message lacks remediation: %s", body)
+	}
+}
+
+// TestShutdownDrainBounded: Server.Shutdown reports (rather than swallows)
+// a drain that exceeds its deadline — a wedged job must not own the
+// shutdown path; the startup sweep reconciles whatever it leaves.
+func TestShutdownDrainBounded(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "drain"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "drain")
+
+	release := make(chan struct{})
+	// A context-blind async job is the wedge the bound defends against.
+	s.Pipe.Queue.RunAsync(t.Context(), "analyze", p.ID, "CPU_HEAVY", nil, func(jctx context.Context, progress func(float64)) error {
+		select {
+		case <-release:
+		case <-time.After(2 * time.Second):
+		}
+		return nil
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if err := s.Shutdown(ctx); err == nil {
+		t.Fatal("Shutdown returned nil while a job was still wedged")
+	}
+	close(release)
+	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel2()
+	if err := s.Shutdown(ctx2); err != nil {
+		t.Fatalf("Shutdown after release: %v", err)
 	}
 }

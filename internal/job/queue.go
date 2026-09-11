@@ -130,6 +130,24 @@ func (q *Queue) safeRun(ctx context.Context, id string, fn Runner, progress func
 // graceful shutdown (bounded by the caller's context/timeout).
 func (q *Queue) Wait() { q.wg.Wait() }
 
+// WaitContext is Wait with a deadline: it returns ctx.Err() when jobs are
+// still draining as the context expires (a wedged job that ignored its own
+// cancellation must not own the shutdown path — the next startup sweeps
+// whatever rows it leaves behind).
+func (q *Queue) WaitContext(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		q.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // exclusiveTypes may have at most one queued/running job per project.
 // Import is deliberately excluded — concurrent imports of different files
 // are legitimate. Must stay in sync with migration v2's partial unique
