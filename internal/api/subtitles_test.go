@@ -84,7 +84,9 @@ func TestSubtitlesFlow(t *testing.T) {
 		t.Fatalf("transcribe trigger: %d %v", rec.Code, out)
 	}
 	jobID := out["job_id"].(string)
-	deadline := time.Now().Add(15 * time.Second)
+	// 30s: on AV-scanned machines a cold python sidecar start can be slow
+	// (the remote-node node flaked once at 15s; the immediate re-run passed).
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		rec, out = do(t, s, "GET", "/api/v1/jobs/"+jobID, "")
 		if rec.Code != http.StatusOK {
