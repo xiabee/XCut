@@ -1,0 +1,114 @@
+package subs
+
+import (
+	"strings"
+	"testing"
+)
+
+const transcriptJSON = `{
+  "language": "zh",
+  "segments": [
+    {"start": 3.5, "end": 5.0, "text": "第二句", "words": [
+      {"start": 3.5, "end": 4.2, "word": "第二句"}]},
+    {"start": 1.0, "end": 2.5, "text": "第一句", "words": [
+      {"start": 1.0, "end": 1.4, "word": "第一"},
+      {"start": 1.6, "end": 2.5, "word": "句"}]},
+    {"start": 6.0, "end": 7.0, "text": "   "}
+  ]
+}`
+
+func TestParseValidatesSortsAndDrops(t *testing.T) {
+	tt, err := Parse([]byte(transcriptJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tt.Segments) != 2 {
+		t.Fatalf("segments = %d, want 2 (empty text and bad times dropped)", len(tt.Segments))
+	}
+	if tt.Segments[0].Start != 1.0 || tt.Segments[1].Start != 3.5 {
+		t.Fatalf("segments not sorted by start: %v", tt.Segments)
+	}
+	if tt.Language != "zh" {
+		t.Fatalf("language %q", tt.Language)
+	}
+	if !tt.HasWordTimings() {
+		t.Fatal("both segments carry words")
+	}
+}
+
+func TestParseRejectsGarbage(t *testing.T) {
+	if _, err := Parse([]byte(`{"segments": [{"start": 2, "end": 1, "text": "backwards"}]}`)); err == nil {
+		t.Fatal("end before start must be rejected")
+	}
+	if _, err := Parse([]byte(`{"segments": [{"start": 0, "end": 1}]}`)); err == nil {
+		t.Fatal("empty text must leave nothing")
+	}
+	if _, err := Parse([]byte(`not json`)); err == nil {
+		t.Fatal("garbage payload must be rejected")
+	}
+	if _, err := Parse([]byte(`{"segments": []}`)); err == nil {
+		t.Fatal("empty transcript must be an error, not silence")
+	}
+}
+
+func TestWriteSRT(t *testing.T) {
+	tt, err := Parse([]byte(`{"segments": [
+		{"start": 1.0, "end": 2.5, "text": "hello world"},
+		{"start": 3661.25, "end": 3662.0, "text": "one hour in"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := WriteSRT(tt, &b); err != nil {
+		t.Fatal(err)
+	}
+	want := "1\n00:00:01,000 --> 00:00:02,500\nhello world\n\n" +
+		"2\n01:01:01,250 --> 01:01:02,000\none hour in\n"
+	if b.String() != want {
+		t.Fatalf("srt =\n%q\nwant\n%q", b.String(), want)
+	}
+}
+
+func TestWriteKaraokeASS(t *testing.T) {
+	tt, err := Parse([]byte(`{"segments": [
+		{"start": 1.0, "end": 2.5, "text": "第一 句", "words": [
+			{"start": 1.0, "end": 1.4, "word": "第一"},
+			{"start": 1.6, "end": 2.5, "word": "句"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := WriteKaraokeASS(tt, KaraokeStyle{}, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "Style: Karaoke,sans-serif,48,") {
+		t.Fatalf("missing default style line:\n%s", out)
+	}
+	if !strings.Contains(out, "Dialogue: 0,0:00:01.00,0:00:02.50,Karaoke,,0,0,0,,{\\kf60}第一 {\\kf90}句") {
+		t.Fatalf("karaoke line wrong:\n%s", out)
+	}
+	// \kf centiseconds must sum to the segment duration: word 1 fills from
+	// 1.0 to the next word's start 1.6 (the gap belongs to it), word 2 from
+	// 1.6 to the segment end 2.5 — 60cs + 90cs = 150cs = 1.5s ✓.
+}
+
+func TestWriteKaraokeASSRequiresWordTimings(t *testing.T) {
+	tt, err := Parse([]byte(`{"segments": [{"start": 1.0, "end": 2.0, "text": "no words"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := WriteKaraokeASS(tt, KaraokeStyle{}, &b); err == nil {
+		t.Fatal("karaoke output without word timings must be refused")
+	}
+}
+
+func TestASSTimeFormat(t *testing.T) {
+	cases := map[float64]string{0: "0:00:00.00", 59.999: "0:01:00.00", 3661.25: "1:01:01.25"}
+	for in, want := range cases {
+		if got := assTime(in); got != want {
+			t.Errorf("assTime(%v) = %q, want %q", in, got, want)
+		}
+	}
+}

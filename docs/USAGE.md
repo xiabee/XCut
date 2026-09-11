@@ -1,8 +1,22 @@
 # XCut Command Reference
 
-_Generated from `xcut <command> --help` output (commit b7328e6)._
+_Generated from `xcut <command> --help` output (commit fecd00e)._
 
 Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
+
+## xcut analyze
+```
+usage: xcut analyze <project> [assetID...]
+
+run baseline analyzers over project assets
+```
+
+## xcut auto
+```
+usage: xcut auto <file...> [--style name] [--project name] [--out path]
+
+one-shot: import → analyze → timeline → render
+```
 
 ## xcut version
 ```
@@ -16,6 +30,13 @@ print build information
 usage: xcut config show|path
 
 show or validate configuration
+```
+
+## xcut cache
+```
+usage: xcut cache stats [--json] | clear [--dry-run]
+
+inspect or clear the analysis and proxy caches
 ```
 
 ## xcut doctor
@@ -39,11 +60,18 @@ usage: xcut cleanup [--dry-run]
 remove temp files and evict analysis cache to budget
 ```
 
-## xcut cache
+## xcut eval
 ```
-usage: xcut cache stats [--json] | clear [--dry-run]
+usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
 
-inspect or clear the analysis and proxy caches
+score pipeline selection quality against an annotated manifest
+```
+
+## xcut import
+```
+usage: xcut import <project> <file...>
+
+probe media files into a project
 ```
 
 ## xcut project
@@ -60,39 +88,11 @@ usage: xcut jobs <project>
 list jobs of a project
 ```
 
-## xcut import
-```
-usage: xcut import <project> <file...>
-
-probe media files into a project
-```
-
-## xcut analyze
-```
-usage: xcut analyze <project> [assetID...]
-
-run baseline analyzers over project assets
-```
-
-## xcut timeline
-```
-usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup
-
-generate a timeline for a project
-```
-
 ## xcut render
 ```
 usage: xcut render <project> [--out path]
 
 render a project timeline to MP4
-```
-
-## xcut auto
-```
-usage: xcut auto <file...> [--style name] [--project name] [--out path]
-
-one-shot: import → analyze → timeline → render
 ```
 
 ## xcut serve
@@ -102,10 +102,17 @@ usage: xcut serve [--addr host:port]
 run the local HTTP API
 ```
 
-## xcut eval
+## xcut subtitles
 ```
-usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
+usage: xcut subtitles <media-file> [--ass] [--out path] [--lang code] [--model name]
 
-score pipeline selection quality against an annotated manifest
+speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)
+```
+
+## xcut timeline
+```
+usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup
+
+generate a timeline for a project
 ```
 
