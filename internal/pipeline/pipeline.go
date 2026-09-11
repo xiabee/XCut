@@ -486,6 +486,14 @@ func (d Deps) RestoreTimelineBackup(project *storage.Project) (bool, error) {
 	}
 	if curErr == nil {
 		if err := WriteAtomic(bakPath, cur); err != nil {
+			// The swap-back failed: undo the first write so the restore is a
+			// clean no-op — otherwise current and backup hold the same
+			// document and the advertised one-level undo is silently gone.
+			if rbErr := WriteAtomic(curPath, cur); rbErr != nil {
+				return true, xcerr.E(xcerr.CodeInternal,
+					"restore swap failed and the rollback failed too — current and backup now hold the same document",
+					errors.Join(err, rbErr))
+			}
 			return true, err
 		}
 	}
@@ -628,8 +636,17 @@ func fileSize(fi os.FileInfo) int64 {
 	return fi.Size()
 }
 
+// testHookWriteFail, when set (tests only), makes WriteAtomic fail for
+// paths it reports — the injection point that lets the backup-restore
+// rollback test force a mid-swap failure deterministically. nil in
+// production.
+var testHookWriteFail func(path string) bool
+
 // WriteAtomic writes b to path via temp file + rename (crash safety).
 func WriteAtomic(path string, b []byte) error {
+	if testHookWriteFail != nil && testHookWriteFail(path) {
+		return xcerr.E(xcerr.CodeInternal, "injected write failure", nil)
+	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return xcerr.E(xcerr.CodeInternal, "cannot create output directory", err)

@@ -422,3 +422,53 @@ func TestRenderFailureKeepsScratch(t *testing.T) {
 		t.Fatal("failed render produced an output file")
 	}
 }
+
+// TestRestoreTimelineBackupRollsBackFailedSwap: when the second half of the
+// swap (backup := old current) fails, the first half is rolled back — the
+// restore becomes a clean no-op instead of silently consuming the undo
+// (current == backup). The failure is injected at the backup path only.
+func TestRestoreTimelineBackupRollsBackFailedSwap(t *testing.T) {
+	ws := workspace.New(t.TempDir())
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	d := Deps{WS: ws}
+	p := &storage.Project{ID: "rb"}
+
+	curPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(curPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{"revision":7}`)
+	if err := os.WriteFile(curPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bakPath, err := d.TimelineBackupPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bakPath, []byte(`{"revision":3}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	testHookWriteFail = func(path string) bool { return path == bakPath }
+	defer func() { testHookWriteFail = nil }()
+
+	ok, err := d.RestoreTimelineBackup(p)
+	if err == nil {
+		t.Fatal("restore must report the failed swap-back")
+	}
+	if !ok {
+		t.Fatal("a backup did exist (ok must be true)")
+	}
+	got, err := os.ReadFile(curPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("rollback failed: current holds %q, want the original %q", got, original)
+	}
+}

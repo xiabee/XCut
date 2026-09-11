@@ -93,7 +93,13 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 	}
 	assetID := r.PathValue("assetID")
 	a, err := s.DB.GetAsset(r.Context(), assetID)
-	if err != nil || a == nil || a.ProjectID != p.ID {
+	if err != nil {
+		// A storage failure is not "unknown asset": the client must be able
+		// to tell a retryable backend problem from a genuinely missing row.
+		writeErr(w, err)
+		return
+	}
+	if a == nil || a.ProjectID != p.ID {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "unknown asset for this project", nil))
 		return
 	}
