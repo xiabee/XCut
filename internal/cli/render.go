@@ -10,17 +10,18 @@ import (
 )
 
 func init() {
-	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path]"), cmdRender)
+	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path] [--subs file]"), cmdRender)
 }
 
 func cmdRender(a *App, args []string) error {
 	outPath := ""
-	pos, err := parseCommandArgs(args, map[string]*string{"out": &outPath})
+	subsPath := ""
+	pos, err := parseCommandArgs(args, map[string]*string{"out": &outPath, "subs": &subsPath})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return xcerr.E(xcerr.CodeValidation, "usage: xcut render <project> [--out path]", nil)
+		return xcerr.E(xcerr.CodeValidation, "usage: xcut render <project> [--out path] [--subs file]", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -43,9 +44,17 @@ func cmdRender(a *App, args []string) error {
 	} else if abs, aerr := filepath.Abs(outPath); aerr == nil {
 		outPath = abs
 	}
+	if subsPath != "" {
+		if abs, aerr := filepath.Abs(subsPath); aerr == nil {
+			subsPath = abs
+		}
+		if _, serr := os.Stat(subsPath); serr != nil {
+			return xcerr.E(xcerr.CodeNotFound, "subtitle file does not exist", serr)
+		}
+	}
 
 	started := time.Now()
-	err = d.RenderProject(p, outPath, func(pct int) {})
+	err = d.RenderProject(p, outPath, subsPath, func(pct int) {})
 	if err != nil {
 		return err
 	}

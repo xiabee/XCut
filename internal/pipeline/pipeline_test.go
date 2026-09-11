@@ -260,7 +260,7 @@ func TestRenderCancelledCleansScratch(t *testing.T) {
 	}
 
 	out := filepath.Join(root, "out.mp4")
-	jobID, err := d.RenderProjectAsync(p, out, nil)
+	jobID, err := d.RenderProjectAsync(p, out, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ func TestRenderFailureKeepsScratch(t *testing.T) {
 	}
 
 	out := filepath.Join(root, "out.mp4")
-	if err := d.RenderProject(p, out, nil); err == nil {
+	if err := d.RenderProject(p, out, "", nil); err == nil {
 		t.Fatal("render with a vanished source must fail")
 	}
 

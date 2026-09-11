@@ -216,3 +216,50 @@ func TestCLIErrorOutputStaysUserSafe(t *testing.T) {
 		}
 	}
 }
+
+// TestE2ERenderWithSubs: render --subs burns subtitles over the finished
+// highlight in the same job (the KTV path: transcribe with `xcut
+// subtitles`, then render --subs). The burn pass must keep the output
+// duration and publish the file.
+func TestE2ERenderWithSubs(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	fixture := filepath.Join(root, "fixture.mp4")
+	if _, err := testmedia.Generate(root, "fixture.mp4", testmedia.DefaultFixture(), 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("xcut %v failed (exit %d)\nstderr:\n%s", args, code, stderr.String())
+		}
+	}
+
+	run("init")
+	run("project", "create", "subs-e2e")
+	run("import", "subs-e2e", fixture)
+	run("timeline", "subs-e2e", "--style", "generic_highlight")
+
+	srt := filepath.Join(root, "subs.srt")
+	if err := os.WriteFile(srt, []byte("1\n00:00:00,500 --> 00:00:02,000\n第一句歌词\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(root, "out.mp4")
+	run("render", "subs-e2e", "--out", out, "--subs", srt)
+
+	fi, err := os.Stat(out)
+	if err != nil || fi.Size() == 0 {
+		t.Fatalf("burned output missing: %v", err)
+	}
+	// A failed burn must not leave the base render masquerading as success.
+	if _, err := os.Stat(out + ".subs.partial"); !os.IsNotExist(err) {
+		t.Fatal("burn partial left behind")
+	}
+}

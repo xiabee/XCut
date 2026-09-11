@@ -183,7 +183,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		}
 		out = defaultOut
 	}
-	id, err := s.Pipe.RenderProjectAsync(p, out, nil)
+	id, err := s.Pipe.RenderProjectAsync(p, out, "", nil)
 	if err != nil {
 		writeErr(w, err)
 		return

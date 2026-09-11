@@ -496,26 +496,30 @@ func (d Deps) DefaultRenderPath(projectID string) (string, error) {
 }
 
 // RenderProject renders the project's stored timeline to outPath (recorded
-// job, blocking; temp scratch removed on success, kept on failure).
-func (d Deps) RenderProject(project *storage.Project, outPath string, onProgress func(pct int)) error {
+// job, blocking; temp scratch removed on success, kept on failure). A
+// non-empty subsPath burns subtitles over the finished video as a final
+// pass (libass; .ass or .srt) — audio is copied, the video is re-encoded
+// once. A failed burn removes the freshly rendered output rather than
+// publishing an un-burned result the caller asked to subtitle.
+func (d Deps) RenderProject(project *storage.Project, outPath, subsPath string, onProgress func(pct int)) error {
 	if err := d.guardRenderOut(project, outPath); err != nil {
 		return err
 	}
 	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeRender, project.ID, job.ClassCPUHeavy,
-		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
+		map[string]any{"out": outPath, "subs": subsPath}, d.renderBody(project, outPath, subsPath, onProgress))
 	return jerr
 }
 
 // RenderProjectAsync is the non-blocking variant.
-func (d Deps) RenderProjectAsync(project *storage.Project, outPath string, onProgress func(pct int)) (string, error) {
+func (d Deps) RenderProjectAsync(project *storage.Project, outPath, subsPath string, onProgress func(pct int)) (string, error) {
 	if err := d.guardRenderOut(project, outPath); err != nil {
 		return "", err
 	}
 	return d.Queue.RunAsync(d.Ctx, job.TypeRender, project.ID, job.ClassCPUHeavy,
-		map[string]any{"out": outPath}, d.renderBody(project, outPath, onProgress))
+		map[string]any{"out": outPath, "subs": subsPath}, d.renderBody(project, outPath, subsPath, onProgress))
 }
 
-func (d Deps) renderBody(project *storage.Project, outPath string, onProgress func(pct int)) job.Runner {
+func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onProgress func(pct int)) job.Runner {
 	started := time.Now()
 	return func(jctx context.Context, progress func(float64)) error {
 		tlPath, err := d.TimelinePath(project.ID)
@@ -591,6 +595,14 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 		}, outPath)
 		if renderErr != nil {
 			return renderErr
+		}
+		if subsPath != "" {
+			// The burn is part of the render the caller asked for: on failure
+			// the just-rendered base file is removed, not published half-done.
+			if renderErr = render.BurnSubtitles(jctx, d.tools(), outPath, subsPath, outPath); renderErr != nil {
+				_ = os.Remove(outPath)
+				return renderErr
+			}
 		}
 		progress(1.0)
 		fi, _ := os.Stat(outPath)
