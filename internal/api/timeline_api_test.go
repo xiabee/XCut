@@ -469,3 +469,56 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 		t.Fatalf("final revision = %d, want %d (accepted=%d regens=%d) — a write collided on a revision", got, want, accepted, regens)
 	}
 }
+
+// TestTimelinePutSurvivesAssetReimport: re-importing the same file must
+// keep the asset's ID — otherwise every stored timeline clip referencing it
+// starts failing validation ("unknown asset") and the render bricks until
+// the timeline is regenerated.
+func TestTimelinePutSurvivesAssetReimport(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "reimport"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "reimport")
+
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+	tl := &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks: []timeline.Track{{
+			ID:   "v1",
+			Kind: "video",
+			Clips: []timeline.Clip{{
+				ID: "c1", AssetID: asset.ID, SourceStart: 0, SourceEnd: 5,
+				TimelineStart: 0, Speed: 1, Volume: 1,
+			}},
+		}},
+	}
+	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl)); rec.Code != http.StatusOK {
+		t.Fatalf("save before reimport: %d", rec.Code)
+	}
+
+	// Re-import the same path (fresh metadata, no ID — as importInto does).
+	reimported := storageAssetFor(p.ID)
+	reimported.DurationSec = 9 // probe data changed on disk
+	if err := s.DB.UpsertAsset(t.Context(), &reimported); err != nil {
+		t.Fatal(err)
+	}
+	if reimported.ID != asset.ID {
+		t.Fatalf("reimport re-keyed the asset: %s -> %s", asset.ID, reimported.ID)
+	}
+
+	// The stored document still validates against the project's assets.
+	rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get after reimport: %d", rec.Code)
+	}
+	rev := int64(out["timeline"].(map[string]any)["revision"].(float64))
+	tl.Revision = rev
+	if rec, body := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl)); rec.Code != http.StatusOK {
+		t.Fatalf("stored timeline no longer valid after reimport: %d %s", rec.Code, body)
+	}
+}

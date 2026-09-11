@@ -73,18 +73,27 @@ func TestAssetUpsert(t *testing.T) {
 	if err := db.UpsertAsset(ctx, a1); err != nil {
 		t.Fatal(err)
 	}
+	origID, origCreated := a1.ID, a1.CreatedAt
 
-	// Same path → update, not duplicate.
+	// Same path → update, not duplicate. The asset ID must stay stable:
+	// stored timelines reference clips by asset ID, so re-importing the
+	// same file must never re-key them (a new ID bricks every clip).
 	a1b := &Asset{ProjectID: p.ID, Path: `D:\vids\match.mp4`, Filename: "match.mp4", Fingerprint: "fp2", DurationSec: 11, Width: 1920, Height: 1080, FPS: 30, VideoCodec: "h264"}
 	if err := db.UpsertAsset(ctx, a1b); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetAsset(ctx, a1b.ID)
+	if a1b.ID != origID {
+		t.Fatalf("re-import re-keyed the asset: %s -> %s", origID, a1b.ID)
+	}
+	if a1b.CreatedAt != origCreated {
+		t.Fatalf("re-import changed created_at: %d -> %d", origCreated, a1b.CreatedAt)
+	}
+	got, err := db.GetAsset(ctx, origID)
 	if err != nil || got == nil {
 		t.Fatalf("GetAsset: %+v, %v", got, err)
 	}
 	if got.Fingerprint != "fp2" || got.DurationSec != 11 {
-		t.Fatalf("upsert did not update: %+v", got)
+		t.Fatalf("upsert did not update probe data: %+v", got)
 	}
 	list, _ := db.ListAssets(ctx, p.ID)
 	if len(list) != 1 {

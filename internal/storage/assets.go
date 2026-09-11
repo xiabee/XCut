@@ -48,7 +48,11 @@ func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 	return &a, nil
 }
 
-// UpsertAsset inserts or replaces (by project+path) an asset row.
+// UpsertAsset inserts or updates (by project+path) an asset row. The asset
+// ID is stable across re-imports: timeline clips reference assets by ID, so
+// re-importing the same file must refresh the probe data without re-keying
+// the row (a new ID would brick every stored timeline that clips it). On
+// conflict the stored ID and created_at win; a.ID is updated to match.
 func (d *DB) UpsertAsset(ctx context.Context, a *Asset) error {
 	if a.ID == "" {
 		a.ID = NewID("asst")
@@ -65,7 +69,6 @@ INSERT INTO assets (id, project_id, path, filename, fingerprint, duration_s, wid
 	fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id, path) DO UPDATE SET
-	id=excluded.id,
 	filename=excluded.filename,
 	fingerprint=excluded.fingerprint,
 	duration_s=excluded.duration_s,
@@ -83,6 +86,18 @@ ON CONFLICT(project_id, path) DO UPDATE SET
 		a.Bitrate, a.SizeBytes, a.ProbeJSON, a.CreatedAt)
 	if err != nil {
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset", err)
+	}
+	// Reconcile the caller's copy with the stored identity: the freshly
+	// generated ID only sticks when the row was actually new.
+	stored, err := scanAsset(d.QueryRowContext(ctx,
+		`SELECT `+assetCols+` FROM assets WHERE project_id = ? AND path = ?`,
+		a.ProjectID, a.Path))
+	if err != nil {
+		return xcerr.E(xcerr.CodeStorageFailure, "cannot read back asset", err)
+	}
+	if stored != nil {
+		a.ID = stored.ID
+		a.CreatedAt = stored.CreatedAt
 	}
 	return nil
 }
