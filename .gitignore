@@ -25,3 +25,4 @@ target/
 # Local-only tooling and evaluation data (never commit binaries or media)
 /.tools/
 /eval/
+soak-results.json
