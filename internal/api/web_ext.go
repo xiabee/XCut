@@ -11,12 +11,15 @@ import (
 )
 
 // RegisterExtensionEndpoints adds read-only endpoints used by the web UI:
-// style listing, rendered-video download/playback and per-clip source
-// preview (range-request capable via http.ServeContent).
+// style listing, rendered-video download/playback, per-clip source
+// preview (range-request capable via http.ServeContent) and subtitle
+// status/download.
 func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/styles", s.handleStyles)
 	mux.HandleFunc("GET /api/v1/projects/{id}/render", s.handleRenderDownload)
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/file", s.handleAssetFile)
+	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles", s.handleSubtitlesStatus)
+	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles/file", s.handleSubtitlesFile)
 }
 
 // handleStyles lists style presets visible to the server (embedded +
@@ -111,4 +114,63 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition",
 		"inline; filename=\""+sanitizeHeaderFilename(a.Filename)+"\"")
 	http.ServeContent(w, r, a.Filename, fi.ModTime(), f)
+}
+
+// handleSubtitlesStatus reports which subtitle artifacts exist for the
+// project (404-flavored empty state, not an error: no transcription yet is
+// the normal before-first-run state).
+func (s *Server) handleSubtitlesStatus(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	status := map[string]any{"srt": false, "ass": false}
+	for _, ext := range []string{"srt", "ass"} {
+		path, err := s.Pipe.SubtitlesPath(p.ID, ext)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if _, err := os.Stat(path); err == nil {
+			status[ext] = true
+		}
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+// handleSubtitlesFile downloads one subtitle artifact (?format=ass|srt,
+// ass preferred when unspecified but only when it exists).
+func (s *Server) handleSubtitlesFile(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "ass"
+	}
+	if format != "ass" && format != "srt" {
+		writeErr(w, xcerr.E(xcerr.CodeValidation, "format must be ass or srt", nil))
+		return
+	}
+	path, err := s.Pipe.SubtitlesPath(p.ID, format)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no "+format+" subtitles for this project (transcribe first)", nil))
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open subtitle file", err))
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		"attachment; filename=\""+sanitizeHeaderFilename(p.Name)+"."+format+"\"")
+	http.ServeContent(w, r, "subtitles."+format, fi.ModTime(), f)
 }

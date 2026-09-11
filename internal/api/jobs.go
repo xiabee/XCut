@@ -162,14 +162,38 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	writeAccepted(w, id)
 }
 
-// POST /api/v1/projects/{id}/render {"out": "D:/videos/out.mp4"} (out optional)
+// POST /api/v1/projects/{id}/subtitles {"asset": "<id>"} (asset optional,
+// first asset by default) — transcribes through the AI sidecar and writes
+// subtitles.{srt,ass} into the project directory.
+func (s *Server) handleSubtitlesTranscribe(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	var body struct {
+		Asset string `json:"asset"`
+	}
+	if !decodeOptionalBody(w, r, &body) {
+		return
+	}
+	id, err := s.Pipe.TranscribeProjectAsync(p, body.Asset)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeAccepted(w, id)
+}
+
+// POST /api/v1/projects/{id}/render {"out": "D:/videos/out.mp4", "subs": true}
+// (out optional; subs burns the project's subtitles into the output)
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
 		return
 	}
 	var body struct {
-		Out string `json:"out"`
+		Out  string `json:"out"`
+		Subs bool   `json:"subs"`
 	}
 	if !decodeOptionalBody(w, r, &body) {
 		return
@@ -183,7 +207,16 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		}
 		out = defaultOut
 	}
-	id, err := s.Pipe.RenderProjectAsync(p, out, "", nil)
+	subsPath := ""
+	if body.Subs {
+		var serr error
+		subsPath, serr = s.Pipe.ResolveSubtitlesPath(p.ID)
+		if serr != nil {
+			writeErr(w, serr)
+			return
+		}
+	}
+	id, err := s.Pipe.RenderProjectAsync(p, out, subsPath, nil)
 	if err != nil {
 		writeErr(w, err)
 		return

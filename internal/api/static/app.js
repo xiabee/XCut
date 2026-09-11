@@ -81,6 +81,7 @@ function selectProject(p) {
   refreshAssets();
   refreshJobs();
   refreshTimeline();
+  refreshSubtitlesStatus();
 }
 
 async function deleteProject() {
@@ -237,6 +238,7 @@ async function watchUntilDone(jobID) {
       clearInterval(timer);
       if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
       if (job.status === "succeeded" && job.type === "render") showPlayer();
+      if (job.type === "subtitles") await refreshSubtitlesStatus();
       busy(false);
       refreshJobs();
     }
@@ -468,9 +470,43 @@ $("btn-timeline").addEventListener("click", async () => {
 });
 $("btn-render").addEventListener("click", async () => {
   try {
-    await trigger("/render", {});
+    await trigger("/render", { subs: $("burn-subs").checked });
     showPlayerSoon();
   } catch (e) { banner(`Render failed: ${e.message}`); busy(false); }
+});
+
+/* ---------- subtitles (AI sidecar) ---------- */
+async function refreshSubtitlesStatus() {
+  const status = $("subs-status");
+  const links = $("subs-links");
+  if (!currentProject) { status.textContent = ""; links.innerHTML = ""; return; }
+  try {
+    const st = await api(`/api/v1/projects/${currentProject.id}/subtitles`);
+    if (!st.srt && !st.ass) {
+      status.textContent = "none yet — transcribe to create";
+      links.innerHTML = "";
+      return;
+    }
+    status.textContent = st.ass ? "srt + karaoke ass ready" : "srt ready";
+    const base = `/api/v1/projects/${currentProject.id}/subtitles/file?format=`;
+    links.innerHTML = "";
+    for (const [fmt, ok] of [["srt", st.srt], ["ass", st.ass]]) {
+      if (!ok) continue;
+      const a = document.createElement("a");
+      a.href = base + fmt;
+      a.download = "";
+      a.textContent = `download .${fmt}`;
+      a.style.marginLeft = "8px";
+      links.appendChild(a);
+    }
+  } catch (_) { status.textContent = "status unavailable"; }
+}
+
+$("btn-subtitles").addEventListener("click", async () => {
+  try {
+    await trigger("/subtitles", {});
+    banner("Transcription queued — status updates when the job finishes");
+  } catch (e) { banner(`Transcribe failed: ${e.message}`); busy(false); }
 });
 
 let playerTimer = null;

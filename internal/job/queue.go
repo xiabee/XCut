@@ -33,10 +33,11 @@ const (
 
 // Job type names (stored in the jobs table, matched by callers).
 const (
-	TypeImport   = "import"
-	TypeAnalyze  = "analyze"
-	TypeTimeline = "timeline"
-	TypeRender   = "render"
+	TypeImport    = "import"
+	TypeAnalyze   = "analyze"
+	TypeTimeline  = "timeline"
+	TypeRender    = "render"
+	TypeSubtitles = "subtitles"
 )
 
 // Queue runs jobs with bounded concurrency.

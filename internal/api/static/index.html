@@ -48,9 +48,21 @@
           <button id="btn-analyze">1 · Analyze</button>
           <button id="btn-timeline">2 · Timeline</button>
           <button id="btn-render">3 · Render</button>
+          <label class="hint"><input type="checkbox" id="burn-subs"> burn subtitles</label>
         </div>
         <p class="hint">analyze → timeline → render; every step records a job below.
         Regenerating (step 2) overwrites any manual edits saved below — that is by design.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Subtitles (AI sidecar — needs a local Whisper backend)</legend>
+        <div class="row">
+          <button id="btn-subtitles">Transcribe</button>
+          <span id="subs-status" class="hint">checking…</span>
+          <span id="subs-links"></span>
+        </div>
+        <p class="hint">speech-to-text over this project's first asset; word-timed
+        results also produce a karaoke .ass for sing-along burning.</p>
       </fieldset>
 
       <fieldset>
