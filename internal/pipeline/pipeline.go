@@ -37,6 +37,14 @@ type Deps struct {
 	Cfg   *config.Config
 	Log   *slog.Logger
 	Queue *job.Queue
+
+	// TimelineWriteLock, when set, serializes the timeline document's
+	// check-and-write sections (API PUTs, backup restores, regeneration
+	// writes) inside one process — the API server injects its own mutex so
+	// a PUT that races a regeneration cannot collide revisions with it.
+	// CLI commands leave it nil: the workspace writer lock already
+	// excludes concurrent writers across processes.
+	TimelineWriteLock sync.Locker
 }
 
 // NewDeps builds Deps from an App-like configuration (used by both CLI and API).
@@ -389,41 +397,55 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, result *t
 		if err != nil {
 			return err
 		}
-		outPath, err := d.WS.SafeJoin(filepath.Join("projects", project.ID, "timeline.json"))
-		if err != nil {
-			return err
-		}
-		// One-level undo: regeneration is the machine overwriting whatever
-		// the user last had (manual edits included), so keep the previous
-		// document around before replacing it.
-		var prevRevision int64
-		if prev, rerr := os.ReadFile(outPath); rerr == nil {
-			backupPath, err := d.TimelineBackupPath(project.ID)
-			if err != nil {
-				return err
-			}
-			if err := WriteAtomic(backupPath, prev); err != nil {
-				return err
-			}
-			var prevDoc timeline.Timeline
-			if json.Unmarshal(prev, &prevDoc) == nil {
-				prevRevision = prevDoc.Revision
-			}
-		}
-		// Regeneration advances the document revision so stale editors get
-		// the same 409 protection against it that they get against PUTs.
-		tl.Revision = prevRevision + 1
-		b, err := json.MarshalIndent(tl, "", "  ")
-		if err != nil {
-			return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
-		}
-		if err := WriteAtomic(outPath, b); err != nil {
+		if err := d.WriteRegeneratedTimeline(project, tl); err != nil {
 			return err
 		}
 		progress(1.0)
 		*result = *tl
 		return nil
 	}
+}
+
+// WriteRegeneratedTimeline publishes a style-regenerated document as the
+// project's timeline: the previous document becomes the one-level backup and
+// the revision is bumped so stale editors keep their 409 protection. When
+// Deps.TimelineWriteLock is set (serve), the whole read-backup-write section
+// runs under it — a manual PUT that lands mid-regeneration becomes the
+// backup instead of being silently clobbered at the same revision.
+func (d Deps) WriteRegeneratedTimeline(project *storage.Project, tl *timeline.Timeline) error {
+	if d.TimelineWriteLock != nil {
+		d.TimelineWriteLock.Lock()
+		defer d.TimelineWriteLock.Unlock()
+	}
+	outPath, err := d.WS.SafeJoin(filepath.Join("projects", project.ID, "timeline.json"))
+	if err != nil {
+		return err
+	}
+	// One-level undo: regeneration is the machine overwriting whatever
+	// the user last had (manual edits included), so keep the previous
+	// document around before replacing it.
+	var prevRevision int64
+	if prev, rerr := os.ReadFile(outPath); rerr == nil {
+		backupPath, err := d.TimelineBackupPath(project.ID)
+		if err != nil {
+			return err
+		}
+		if err := WriteAtomic(backupPath, prev); err != nil {
+			return err
+		}
+		var prevDoc timeline.Timeline
+		if json.Unmarshal(prev, &prevDoc) == nil {
+			prevRevision = prevDoc.Revision
+		}
+	}
+	// Regeneration advances the document revision so stale editors get
+	// the same 409 protection against it that they get against PUTs.
+	tl.Revision = prevRevision + 1
+	b, err := json.MarshalIndent(tl, "", "  ")
+	if err != nil {
+		return xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err)
+	}
+	return WriteAtomic(outPath, b)
 }
 
 // TimelinePath is where a project's timeline document lives.

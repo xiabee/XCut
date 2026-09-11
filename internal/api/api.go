@@ -22,10 +22,11 @@ type Server struct {
 	DB   *storage.DB
 	Pipe pipeline.Deps
 
-	// timelineMu serializes timeline check-and-write (revision guard) across
-	// concurrent PUTs and regeneration inside this process; the process
-	// itself owns the workspace writer lock.
-	timelineMu sync.Mutex
+	// TimelineMu serializes timeline document writes (revision-guarded
+	// PUTs, backup restores, and regeneration via Pipe.TimelineWriteLock)
+	// across concurrent request and job goroutines in this process; the
+	// process itself owns the workspace writer lock.
+	TimelineMu sync.Mutex
 }
 
 // Shutdown waits for in-flight async jobs (bounded by the caller's timeout).

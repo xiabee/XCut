@@ -53,6 +53,10 @@ func cmdServe(a *App, args []string) error {
 	a.Log = slogSvc
 
 	srv := &api.Server{DB: db, Pipe: a.Pipeline(db)}
+	// Serve owns every timeline document write in this process: PUTs,
+	// backup restores and regeneration writes must share one mutex or a
+	// PUT racing a regeneration could collide revisions with it.
+	srv.Pipe.TimelineWriteLock = &srv.TimelineMu
 
 	// The workspace writer lock is held for serve's lifetime, so every
 	// queued/running row visible at startup was left by a dead process.

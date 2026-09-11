@@ -71,11 +71,12 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serialize the read-check-write against other PUTs and regeneration
-	// (single serve process owns the workspace, so an in-process mutex is
-	// the whole story).
-	s.timelineMu.Lock()
-	defer s.timelineMu.Unlock()
+	// Serialize the read-check-write against other PUTs, backup restores,
+	// and regeneration writes (single serve process owns the workspace, so
+	// an in-process mutex is the whole story; regeneration takes the same
+	// lock through Pipe.TimelineWriteLock).
+	s.TimelineMu.Lock()
+	defer s.TimelineMu.Unlock()
 
 	path, err := s.Pipe.TimelinePath(p.ID)
 	if err != nil {
@@ -125,7 +126,11 @@ func (s *Server) handleTimelineRestore(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		return
 	}
+	// The restore's two-file swap races PUTs and regeneration writes on the
+	// same documents — hold the timeline write lock across it.
+	s.TimelineMu.Lock()
 	ok, err := s.Pipe.RestoreTimelineBackup(p)
+	s.TimelineMu.Unlock()
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -36,10 +36,12 @@ func testServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return &Server{
+	srv := &Server{
 		DB:   db,
 		Pipe: pipeline.NewDeps(context.Background(), db, ws, cfg, logger),
 	}
+	srv.Pipe.TimelineWriteLock = &srv.TimelineMu
+	return srv
 }
 
 func do(t *testing.T, s *Server, method, path, body string) (*httptest.ResponseRecorder, map[string]any) {

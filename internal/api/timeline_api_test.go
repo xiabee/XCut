@@ -362,3 +362,110 @@ func TestTimelineRevisionGuardConcurrent(t *testing.T) {
 		t.Fatalf("wins=%d conflicts=%d, want exactly 1 win", wins, conflicts)
 	}
 }
+
+// TestTimelineRegenAndPutRevisionUniqueness: manual PUTs and regeneration
+// writes interleave on one document. Regeneration writes hold the same lock
+// as PUTs (Pipe.TimelineWriteLock), so every write bumps from what is
+// current at write time — the stored revision must end at exactly
+// 1 + (accepted PUTs) + (regenerations), proving no write ever collided on
+// a revision (a collision silently destroys a document the API reported as
+// saved).
+func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "rev-uniq"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "rev-uniq")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+
+	put := func(rev int64) int {
+		tl := &timeline.Timeline{
+			Version:  timeline.Version,
+			Revision: rev,
+			Canvas:   timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []timeline.Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []timeline.Clip{{
+					ID: "manual", AssetID: asset.ID, SourceStart: 0, SourceEnd: 5,
+					TimelineStart: 0, Speed: 1, Volume: 1,
+				}},
+			}},
+		}
+		rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl))
+		return rec.Code
+	}
+
+	// Seed revision 1.
+	if code := put(0); code != http.StatusOK {
+		t.Fatalf("seed save: %d", code)
+	}
+
+	const writers, iters, regens = 4, 3, 4
+	var wg sync.WaitGroup
+	codes := make([]int, writers*iters)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < iters; j++ {
+				// Read-then-write, as the editor UI does.
+				rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+				if rec.Code != http.StatusOK {
+					codes[i*iters+j] = rec.Code
+					continue
+				}
+				rev := int64(out["timeline"].(map[string]any)["revision"].(float64))
+				codes[i*iters+j] = put(rev)
+			}
+		}(i)
+	}
+	for k := 0; k < regens; k++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			gen := &timeline.Timeline{
+				Version: timeline.Version,
+				Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+				Tracks: []timeline.Track{{
+					ID:   "v1",
+					Kind: "video",
+					Clips: []timeline.Clip{{
+						ID: "gen", AssetID: asset.ID, SourceStart: 0, SourceEnd: 2,
+						TimelineStart: 0, Speed: 1, Volume: 1,
+					}},
+				}},
+			}
+			if err := s.Pipe.WriteRegeneratedTimeline(p, gen); err != nil {
+				t.Errorf("regeneration: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	accepted := 0
+	for _, c := range codes {
+		switch c {
+		case http.StatusOK:
+			accepted++
+		case http.StatusConflict: // another writer moved first — fine
+		case 0:
+			t.Fatal("a writer never issued its PUT")
+		default:
+			t.Fatalf("unexpected PUT status %d", c)
+		}
+	}
+
+	rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("final get: %d", rec.Code)
+	}
+	want := int64(1 + accepted + regens)
+	got := int64(out["timeline"].(map[string]any)["revision"].(float64))
+	if got != want {
+		t.Fatalf("final revision = %d, want %d (accepted=%d regens=%d) — a write collided on a revision", got, want, accepted, regens)
+	}
+}
