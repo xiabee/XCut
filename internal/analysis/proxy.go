@@ -130,9 +130,16 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 	}
 
 	// Budget is housekeeping, not correctness (mirrors the analysis store).
+	// Eviction runs AFTER the new file lands, so an absurdly small budget
+	// can evict the just-created proxy — verify it survived and fall back
+	// to the original rather than handing analysis a missing file.
 	if s.MaxBytes > 0 {
 		if _, _, err := s.EvictTo(s.MaxBytes); err != nil {
 			log.Warn("proxy cache eviction failed", "err", err)
+		}
+		if _, err := os.Stat(p); err != nil {
+			log.Warn("proxy evicted immediately (budget below one proxy); analyzing original", "err", err)
+			return "", false, nil
 		}
 	}
 	log.Debug("analysis proxy ready", "source_width", probe.Width, "proxy_width", target, "fps", fps)

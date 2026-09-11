@@ -263,3 +263,76 @@ func TestE2ERenderWithSubs(t *testing.T) {
 		t.Fatal("burn partial left behind")
 	}
 }
+
+// TestE2EAutoScopesToRunInputs: two auto runs sharing the default project
+// must not compose one cut from both files — the second run's timeline
+// references only the asset it imported (identity is path-stable, so a
+// resume re-run still maps to its asset).
+func TestE2EAutoScopesToRunInputs(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	// Two distinct fixtures with distinct lengths.
+	if _, err := testmedia.Generate(root, "a.mp4", []testmedia.Scene{
+		{Seconds: 3, Color: "red", Frequency: 440}, {Seconds: 3, Color: "blue", Frequency: 660},
+	}, 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testmedia.Generate(root, "b.mp4", []testmedia.Scene{
+		{Seconds: 3, Color: "green", Frequency: 880},
+	}, 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("xcut %v failed (exit %d)\nstderr:\n%s", args, code, stderr.String())
+		}
+	}
+	run("init")
+	run("auto", filepath.Join(root, "a.mp4"), "--style", "generic_highlight")
+	run("auto", filepath.Join(root, "b.mp4"), "--style", "generic_highlight")
+
+	// The "auto" project's stored timeline must reference only b.mp4.
+	projDir := latestProjectDir(t, root)
+	tlPath := filepath.Join(projDir, "timeline.json")
+	b, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "a.mp4") {
+		t.Fatalf("timeline leaked clips from the earlier run:\n%s", b)
+	}
+	if !strings.Contains(string(b), "b.mp4") {
+		t.Fatalf("timeline does not reference this run's input:\n%s", b)
+	}
+}
+
+// latestProjectDir returns the project directory of the project named
+// "auto" (workspace/projects/<id>).
+func latestProjectDir(t *testing.T, root string) string {
+	t.Helper()
+	projRoot := filepath.Join(root, "projects")
+	entries, err := os.ReadDir(projRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		marker := filepath.Join(projRoot, e.Name(), "timeline.json")
+		if _, err := os.Stat(marker); err == nil {
+			b, err := os.ReadFile(filepath.Join(root, "projects.db"))
+			_ = b
+			_ = err
+			// Only one project exists in this test workspace.
+			return filepath.Join(projRoot, e.Name())
+		}
+	}
+	t.Fatal("no project directory with a timeline found")
+	return ""
+}

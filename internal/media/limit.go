@@ -59,5 +59,9 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	buf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = buf
 	cmd.Stderr = buf
-	return buf.b, cmd.Run()
+	// Read the buffer AFTER Run(): the expression below was evaluated
+	// left-to-right and handed back the pre-Run (empty) slice, stripping the
+	// stderr tail from every failure diagnostic.
+	err = cmd.Run()
+	return buf.b, err
 }

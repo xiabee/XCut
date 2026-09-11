@@ -72,7 +72,7 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 
 	// Note: "--" is not portable across ffprobe builds; path is passed as the
 	// final argument and is never interpreted as a shell string (no shell).
-	out, _, err := Run(ctx, tools.FFprobe,
+	out, errOut, err := Run(ctx, tools.FFprobe,
 		"-v", "error",
 		"-print_format", "json",
 		"-show_format",
@@ -81,7 +81,7 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 	)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, xcerr.E(xcerr.CodeFFmpegFailure, "probe timed out", ctx.Err())
+			return nil, xcerr.E(xcerr.CodeFFmpegFailure, "probe timed out or was cancelled", ctx.Err())
 		}
 		// A missing/unrunnable ffprobe is an environment problem, not a
 		// property of the file — mislabeling it as unsupported media sends
@@ -90,7 +90,14 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 			return nil, xcerr.E(xcerr.CodeFFmpegFailure,
 				"ffprobe is not runnable — install it or set XCUT_FFPROBE (see xcut doctor)", err)
 		}
-		return nil, xcerr.E(xcerr.CodeUnsupportedMedia, "file is not a supported media file", err)
+		// Keep the tail of ffprobe's own output: exit status alone gives the
+		// user nothing to act on ("Invalid data" vs missing decoder etc.).
+		tail := string(errOut)
+		if len(tail) > 300 {
+			tail = tail[len(tail)-300:]
+		}
+		return nil, xcerr.E(xcerr.CodeUnsupportedMedia,
+			"file is not a supported media file", fmt.Errorf("%v: %s", err, tail))
 	}
 
 	var po probeOutput

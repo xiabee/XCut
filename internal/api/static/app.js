@@ -149,7 +149,12 @@ async function refreshAssets() {
 // freezing the job panel and leaving busy() buttons stuck.
 let pollFailures = 0;
 async function refreshJobs() {
-  if (!currentProject) return;
+  if (!currentProject) {
+    // Keep the loop alive: a deleted project must not kill polling
+    // permanently (the next selection reuses this timer).
+    schedulePoll(2500);
+    return;
+  }
   try {
     const { jobs } = await api(`/api/v1/projects/${currentProject.id}/jobs`);
     pollFailures = 0;

@@ -126,12 +126,13 @@ func (d Deps) ImportAsset(project *storage.Project, path string) (*storage.Asset
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
 	}
+	asset := &storage.Asset{}
 	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeImport, project.ID, job.ClassIOHeavy,
-		map[string]any{"path": abs}, d.importBody(project, abs))
+		map[string]any{"path": abs}, d.importBody(project, abs, asset))
 	if jerr != nil {
 		return nil, jerr
 	}
-	return d.latestAssetByName(project.ID, filepath.Base(abs))
+	return asset, nil
 }
 
 // ImportAssetAsync is the non-blocking variant; it returns the job id
@@ -142,16 +143,19 @@ func (d Deps) ImportAssetAsync(project *storage.Project, path string) (string, e
 		return "", xcerr.E(xcerr.CodeValidation, "cannot resolve path: "+path, err)
 	}
 	return d.Queue.RunAsync(d.Ctx, job.TypeImport, project.ID, job.ClassIOHeavy,
-		map[string]any{"path": abs}, d.importBody(project, abs))
+		map[string]any{"path": abs}, d.importBody(project, abs, nil))
 }
 
-func (d Deps) importBody(project *storage.Project, path string) job.Runner {
+func (d Deps) importBody(project *storage.Project, path string, out *storage.Asset) job.Runner {
 	return func(ctx context.Context, progress func(float64)) error {
-		return d.importInto(ctx, project, path, progress)
+		return d.importInto(ctx, project, path, out, progress)
 	}
 }
 
-func (d Deps) importInto(ctx context.Context, project *storage.Project, path string, progress func(float64)) error {
+// importInto probes and upserts one file; out receives the stored asset row
+// (identity is reconciled by UpsertAsset, so re-importing the same path
+// yields the same asset with refreshed probe data).
+func (d Deps) importInto(ctx context.Context, project *storage.Project, path string, out *storage.Asset, progress func(float64)) error {
 	fp, err := media.Fingerprint(path)
 	if err != nil {
 		return err
@@ -181,25 +185,11 @@ func (d Deps) importInto(ctx context.Context, project *storage.Project, path str
 	if err := d.DB.UpsertAsset(ctx, asset); err != nil {
 		return err
 	}
+	if out != nil {
+		*out = *asset
+	}
 	progress(1.0)
 	return nil
-}
-
-func (d Deps) latestAssetByName(projectID, filename string) (*storage.Asset, error) {
-	assets, err := d.DB.ListAssets(d.Ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-	var latest *storage.Asset
-	for i := range assets {
-		if assets[i].Filename == filename && (latest == nil || assets[i].CreatedAt >= latest.CreatedAt) {
-			latest = &assets[i]
-		}
-	}
-	if latest == nil {
-		return nil, xcerr.E(xcerr.CodeNotFound, "asset not found after import", nil)
-	}
-	return latest, nil
 }
 
 // AnalyzeProject runs the analyzer set over the project's assets as a single
@@ -329,10 +319,13 @@ func firstErr(ch chan error) error {
 
 // BuildTimeline generates the project timeline with the given style and
 // writes it to the project directory atomically (recorded job, blocking).
-func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeline.Timeline, error) {
+// onlyIDs scopes generation to those assets — auto passes the assets it
+// imported so a shared/default project's earlier imports never leak clips
+// into this run's cut.
+func (d Deps) BuildTimeline(project *storage.Project, styleName string, onlyIDs ...string) (*timeline.Timeline, error) {
 	result := &timeline.Timeline{}
 	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
-		map[string]any{"style": styleName}, d.timelineBody(project, styleName, result))
+		map[string]any{"style": styleName}, d.timelineBody(project, styleName, onlyIDs, result))
 	if jerr != nil {
 		return nil, jerr
 	}
@@ -340,16 +333,32 @@ func (d Deps) BuildTimeline(project *storage.Project, styleName string) (*timeli
 }
 
 // BuildTimelineAsync is the non-blocking variant.
-func (d Deps) BuildTimelineAsync(project *storage.Project, styleName string) (string, error) {
+func (d Deps) BuildTimelineAsync(project *storage.Project, styleName string, onlyIDs ...string) (string, error) {
 	return d.Queue.RunAsync(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
-		map[string]any{"style": styleName}, d.timelineBody(project, styleName, &timeline.Timeline{}))
+		map[string]any{"style": styleName}, d.timelineBody(project, styleName, onlyIDs, &timeline.Timeline{}))
 }
 
-func (d Deps) timelineBody(project *storage.Project, styleName string, result *timeline.Timeline) job.Runner {
+func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs []string, result *timeline.Timeline) job.Runner {
 	return func(jctx context.Context, progress func(float64)) error {
 		assets, err := d.DB.ListAssets(jctx, project.ID)
 		if err != nil {
 			return err
+		}
+		if len(onlyIDs) > 0 {
+			want := make(map[string]bool, len(onlyIDs))
+			for _, id := range onlyIDs {
+				want[id] = true
+			}
+			filtered := assets[:0:0]
+			for _, a := range assets {
+				if want[a.ID] {
+					filtered = append(filtered, a)
+				}
+			}
+			if len(filtered) == 0 {
+				return xcerr.E(xcerr.CodeNotFound, "no matching assets in project", nil)
+			}
+			assets = filtered
 		}
 		if len(assets) == 0 {
 			return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)

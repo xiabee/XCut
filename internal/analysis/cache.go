@@ -118,7 +118,7 @@ func (s *Store) Usage() (count int, bytes int64, err error) {
 }
 
 // EvictTo prunes the cache down to at most maxBytes by removing
-// oldest-modified entries first (deterministic LRU approximation: entries are
+// oldest-modified entries first (deterministic FIFO-by-creation: entries are
 // immutable once written, so mtime = creation time).
 // Returns how many entries were removed and bytes reclaimed.
 func (s *Store) EvictTo(maxBytes int64) (removed int, freed int64, err error) {

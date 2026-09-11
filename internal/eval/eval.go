@@ -206,13 +206,22 @@ func Score(selected []Interval, expected []Range, cfg Config) CaseMetrics {
 	for _, e := range expected {
 		ei := e.interval()
 		rm := RangeMatch{Start: e.Start, End: e.End, Label: e.Label}
+		// Coverage is the fraction of the expected range covered by ANY
+		// selection — summing per-selection intersections would double-count
+		// overlapping picks (the harness explicitly flags duplicates) and
+		// push Coverage past 1.0.
+		covered := make([]Interval, 0, len(selected))
 		for _, s := range selected {
 			if v := IoU(ei, s); v > rm.BestIoU {
 				rm.BestIoU = v
 			}
 			if in, ok := ei.intersect(s); ok {
-				rm.Coverage += in.length()
+				covered = append(covered, in)
 			}
+		}
+		covered = mergeIntervals(covered)
+		for _, iv := range covered {
+			rm.Coverage += iv.length()
 		}
 		if e.End > e.Start {
 			rm.Coverage = round4(rm.Coverage / (e.End - e.Start))

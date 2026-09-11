@@ -32,7 +32,7 @@ func dirUsage(dir string) (count int, bytes int64, err error) {
 }
 
 // evictDirTo prunes a flat cache directory down to at most maxBytes by
-// removing oldest-modified entries first (deterministic LRU approximation:
+// removing oldest-modified entries first (deterministic FIFO-by-creation:
 // cache entries are immutable once written, so mtime = creation time).
 //
 // In-flight write scratch (.tmp-* prefix, from the atomic write path) is

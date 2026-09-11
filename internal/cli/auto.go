@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -12,7 +13,9 @@ func init() {
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
 // individual commands so behavior (job records, output, errors) matches the
-// step-by-step flow exactly.
+// step-by-step flow exactly — with one deliberate deviation: the timeline is
+// scoped to the assets THIS run imported. Without that, two runs sharing the
+// default project name would silently compose a single cut from both files.
 func cmdAuto(a *App, args []string) error {
 	styleName := "generic_highlight"
 	projectName := "auto"
@@ -60,9 +63,56 @@ func cmdAuto(a *App, args []string) error {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "==> timeline (%s)\n", styleName)
-	tlArgs := []string{projectName, "--style", styleName}
-	if err := cmdTimeline(a, tlArgs); err != nil {
-		return err
+	// Scope the cut to this run's imports: resolve the assets for the input
+	// paths (identity is path-stable, so a resume re-run of the same file
+	// still maps to its asset). Two runs sharing the default project name
+	// used to compose one cut from BOTH files.
+	assetIDs := []string{}
+	{
+		db, err := a.OpenDB()
+		if err != nil {
+			return err
+		}
+		p, err := requireProject(db, a.Ctx, projectName)
+		if err != nil {
+			db.Close()
+			return err
+		}
+		assets, err := db.ListAssets(a.Ctx, p.ID)
+		if err != nil {
+			db.Close()
+			return err
+		}
+		db.Close()
+		want := map[string]bool{}
+		for _, in := range inputs {
+			if abs, aerr := filepath.Abs(in); aerr == nil {
+				want[abs] = true
+			}
+		}
+		for i := range assets {
+			if want[assets[i].Path] {
+				assetIDs = append(assetIDs, assets[i].ID)
+			}
+		}
+	}
+	{
+		db, err := a.OpenDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		p, err := requireProject(db, a.Ctx, projectName)
+		if err != nil {
+			return err
+		}
+		d := a.Pipeline(db)
+		tl, err := d.BuildTimeline(p, styleName, assetIDs...)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
+			countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
 	}
 	fmt.Fprintf(a.Stdout, "==> render\n")
 	renderArgs := []string{projectName}

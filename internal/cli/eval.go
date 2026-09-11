@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -57,7 +58,7 @@ func cmdEval(a *App, args []string) error {
 			"usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]", nil)
 	}
 	hitIoU, err := strconv.ParseFloat(iouFlag, 64)
-	if err != nil || hitIoU <= 0 || hitIoU > 1 {
+	if err != nil || math.IsNaN(hitIoU) || hitIoU <= 0 || hitIoU > 1 {
 		return xcerr.E(xcerr.CodeValidation,
 			"--iou must be a number in (0,1] (got "+iouFlag+")", nil)
 	}
