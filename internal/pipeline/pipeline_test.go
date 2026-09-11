@@ -353,3 +353,72 @@ func TestTimelineRallyStyleWithoutAudio(t *testing.T) {
 		t.Fatalf("error does not mention audio: %q", xcerr.UserMessage(err))
 	}
 }
+
+// TestRenderFailureKeepsScratch: a render that fails mid-run (ffmpeg error,
+// job context still live) must KEEP its scratch for post-mortem — the
+// documented contract in RenderProject, NewTempDir and the budget-refusal
+// message. Only success and plain cancellation remove it.
+func TestRenderFailureKeepsScratch(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d := NewDeps(context.Background(), db, ws, cfg, logger)
+
+	p, err := db.CreateProject(context.Background(), "failed-render")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path, err := testmedia.Generate(dir, "fx.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sabotage: the source disappears after import. Validation passes (it
+	// reads DB rows), the first ffmpeg invocation does not.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(root, "out.mp4")
+	if err := d.RenderProject(p, out, nil); err == nil {
+		t.Fatal("render with a vanished source must fail")
+	}
+
+	entries, rerr := os.ReadDir(ws.TempDir())
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) == 0 {
+		t.Fatal("failed render removed its scratch — post-mortem evidence is gone")
+	}
+	// And no output file was published.
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("failed render produced an output file")
+	}
+}

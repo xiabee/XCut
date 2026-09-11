@@ -548,14 +548,16 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 		if err != nil {
 			return err
 		}
+		// renderErr carries the render's own outcome into the cleanup: the
+		// job context stays live across a plain ffmpeg failure, so jctx.Err()
+		// alone cannot tell "abandoned debris" from "failed run". Failed (and
+		// timed-out) runs keep their scratch for post-mortem; a plain
+		// cancellation means the run was abandoned, and serve holds the
+		// workspace lock so "run xcut cleanup" is not actionable until
+		// restart — repeated cancels would quietly exhaust the temp budget.
+		var renderErr error
 		defer func() {
-			// Scratch of a cancelled (or shutting-down) render is worthless
-			// debris: the run was abandoned, and serve holds the workspace
-			// lock, so "run xcut cleanup" is not actionable until restart —
-			// repeated cancels would quietly exhaust the temp budget. Only
-			// a timed-out run keeps its scratch (post-mortem, like failures).
-			err := jctx.Err()
-			if err == nil || errors.Is(err, context.Canceled) {
+			if renderErr == nil || errors.Is(jctx.Err(), context.Canceled) {
 				_ = os.RemoveAll(tempDir)
 			}
 		}()
@@ -572,7 +574,7 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 		}
 
 		last := 0
-		err = render.Render(jctx, tl, render.Options{
+		renderErr = render.Render(jctx, tl, render.Options{
 			Tools:           d.tools(),
 			TempDir:         tempDir,
 			TempBudgetBytes: scratchBudget,
@@ -587,8 +589,8 @@ func (d Deps) renderBody(project *storage.Project, outPath string, onProgress fu
 				}
 			},
 		}, outPath)
-		if err != nil {
-			return err
+		if renderErr != nil {
+			return renderErr
 		}
 		progress(1.0)
 		fi, _ := os.Stat(outPath)
