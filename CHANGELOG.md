@@ -3,6 +3,60 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-11/12 nightly session #6
+
+### Added
+- Auto subtitles (KTV/guitar sing-along): `xcut subtitles <media>` runs
+  speech-to-text through the AI sidecar and writes SRT, or karaoke ASS with
+  word-level `\kf` fills when the transcript carries word timings. The
+  reference sidecar (v0.2.0) probes for openai-whisper / faster-whisper /
+  whisper-cli and honestly reports unavailable until one is installed —
+  installing any backend turns the capability on with zero XCut changes
+  (the core never downloads models, D3). The web UI gained a Subtitles
+  panel (asset picker, Transcribe, status, downloads) and a "burn
+  subtitles" checkbox on the render row; the API exposes
+  `POST /projects/{id}/subtitles`, `GET .../subtitles[?format=]` and
+  `{"subs": true}` on render. `xcut render --subs file` burns subtitles in
+  the same job (audio stream-copied, duration verified, atomic publish).
+- Chroma-aware scene-cut detection: the frame_diff analyzer now reads
+  signalstats UDIF/VDIF alongside YDIF and emits the per-channel max
+  (analyzer version 2, cache-invalidating). Red→green-class chroma-only
+  scene switches — missed by luma-only detection — now split events.
+- Cross-compile sanity for the new packages is covered by the existing
+  gate; no new runtime dependencies.
+
+### Fixed
+- Rally detection works on real court audio: gap-based clustering collapsed
+  whole recordings into one rally because ambience keeps the onset detector
+  firing through every break. Rally mode now clusters by onset density with
+  hysteresis (enter/exit rates + sustained-low close) and chunks over-dense
+  spans instead of truncating them. First validated end-to-end on a real
+  10-minute fixed-camera men's-singles match (previously: "no events
+  satisfy the style's clip constraints"; now: an 8-clip 60s highlight).
+- Atomic writes retry through Windows scanner holds: Defender briefly
+  holding a freshly written file made WriteAtomic/render-publish renames
+  fail with "Access is denied" — spurious 500s and lost writes under rapid
+  rewrite. All publish points share `workspace.RetryableRename`.
+- Timeline regeneration is now actually serialized with manual PUTs and
+  backup restores (the mutex the API comment claimed existed): a PUT that
+  landed mid-regeneration used to be destroyed at the same revision and
+  concurrent renames failed on Windows.
+- Re-importing the same media file keeps the asset's ID — a second import
+  used to re-key the row and brick every stored timeline referencing it.
+- Failed renders keep their scratch for post-mortem (the cleanup decision
+  keyed off the job context, which stays live across a plain ffmpeg
+  failure, so failed runs hit the success branch and deleted their
+  evidence).
+- The serve shutdown drain is bounded (30s) and warns loudly on expiry; a
+  job wedged outside its cancellation can no longer own the shutdown path.
+- CLI command failures print the user-safe message instead of the raw
+  error chain (wrapped absolute paths and ffmpeg stderr stay in `-v` logs).
+- `handleAssetFile` no longer folds storage failures into "unknown asset"
+  404s; timeline backup restore rolls back a failed swap so the undo is
+  never silently consumed; eval cases with sanitization-colliding names
+  are disambiguated instead of erroring; absurd disk budgets (1e18 GB) are
+  clamped instead of overflowing int64 and disabling budgets.
+
 ## [Unreleased] — 2026-09-10/11 nightly session #5
 
 ### Added

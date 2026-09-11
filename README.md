@@ -100,8 +100,10 @@ Styles are data, not code — validated JSON presets in
 - `generic_xfade` — like generic_highlight, with real crossfade (xfade) joins
 - `ktv_mv` — audio-led (singing/energy), onset-density weighted, longer clips
   for music scenes
-- `badminton_highlight` — motion-heavy rally mode: transient clustering,
-  hit-driven scoring, court-ROI motion analysis
+- `badminton_highlight` — motion-heavy rally mode: onset-density clustering
+  with hysteresis (real court audio never goes silent — ambience keeps the
+  detector firing through every break), hit-driven scoring, court-ROI motion
+  analysis
 
 Every selected clip carries its score, score breakdown and the reason it was
 picked in its metadata — the web UI shows the "why" per clip.
@@ -127,7 +129,9 @@ local video path, and run analyze → timeline → render with live job progress
 the rendered MP4 plays right in the page. The built-in timeline editor shows
 every clip with its score and "why", previews the clip's source at its start
 offset, and supports drag-to-reorder with a save/backup-restore round-trip.
-The UI is vanilla HTML/JS embedded
+Projects can also transcribe speech to subtitles through an AI sidecar and
+burn them (plain SRT or karaoke-style word-fill ASS) into the render. The UI
+is vanilla HTML/JS embedded
 in the binary (`go:embed`): no Node, no build step, no extra files.
 
 ![xcut web UI: a project with imported asset, four succeeded jobs, and the
@@ -143,7 +147,30 @@ curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/v
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
 curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
 curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
+curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # which subtitle artifacts exist
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # burn the subtitles into the render
 ```
+
+## Subtitles (KTV/guitar sing-along)
+
+Speech-to-text is an AI capability, so it follows the sidecar rule: the core
+never runs or downloads models. The reference sidecar
+(`scripts/xcut-ai-sidecar.py`) probes for a locally installed Whisper backend
+— `openai-whisper`, `faster-whisper` (`pip install faster-whisper`) or
+whisper.cpp's `whisper-cli` — and honestly reports unavailable until one is
+installed; install any of them and the capability turns on with zero XCut
+changes. Then:
+
+```sh
+./xcut subtitles song.mp4 --ass        # transcript with word timings → karaoke ASS (SRT by default)
+./xcut render proj --subs lyrics.ass   # burn subtitles into the render (audio stream-copied)
+```
+
+In the web UI the same loop is a button: Transcribe (pick the asset) →
+status + download links → check "burn subtitles" → Render. Word timings
+drive the karaoke fill (each word sweeps as it is sung); without them only
+plain SRT is produced.
 
 Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
 Only one analyze/timeline/render job may be queued or running per project — a

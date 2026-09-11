@@ -3,20 +3,20 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
+Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: ef43063+ (local commits; not pushed — CI is workflow_dispatch-only,
-  D11; push decision for the maintainer)
+- HEAD: session #6 work, all pushed (see git log; every milestone
+  fast-gated, pushed, and independently accepted on the remote-node node)
 - Branch: main
-- CI: quota-constrained (D11). `ci.yml` is workflow_dispatch-only;
-  `release.yml` stays tag-triggered. Validation is local
-  (scripts/ci-local.ps1 → check.ps1 fast) plus the remote-node node
-  (night-automation ci run) as independent acceptance. Session #5: 18 remote
-  runs = 17 PASS + 1 FAIL (that FAIL caught a real race — see
-  NIGHTLY_PROGRESS M37); cumulative 46 runs = 45 PASS + 1 FAIL.
+- CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
+  entry; remote-node remote runs after every milestone (session #6 so far:
+  15 runs = 14 PASS + 1 FAIL whose node log caught a real Windows rename
+  flake — fixed by the retryable rename below). Session #5: 18 runs =
+  17 PASS + 1 FAIL (that FAIL caught a real race — see NIGHTLY_PROGRESS
+  M37).
 
 ## Working Architecture
 
@@ -42,12 +42,15 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
   referenced clip sources, or the timeline document.
 - **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
   limiter; `StreamStdout` for bounded streaming passes.
-- **Analysis** (`internal/analysis`): frame_diff (motion + cuts), audio RMS
+- **Analysis** (`internal/analysis`): frame_diff (motion + cuts; chroma-
+  aware since session #6 — max of YDIF/UDIF/VDIF normalized per channel
+  span, catching chroma-only scene switches), audio RMS
   (astats), **audio onsets** (PCM pipe → Go DSP: 20 ms peak envelope → flux
   → median+k·MAD adaptive threshold → local-max peaks), **court-ROI motion**
   (crop before signalstats; ROI in the analyzer name = cache-safe).
-  Fingerprint-keyed cache with budget eviction; optional **analysis
-  proxies** (opt-in `resource.proxy_enabled`: fingerprint+geometry-keyed low-res
+  Fingerprint-keyed cache with budget eviction (analyzer versions are part
+  of the cache key); optional **analysis proxies** (opt-in
+  `resource.proxy_enabled`: fingerprint+geometry-keyed low-res
   proxies at the analysis geometry under `cache/proxy`, own LRU budget
   `resource.max_proxy_gb`, own encode thread budget `resource.proxy_threads`,
   proxy bit in the cache key, per-call analyzer timeout
@@ -80,6 +83,15 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
 - **Eval** (`internal/eval` + `xcut eval`): annotated manifests → temporal
   IoU / precision / recall / F1 / range hits / duplicate rate; JSON
   results; isolated throwaway workspace per run. docs/EVAL.md.
+- **Subtitles** (`internal/subs` + `xcut subtitles` + AI sidecar, session
+  #6): speech-to-text through the AI sidecar protocol v1 (reference sidecar
+  probes openai-whisper / faster-whisper / whisper-cli; honest "unavailable"
+  until one is installed — the core never downloads models, D3). Produces
+  SRT plus karaoke ASS (word-level `\kf` fills; gaps belong to the previous
+  word). In serve: `POST /projects/{id}/subtitles` (recorded job), status +
+  download endpoints, `{"subs": true}` render burn; UI: Transcribe button
+  with asset picker, status line, download links, burn-subs checkbox —
+  browser-verified end to end.
 - **Web UI** (go:embed, zero deps): project CRUD, import, analyze →
   timeline → render with job progress, clip editor with per-clip score +
   why, MP4 playback/download. Untrusted text rendered textContent-only.
@@ -92,13 +104,14 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
 
 - CLI: `version|config show|init|doctor|cleanup [--dry-run]|cache
   stats|clear [--dry-run]|project create|list|show|delete|jobs|import|
-  analyze [assetIDs]|timeline|render|auto|serve|eval`
+  analyze [assetIDs]|timeline|render|auto|serve|eval|subtitles`
 - HTTP `/api/v1`: health, projects CRUD (delete guarded while jobs are
   active → 409), jobs (+ `POST /jobs/{id}/cancel`: 202 / 404 / 409
   terminal-or-orphan), async triggers (one active analyze/timeline/render
-  per project — duplicates → 409), timeline GET/PUT (revision-guarded
-  saves; stale revision → 409), styles list, render download
-  (range-capable playback)
+  per project — duplicates → 409; subtitles jobs are not deduplicated),
+  timeline GET/PUT (revision-guarded saves; stale revision → 409; restore
+  endpoint), subtitles trigger/status/download, styles list, render
+  download (range-capable playback), render `{"subs": true}` burn
 - Web UI: project CRUD, import, analyze/timeline/render with per-job
   Cancel button and polling that self-heals after serve restarts
   (capped backoff + reconnect banner); two-step regenerate confirm;
@@ -110,7 +123,11 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
   cancel-mid-analyze on the release binary (zero leftover ffmpeg
   processes), crash recovery (kill -9 serve mid-analyze → restart sweeps
   the orphan and accepts a new analyze immediately), serve startup temp
-  sweep (seeded debris reclaimed)
+  sweep (seeded debris reclaimed). Session #6 additions: real-footage
+  rally highlight end to end (10-min match → 8-clip 60s render, probed),
+  subtitle burn verified at the pixel level (frame with vs without subs),
+  web-client subtitle loop browser-verified (transcribe → downloads →
+  burn-subs render → player refresh).
 
 ## Actually Tested
 
@@ -136,7 +153,10 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
 
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
   ffmpeg fallback covers it.
-- Luma-based cut detection misses chroma-only cuts (e.g. red→green).
+- Cut detection is chroma-aware since session #6 (max of YDIF/UDIF/VDIF);
+  thresholds remain tuned for hard cuts — long crossfades are
+  deliberately NOT cuts (tested) and extremely slow dissolves could
+  still read as gradual motion rather than a scene change.
 - Renderer transitions: `cut`, `fade` (through black) and `xfade` (real
   crossfade with overlapping placement; transitions may now be freely
   mixed within one timeline — xfade joins blend, cut/fade joins join
@@ -180,12 +200,15 @@ Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
 ## Next Priorities
 
 1. Real-footage evaluation: annotate a few real badminton/KTV clips, run
-   `xcut eval`, tune badminton v2 (rally_gap/pad/min_hits, ROI rect) on
-   measurements — the harness exists, it needs real data.
-2. AI sidecar: first real analyzer (Whisper transcript → event labels) on
-   top of protocol v1 if a local Whisper exists; else capability remains
-   honestly absent.
-3. Optional: re-enable push/PR CI when quota recovers (restore notes in
+   `xcut eval`, tune badminton v2 (rally_enter/exit rates, ROI rect) on
+   measurements — the harness exists and the pipeline now works on real
+   footage (session #6 proved it); tuning needs annotated data.
+2. Subtitles with a real Whisper: install faster-whisper locally and run
+   `xcut subtitles` on real singing content (the plumbing is tested; the
+   model load is deliberately not night work).
+3. Web UI polish candidates: transcript preview in the Subtitles panel;
+   render-with-subs for the API/UI pairing already works.
+4. Optional: re-enable push/PR CI when quota recovers (restore notes in
    ci.yml; consider concurrency cancel + docs-only paths-ignore).
-4. Phase 4 (desktop packaging, model registry, FFmpeg sandbox) — needs
+5. Phase 4 (desktop packaging, model registry, FFmpeg sandbox) — needs
    maintainer decisions; deliberately untouched by night work.
