@@ -3,18 +3,20 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-11 02:15 (+08:00) — nightly session #5, mid-night
+Updated: 2026-09-11 08:40 (+08:00) — nightly session #5, close
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: f855dd0+ (local commits; not pushed — CI is workflow_dispatch-only,
+- HEAD: ef43063+ (local commits; not pushed — CI is workflow_dispatch-only,
   D11; push decision for the maintainer)
 - Branch: main
 - CI: quota-constrained (D11). `ci.yml` is workflow_dispatch-only;
   `release.yml` stays tag-triggered. Validation is local
   (scripts/ci-local.ps1 → check.ps1 fast) plus the remote-node node
-  (night-automation ci run) as independent acceptance.
+  (night-automation ci run) as independent acceptance. Session #5: 18 remote
+  runs = 17 PASS + 1 FAIL (that FAIL caught a real race — see
+  NIGHTLY_PROGRESS M37); cumulative 46 runs = 45 PASS + 1 FAIL.
 
 ## Working Architecture
 
