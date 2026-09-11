@@ -21,6 +21,7 @@ import (
 
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/timeline"
+	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -147,8 +148,9 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 		return err
 	}
 
-	// 4. Atomic publish.
-	if err := os.Rename(partial, outPath); err != nil {
+	// 4. Atomic publish (retrying through Windows scanner holds — a player
+	// or indexer briefly holding the previous output must not fail a render).
+	if err := workspace.RetryableRename(partial, outPath); err != nil {
 		return xcerr.E(xcerr.CodeRenderFailure, "cannot finalize output file", err)
 	}
 	return nil
