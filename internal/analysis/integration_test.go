@@ -135,3 +135,74 @@ func TestRunCacheRoundTrip(t *testing.T) {
 		t.Fatal("cached result differs from first run")
 	}
 }
+
+// TestFrameDiffDetectsChromaOnlyCut: a red→green hard switch differs by only
+// ~0.16 in luma after analysis scaling — below the event config's 0.28 cut
+// threshold — but ~0.7 in the V plane. The combined Y/U/V metric must spike
+// past the threshold at the cut (regression for the luma-only detector that
+// merged solid-color scenes into one endless event).
+func TestFrameDiffDetectsChromaOnlyCut(t *testing.T) {
+	opts := requireTools(t)
+	// The event package's CutThreshold default; duplicated here (importing
+	// event from analysis would cycle).
+	const cutThreshold = 0.28
+
+	path, err := testmedia.Generate(t.TempDir(), "chroma.mp4",
+		[]testmedia.Scene{{Seconds: 3, Color: "red", Frequency: 440}, {Seconds: 3, Color: "green", Frequency: 880}},
+		320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracks, err := (FrameDiffAnalyzer{}).Analyze(context.Background(), opts, path, false, newTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spiked := false
+	for _, s := range tracks[0].Samples {
+		if s.T >= 2.0 && s.T <= 4.0 && s.V > cutThreshold {
+			spiked = true
+		}
+	}
+	if !spiked {
+		var vals []float64
+		for _, s := range tracks[0].Samples {
+			vals = append(vals, s.V)
+		}
+		t.Fatalf("no cut spike near t=3s (threshold %v); samples: %v", cutThreshold, vals)
+	}
+}
+
+// TestFrameDiffCrossfadeStaysBelowCutThreshold: a gradual 3s crossfade must
+// not register as scene cuts — a detector that fires inside fades would
+// shred real KTV-style content into garbage segments.
+func TestFrameDiffCrossfadeStaysBelowCutThreshold(t *testing.T) {
+	opts := requireTools(t)
+	const cutThreshold = 0.28
+
+	// red 4s xfade green 3s (transition 3s) + green tail, via direct ffmpeg
+	// (testmedia.Generate only does hard concats).
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fade.mp4")
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	_, errOut, err := media.Run(ctx, "ffmpeg",
+		"-y", "-f", "lavfi", "-i", "color=c=red:s=320x240:r=10:d=5.5",
+		"-f", "lavfi", "-i", "color=c=green:s=320x240:r=10:d=5.5",
+		"-filter_complex",
+		"[0:v][1:v]xfade=transition=fade:duration=3:offset=1.5,setsar=1[v]",
+		"-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+		"-pix_fmt", "yuv420p", path)
+	if err != nil {
+		t.Fatalf("fade fixture: %v: %s", err, errOut)
+	}
+
+	tracks, err := (FrameDiffAnalyzer{}).Analyze(ctx, opts, path, false, newTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range tracks[0].Samples {
+		if s.V > cutThreshold {
+			t.Fatalf("false cut inside the crossfade: t=%.2f v=%.3f (threshold %.2f)", s.T, s.V, cutThreshold)
+		}
+	}
+}
