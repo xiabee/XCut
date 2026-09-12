@@ -96,6 +96,35 @@ func TestSaveLoadRoundTripAndKey(t *testing.T) {
 	}
 }
 
+// TestLoadRefreshesRecency: a served entry is promoted in the eviction
+// order — an old-but-hot result survives while newer never-hit entries are
+// evicted first (true LRU, not FIFO-by-creation).
+func TestLoadRefreshesRecency(t *testing.T) {
+	s := newTestStore(t)
+	writeEntry(t, s, "hot", "h", 1000) // old, then promoted by a hit
+	writeEntry(t, s, "cold", "coldcold", 2000)
+
+	if _, err := s.Load("hot"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Total is ~29 bytes; the 20-byte budget must evict the untouched
+	// newer entry, not the older-but-just-served one.
+	removed, _, err := s.EvictTo(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed=%d, want exactly 1", removed)
+	}
+	if _, err := os.Stat(s.path("cold")); !os.IsNotExist(err) {
+		t.Fatal("cold newer entry should have been evicted before the hot one")
+	}
+	if _, err := os.Stat(s.path("hot")); err != nil {
+		t.Fatal("just-served entry must survive eviction")
+	}
+}
+
 // TestEvictToSparesInFlightScratch: .tmp-* files of a concurrent writer are
 // counted toward the budget but never removed — deleting the half-written
 // temp makes the writer's final rename fail (ENOENT on Linux) and kills the

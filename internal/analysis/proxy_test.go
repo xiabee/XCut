@@ -2,6 +2,8 @@ package analysis
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"os"
@@ -63,21 +65,61 @@ func TestProxyEnsureGeneratesOnce(t *testing.T) {
 		t.Errorf("proxy path %q outside the proxy dir", p)
 	}
 
-	// Second call must reuse the existing file (mtime unchanged).
-	fi1, err := os.Stat(p)
+	// Second call must reuse the existing file byte-for-byte. mtime is no
+	// longer a reuse signal (hits refresh it for LRU), so compare content.
+	proxyHash := func(path string) string {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(b)
+		return hex.EncodeToString(sum[:])
+	}
+	h1 := proxyHash(p)
+	p2, used2, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
+	if err != nil || !used2 || p2 != p {
+		t.Fatalf("second Ensure: path=%q used=%v err=%v", p2, used2, err)
+	}
+	if proxyHash(p2) != h1 {
+		t.Error("second Ensure re-encoded an existing proxy")
+	}
+}
+
+// TestProxyHitRefreshesRecency: reusing an existing proxy promotes it in
+// the LRU order, so a hot source's proxy survives budget pressure even
+// when it was generated long ago.
+func TestProxyHitRefreshesRecency(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "src.mp4", testmedia.DefaultFixture(), 640, 480, 10)
 	if err != nil {
+		t.Fatal(err)
+	}
+	fp, err := media.Fingerprint(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewProxyStore(dir)
+	p, used, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
+	if err != nil || !used {
+		t.Fatalf("Ensure: used=%v err=%v", used, err)
+	}
+	backdated := time.Unix(1000, 0)
+	if err := os.Chtimes(p, backdated, backdated); err != nil {
 		t.Fatal(err)
 	}
 	p2, used2, err := store.Ensure(context.Background(), proxyTools(), src, fp, 320, 2.0, 0, proxyLogger())
 	if err != nil || !used2 || p2 != p {
 		t.Fatalf("second Ensure: path=%q used=%v err=%v", p2, used2, err)
 	}
-	fi2, err := os.Stat(p)
+	fi, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fi1.ModTime().Equal(fi2.ModTime()) {
-		t.Error("second Ensure re-encoded an existing proxy")
+	if !fi.ModTime().After(backdated) {
+		t.Error("proxy hit did not refresh recency (mtime still backdated)")
 	}
 }
 

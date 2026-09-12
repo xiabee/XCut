@@ -73,6 +73,7 @@ func (s *Store) Load(key string) (*Result, error) {
 		_ = os.Remove(path) // poisoned entry: drop it
 		return nil, nil
 	}
+	touchRecency(path) // LRU: a served entry keeps its place in the cache
 	return &r, nil
 }
 
@@ -117,9 +118,9 @@ func (s *Store) Usage() (count int, bytes int64, err error) {
 	return dirUsage(s.dir)
 }
 
-// EvictTo prunes the cache down to at most maxBytes by removing
-// oldest-modified entries first (deterministic FIFO-by-creation: entries are
-// immutable once written, so mtime = creation time).
+// EvictTo prunes the cache down to at most maxBytes, least-recently-used
+// first. A Load hit refreshes the served entry's recency, so entries the
+// pipeline keeps re-reading survive while never-hit entries age out.
 // Returns how many entries were removed and bytes reclaimed.
 func (s *Store) EvictTo(maxBytes int64) (removed int, freed int64, err error) {
 	return evictDirTo(s.dir, maxBytes)

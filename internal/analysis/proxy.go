@@ -53,7 +53,8 @@ func (s *ProxyStore) Usage() (count int, bytes int64, err error) {
 	return dirUsage(s.dir)
 }
 
-// EvictTo prunes proxies down to at most maxBytes, oldest first.
+// EvictTo prunes proxies down to at most maxBytes, least-recently-used
+// first (an Ensure hit refreshes the reused proxy's recency).
 func (s *ProxyStore) EvictTo(maxBytes int64) (removed int, freed int64, err error) {
 	return evictDirTo(s.dir, maxBytes)
 }
@@ -80,6 +81,7 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 
 	p := s.path(fingerprint, target, fps)
 	if _, err := os.Stat(p); err == nil {
+		touchRecency(p) // LRU: a reused proxy keeps its place in the cache
 		return p, true, nil
 	}
 

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -31,9 +32,17 @@ func dirUsage(dir string) (count int, bytes int64, err error) {
 	return len(dirEntries), total, nil
 }
 
+// touchRecency refreshes an entry's mtime to now, promoting it in the LRU
+// order. Best-effort: a failed touch only means the entry keeps its old
+// recency and may be evicted sooner — never a reason to fail a cache hit.
+func touchRecency(path string) {
+	now := time.Now()
+	_ = os.Chtimes(path, now, now)
+}
+
 // evictDirTo prunes a flat cache directory down to at most maxBytes by
-// removing oldest-modified entries first (deterministic FIFO-by-creation:
-// cache entries are immutable once written, so mtime = creation time).
+// removing least-recently-used entries first. mtime is the recency stamp:
+// creation time when written, last use once a hit has touched it.
 //
 // In-flight write scratch (.tmp-* prefix, from the atomic write path) is
 // counted toward total but is never a removal candidate: deleting another
