@@ -200,3 +200,20 @@ func TestDurationTolerance(t *testing.T) {
 		t.Fatalf("tolerance(1h,30fps) = %.1f, want ~180", tol)
 	}
 }
+
+// TestRenderBudgetScales: the ffmpeg budget is a 30-minute floor plus
+// headroom per output second — long timelines get proportionally long
+// budgets instead of failing at the fixed cap, and the 24h timeline cap
+// keeps the worst case bounded.
+func TestRenderBudgetScales(t *testing.T) {
+	if got := renderBudget(0); got != 30*time.Minute {
+		t.Fatalf("floor budget = %v, want 30m", got)
+	}
+	if got := renderBudget(600); got != 30*time.Minute+30*time.Minute {
+		t.Fatalf("600s budget = %v, want 60m (3x headroom)", got)
+	}
+	// 24h timeline: ~3 days — large but bounded.
+	if got := renderBudget(24 * 60 * 60); got <= 72*time.Hour {
+		t.Fatalf("24h budget = %v, want above the 72h headroom", got)
+	}
+}

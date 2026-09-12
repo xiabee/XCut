@@ -138,7 +138,7 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 		if err := xfadeCombine(ctx, clips, parts, opts, partial); err != nil {
 			return err
 		}
-	} else if err := concat(ctx, parts, opts, partial); err != nil {
+	} else if err := concat(ctx, parts, opts, partial, renderBudget(tl.Duration())); err != nil {
 		return err
 	}
 	opts.OnProgress(len(clips)+1, len(clips)+1)
@@ -256,7 +256,7 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 		out,
 	)
 
-	runErr := runFFmpeg(ctx, opts.Tools.FFmpeg, args)
+	runErr := runFFmpeg(ctx, opts.Tools.FFmpeg, args, renderBudget(dur))
 	if runErr != nil {
 		_ = os.Remove(out)
 		return "", runErr
@@ -265,7 +265,7 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 }
 
 // concat joins normalized clips with the concat demuxer (stream copy).
-func concat(ctx context.Context, parts []string, opts Options, outPath string) error {
+func concat(ctx context.Context, parts []string, opts Options, outPath string, budget time.Duration) error {
 	listPath := filepath.Join(opts.TempDir, "concat.txt")
 	var b strings.Builder
 	for _, p := range parts {
@@ -284,7 +284,7 @@ func concat(ctx context.Context, parts []string, opts Options, outPath string) e
 		"-movflags", "+faststart",
 		"-f", "mp4", // <out>.partial hides the extension from muxer inference
 		outPath,
-	})
+	}, budget)
 	if err != nil {
 		return err
 	}
@@ -328,8 +328,18 @@ func durationTolerance(want, fps float64) float64 {
 	return want*0.05 + 2/fps
 }
 
-func runFFmpeg(ctx context.Context, bin string, args []string) error {
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+// renderBudget scales the per-invocation ffmpeg budget with the media it
+// must produce: the 30-minute floor covers small renders' fixed overhead,
+// and each output second adds encoding headroom. A fixed 30-minute cap
+// failed multi-hour timelines (a single filtergraph re-encode can outlive
+// it on modest hardware) even though nothing was wrong; the timeline cap
+// (24h) keeps the worst case bounded.
+func renderBudget(seconds float64) time.Duration {
+	return 30*time.Minute + time.Duration(3*seconds*float64(time.Second))
+}
+
+func runFFmpeg(ctx context.Context, bin string, args []string, budget time.Duration) error {
+	cctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	out, err := media.RunCombined(cctx, bin, args...)
 	if err != nil {
@@ -471,7 +481,17 @@ func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, op
 		"-f", "mp4",
 		outPath,
 	)
-	return runFFmpeg(ctx, opts.Tools.FFmpeg, args)
+	return runFFmpeg(ctx, opts.Tools.FFmpeg, args, renderBudget(totalOut(clips)))
+}
+
+// totalOut sums the clips' timeline placement durations (speed-adjusted) —
+// the output length the filtergraph must produce.
+func totalOut(clips []timeline.Clip) float64 {
+	var sum float64
+	for _, c := range clips {
+		sum += c.Duration()
+	}
+	return sum
 }
 
 // transitionBetween returns the xfade duration between clips i and i+1 (0 if
