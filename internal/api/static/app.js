@@ -110,9 +110,19 @@ async function deleteProject() {
 }
 
 /* ---------- assets ---------- */
+// Stale-response guard: every project-scoped refresh captures the project id
+// when the request starts and discards the response if the user has since
+// switched projects — otherwise a slow response from A lands after B was
+// selected and renders A's rows (or worse, A's timeline document) under B.
+function projectChangedSince(pid) {
+  return !currentProject || currentProject.id !== pid;
+}
+
 async function refreshAssets() {
   if (!currentProject) return;
-  const { assets } = await api(`/api/v1/projects/${currentProject.id}`);
+  const pid = currentProject.id;
+  const { assets } = await api(`/api/v1/projects/${pid}`);
+  if (projectChangedSince(pid)) return;
   const tbody = $("assets").querySelector("tbody");
   tbody.innerHTML = "";
   for (const a of assets) {
@@ -155,9 +165,11 @@ async function refreshJobs() {
     schedulePoll(2500);
     return;
   }
+  const pid = currentProject.id;
   try {
-    const { jobs } = await api(`/api/v1/projects/${currentProject.id}/jobs`);
+    const { jobs } = await api(`/api/v1/projects/${pid}/jobs`);
     pollFailures = 0;
+    if (projectChangedSince(pid)) { schedulePoll(2500); return; }
     const ul = $("jobs");
     ul.innerHTML = "";
     let running = false;
@@ -279,8 +291,10 @@ async function refreshTimeline() {
   if (prev) { prev.hidden = true; prev.removeAttribute("src"); prev.load(); }
   renderClips();
   if (!currentProject) return;
+  const pid = currentProject.id;
   try {
-    const { timeline, has_backup } = await api(`/api/v1/projects/${currentProject.id}/timeline`);
+    const { timeline, has_backup } = await api(`/api/v1/projects/${pid}/timeline`);
+    if (projectChangedSince(pid)) return; // stale: A's document must not become B's editing state
     timelineDoc = timeline;
     clipEdits = JSON.parse(JSON.stringify(timeline.tracks[0].clips));
     $("btn-tl-restore").hidden = !has_backup;
@@ -502,8 +516,10 @@ async function refreshSubtitlesStatus() {
     previewBtn.hidden = true; hideTranscript();
     return;
   }
+  const pid = currentProject.id;
   try {
-    const st = await api(`/api/v1/projects/${currentProject.id}/subtitles`);
+    const st = await api(`/api/v1/projects/${pid}/subtitles`);
+    if (projectChangedSince(pid)) return; // stale: panel belongs to the new project now
     if (!st.srt && !st.ass) {
       status.textContent = "none yet — transcribe to create";
       links.innerHTML = "";
@@ -530,8 +546,11 @@ async function refreshSubtitlesStatus() {
 $("btn-subs-preview").addEventListener("click", async () => {
   const transcript = $("subs-transcript");
   if (!transcript.hidden) { transcript.hidden = true; return; }
+  if (!currentProject) return;
+  const pid = currentProject.id;
   try {
-    const resp = await fetch(`/api/v1/projects/${currentProject.id}/subtitles/file?format=srt`);
+    const resp = await fetch(`/api/v1/projects/${pid}/subtitles/file?format=srt`);
+    if (projectChangedSince(pid)) return; // stale: do not render A's transcript under B
     if (!resp.ok) throw new Error(`${resp.status}: ${resp.statusText}`);
     transcript.textContent = srtToText(await resp.text()); // untrusted: textContent only
     transcript.hidden = false;
