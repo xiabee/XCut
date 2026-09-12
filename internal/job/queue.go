@@ -97,6 +97,11 @@ func (q *Queue) RunInline(ctx context.Context, typ, projectID string, class Reso
 	if payload != nil {
 		if b, err := json.Marshal(payload); err == nil {
 			payloadJSON = string(b)
+		} else {
+			// A payload that cannot serialize is a programming error; the
+			// job row must still be created (CLI flow), but an unexplained
+			// empty payload would poison post-mortems.
+			q.log.Warn("job payload not serializable; recording empty payload", "type", typ, "err", err)
 		}
 	}
 	rec, err := q.db.CreateJob(ctx, typ, projectID, string(class), payloadJSON)
@@ -180,6 +185,8 @@ func (q *Queue) RunAsync(ctx context.Context, typ, projectID string, class Resou
 	if payload != nil {
 		if b, err := json.Marshal(payload); err == nil {
 			payloadJSON = string(b)
+		} else {
+			q.log.Warn("job payload not serializable; recording empty payload", "type", typ, "err", err)
 		}
 	}
 	rec, err := q.db.CreateJob(ctx, typ, projectID, string(class), payloadJSON)

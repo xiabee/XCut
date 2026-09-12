@@ -138,6 +138,15 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 				if tt.Type == "xfade" && ci == len(tr.Clips)-1 {
 					errs = append(errs, fmt.Sprintf("%s: trailing xfade has no following clip to blend with — use fade for a fade-out", ctx))
 				}
+				// A zero-duration fade/xfade would be silently dropped by
+				// the renderer (which only engages on Duration > 0) while
+				// the document still claims the join is a transition — the
+				// same silent-degrade the trailing-xfade rule refuses. Say
+				// so at validation time; "cut" (or omitting the transition)
+				// is the honest form.
+				if tt.Type != "cut" && tt.Duration <= 0 {
+					errs = append(errs, fmt.Sprintf("%s: transition type %q with zero duration renders as a plain cut — use cut", ctx, tt.Type))
+				}
 				if !finite(tt.Duration) || tt.Duration < 0 || tt.Duration > c.Duration() {
 					errs = append(errs, fmt.Sprintf("%s: transition duration %g invalid", ctx, tt.Duration))
 				}

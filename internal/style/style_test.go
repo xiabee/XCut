@@ -431,3 +431,66 @@ func TestBuildXfadePlacement(t *testing.T) {
 		t.Errorf("unexpected transition: %+v", clips[0].Transition)
 	}
 }
+
+// TestNamesSortedAndHonest: Names is built for UI pickers, so it must be
+// sorted (map iteration is randomized per process — an unsorted list flips
+// the default-selected style across serve restarts) and must not list names
+// Load would reject.
+func TestNamesSortedAndHonest(t *testing.T) {
+	dir := t.TempDir()
+	valid := []byte(`{
+		"name": "aaa_custom",
+		"title": "AAA",
+		"version": 1,
+		"canvas": {"width": 640, "height": 360, "fps": 30},
+		"target_duration": 30,
+		"min_clip_duration": 1,
+		"max_clip_duration": 6,
+		"scoring": {"motion": 0.4, "audio": 0.4, "duration": 0.2},
+		"event_config": {"cut_threshold": 0.3, "motion_floor": 0.05, "silence_db": -40, "merge_gap": 1, "min_duration": 1},
+		"transition": {"type": "cut", "duration": 0},
+		"audio": {"gain": 1}
+	}`)
+	if err := os.WriteFile(filepath.Join(dir, "aaa_custom.json"), valid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A file whose name Load would never accept must not be advertised.
+	if err := os.WriteFile(filepath.Join(dir, "My Style.json"), valid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	names := Names(dir)
+	if len(names) == 0 {
+		t.Fatal("no names returned")
+	}
+	for i := 1; i < len(names); i++ {
+		if names[i-1] >= names[i] {
+			t.Fatalf("names not sorted: %v", names)
+		}
+	}
+	found := false
+	for _, n := range names {
+		if n == "aaa_custom" {
+			found = true
+		}
+		if n == "My Style" {
+			t.Errorf("Names advertises %q which Load rejects", n)
+		}
+		if !validName(n) {
+			t.Errorf("Names advertises invalid name %q", n)
+		}
+	}
+	if !found {
+		t.Errorf("extra-dir preset missing from names: %v", names)
+	}
+	// Embedded presets are always present.
+	embeddedSeen := false
+	for _, n := range names {
+		if _, ok := embedded[n]; ok {
+			embeddedSeen = true
+		}
+	}
+	if !embeddedSeen {
+		t.Errorf("embedded presets missing from names: %v", names)
+	}
+}

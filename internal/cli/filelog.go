@@ -112,19 +112,33 @@ func (l *fileLogger) Close() error {
 	return err
 }
 
+// serveLogLevel resolves the serve logger's level: the -v/-q flags win over
+// config (documented precedence: flags are the most specific layer) — the
+// serve logger must honor them like the base logger already does, or
+// `xcut serve -v` silently stays at info.
+func serveLogLevel(a *App) slog.Level {
+	switch {
+	case a.Verbose:
+		return slog.LevelDebug
+	case a.Quiet:
+		return slog.LevelWarn
+	}
+	switch a.Cfg.Log.Level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	}
+	return slog.LevelInfo
+}
+
 // newServeLogger builds the serve-mode logger: file (rotated) + stderr.
 func newServeLogger(a *App, wsDir string) (*slog.Logger, func()) {
 	fl, err := newFileLogger(filepath.Join(wsDir, "logs"), "serve",
 		a.Cfg.Log.MaxSizeMB, a.Cfg.Log.MaxFiles)
-	level := slog.LevelInfo
-	switch a.Cfg.Log.Level {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	}
+	level := serveLogLevel(a)
 	if err != nil {
 		a.Log.Warn("file logging unavailable; stderr only", "err", err)
 		return a.Log, func() {}

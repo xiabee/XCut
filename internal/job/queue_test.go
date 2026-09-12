@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -544,4 +545,57 @@ func TestWaitContextBounded(t *testing.T) {
 	if err := q.WaitContext(drainCtx2); err != nil {
 		t.Fatalf("WaitContext after release: %v", err)
 	}
+}
+
+// TestUnserializablePayloadWarns: a payload json.Marshal cannot serialize is
+// a programming error; the job still runs, but the queue must log why the
+// recorded payload is empty instead of dropping silently (post-mortems read
+// payload_json to reconstruct what ran).
+func TestUnserializablePayloadWarns(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	var buf syncBuffer
+	q := NewQueue(db, 2, 1, 0, slog.New(slog.NewTextHandler(&buf, nil)))
+	ctx := context.Background()
+
+	if _, err := db.CreateProject(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetProjectByName(ctx, "p")
+	id, err := q.RunInline(ctx, "analyze", p.ID, ClassCPUHeavy, map[string]any{"bad": func() {}}, func(context.Context, func(float64)) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := db.GetJob(ctx, id)
+	if err != nil || rec == nil {
+		t.Fatalf("job row: %v %v", rec, err)
+	}
+	if rec.PayloadJSON != "" {
+		t.Fatalf("unserializable payload recorded as %q", rec.PayloadJSON)
+	}
+	if !strings.Contains(buf.String(), "not serializable") {
+		t.Fatalf("queue did not log the marshal failure:\n%s", buf.String())
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

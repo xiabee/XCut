@@ -285,3 +285,50 @@ func TestValidateRejectsTrailingXfade(t *testing.T) {
 		t.Fatalf("mid xfade rejected: %v", err)
 	}
 }
+
+// TestValidateRejectsZeroDurationTransition: a fade/xfade with duration 0
+// would be silently dropped by the renderer (it only engages on Duration > 0)
+// while the document still claims a transition — validation refuses it the
+// same way it refuses a trailing xfade.
+func TestValidateRejectsZeroDurationTransition(t *testing.T) {
+	mk := func(tt *Transition) *Timeline {
+		return &Timeline{
+			Version: Version,
+			Canvas:  Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []Track{{
+				ID:   "v1",
+				Kind: "video",
+				Clips: []Clip{
+					{ID: "c1", AssetID: "a", SourceStart: 0, SourceEnd: 4, TimelineStart: 0, Speed: 1, Volume: 1, Transition: tt},
+					{ID: "c2", AssetID: "a", SourceStart: 0, SourceEnd: 4, TimelineStart: 4, Speed: 1, Volume: 1},
+				},
+			}},
+		}
+	}
+	lookup := FixedLookup(map[string]float64{"a": 10})
+
+	for _, tt := range []string{"xfade", "fade"} {
+		err := mk(&Transition{Type: tt, Duration: 0}).Validate(lookup)
+		if err == nil {
+			t.Fatalf("zero-duration %s accepted", tt)
+		}
+		var me *MultiError
+		if !asMulti(err, &me) {
+			t.Fatalf("%s: not a MultiError: %v", tt, err)
+		}
+		found := false
+		for _, d := range me.Details() {
+			if strings.Contains(d, "renders as a plain cut") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s: details do not mention the plain-cut degradation: %v", tt, me.Details())
+		}
+	}
+
+	// A zero-duration cut is a no-op by definition and stays valid.
+	if err := mk(&Transition{Type: "cut", Duration: 0}).Validate(lookup); err != nil {
+		t.Fatalf("zero-duration cut rejected: %v", err)
+	}
+}

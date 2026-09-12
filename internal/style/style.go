@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/xiabee/XCut/internal/analysis"
@@ -248,7 +249,11 @@ func validName(name string) bool {
 	return true
 }
 
-// Names returns available style names (embedded + files in extraDirs).
+// Names returns available style names (embedded + files in extraDirs),
+// sorted: the map iteration order is randomized per process, and consumers
+// build UI pickers from this list — an unsorted list would flip the
+// default-selected style across restarts. Names that Load would reject
+// (e.g. "My Style" — see validName) are not listed.
 func Names(extraDirs ...string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -274,5 +279,12 @@ func Names(extraDirs ...string) []string {
 			out = append(out, n)
 		}
 	}
-	return out
+	filtered := out[:0]
+	for _, n := range out {
+		if validName(n) {
+			filtered = append(filtered, n)
+		}
+	}
+	sort.Strings(filtered)
+	return filtered
 }

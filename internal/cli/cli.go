@@ -38,6 +38,7 @@ type App struct {
 	CfgPath string
 	Log     *slog.Logger
 	Verbose bool
+	Quiet   bool
 }
 
 // CommandFunc runs a subcommand. Returned errors are rendered by Run.
@@ -142,6 +143,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		CfgPath: cfgFile,
 		Log:     log,
 		Verbose: *verbose,
+		Quiet:   *quiet,
 	}
 
 	// Writers take the exclusive workspace lock so two XCut processes can

@@ -46,6 +46,15 @@ func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.Pipe.Queue.Cancel(id) {
+		// A false return also covers the benign race where the job finished
+		// between the status check above and the Cancel call. Re-read so the
+		// message reports the real state instead of asserting crash debris.
+		if fresh, gerr := s.DB.GetJob(r.Context(), id); gerr == nil && fresh != nil &&
+			fresh.Status != storage.StatusQueued && fresh.Status != storage.StatusRunning {
+			writeErr(w, xcerr.E(xcerr.CodeConflict,
+				"job already "+fresh.Status+" — nothing to cancel", nil))
+			return
+		}
 		writeErr(w, xcerr.E(xcerr.CodeConflict,
 			"job row is active but no live runner holds it in this process (left by a previous crashed instance) — it is reconciled on next startup", nil))
 		return
