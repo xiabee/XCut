@@ -79,7 +79,10 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
   (hard joins) — cut/fade/xfade may be mixed freely within one timeline**,
   ffprobe verify, atomic publish; render output refused if it would
   overwrite a source media file, a timeline-referenced clip source, or the
-  timeline document.
+  timeline document. Publish uses replace semantics (`RetryableReplace`):
+  a client streaming the previous output no longer fails a re-render —
+  serve opens downloads share-all, so the publisher POSIX-deletes the held
+  name and renames; the old reader keeps its bytes until EOF (session #7).
 - **Eval** (`internal/eval` + `xcut eval`): annotated manifests → temporal
   IoU / precision / recall / F1 / range hits / duplicate rate; JSON
   results; isolated throwaway workspace per run. docs/EVAL.md.

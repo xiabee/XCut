@@ -63,7 +63,7 @@ func BurnSubtitles(ctx context.Context, tools media.Tools, inputPath, subsPath, 
 			fmt.Sprintf("burned output duration drifted (%.2fs vs %.2fs input)", outProbe.DurationSec, inProbe.DurationSec), nil)
 	}
 
-	if err := workspace.RetryableRename(partial, outPath); err != nil {
+	if err := workspace.RetryableReplace(partial, outPath); err != nil {
 		_ = os.Remove(partial)
 		return xcerr.E(xcerr.CodeRenderFailure, "cannot finalize burned output", err)
 	}

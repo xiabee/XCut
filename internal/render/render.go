@@ -149,8 +149,10 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 	}
 
 	// 4. Atomic publish (retrying through Windows scanner holds — a player
-	// or indexer briefly holding the previous output must not fail a render).
-	if err := workspace.RetryableRename(partial, outPath); err != nil {
+	// or indexer briefly holding the previous output must not fail a render;
+	// a long playback is survived via POSIX delete + rename, see
+	// RetryableReplace).
+	if err := workspace.RetryableReplace(partial, outPath); err != nil {
 		return xcerr.E(xcerr.CodeRenderFailure, "cannot finalize output file", err)
 	}
 	return nil

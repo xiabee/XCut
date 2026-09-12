@@ -50,3 +50,27 @@ func RenameAtomic(src, dst string) error {
 	}
 	return nil
 }
+
+// RetryableReplace publishes src onto dst with replace semantics, for the
+// media outputs a re-render replaces while a client may still be playing the
+// previous one. After the retryable rename is exhausted, on Windows it
+// POSIX-deletes a delete-sharing holder's dst (freeing the name; the holder
+// keeps reading the old bytes until EOF — serve opens downloads this way)
+// and renames once more. Trade-off, deliberately accepted: once the delete
+// lands, a still-failing rename means the previous output is gone and the
+// job fails loudly — the user re-renders. The timeline document keeps plain
+// RenameAtomic: nothing holds it for long, and its revision integrity is
+// worth more than the narrow convenience.
+func RetryableReplace(src, dst string) error {
+	err := RetryableRename(src, dst)
+	if err == nil {
+		return nil
+	}
+	if runtime.GOOS != "windows" || !isWindowsRettableRename(err) {
+		return err
+	}
+	if posixRemove(dst) != nil {
+		return err // holder keeps the name pinned (no delete-share); report it
+	}
+	return os.Rename(src, dst)
+}

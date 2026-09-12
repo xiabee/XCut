@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/xiabee/XCut/internal/style"
+	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -53,7 +54,7 @@ func (s *Server) handleRenderDownload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no render output for project (render first)", nil))
 		return
 	}
-	f, err := os.Open(out)
+	f, err := workspace.OpenReadable(out) // share-all: a re-render may replace this file mid-playback
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open render output", err))
 		return
@@ -169,7 +170,7 @@ func (s *Server) handleSubtitlesFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no "+format+" subtitles for this project (transcribe first)", nil))
 		return
 	}
-	f, err := os.Open(path) // #nosec G703 -- same whitelist + SafeJoin-constructed path as the Stat above
+	f, err := workspace.OpenReadable(path) // share-all: a re-transcribe may replace this file mid-download // #nosec G703 -- same whitelist + SafeJoin-constructed path as the Stat above
 	if err != nil {
 		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open subtitle file", err))
 		return
