@@ -40,6 +40,42 @@ func touchRecency(path string) {
 	_ = os.Chtimes(path, now, now)
 }
 
+// evictItem is one removable entry: its path, size and recency stamp.
+type evictItem struct {
+	path  string
+	size  int64
+	mtime int64
+}
+
+// scanEvictable walks a flat cache directory: returns the removable items
+// (in-flight .tmp-* scratch excluded, but its bytes counted in total) sorted
+// oldest-recency-first, plus the directory's total byte size.
+func scanEvictable(dir string) (items []evictItem, total int64, err error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, 0, nil
+		}
+		return nil, 0, xcerr.E(xcerr.CodeInternal, "cannot read cache dir", err)
+	}
+	for _, e := range dirEntries {
+		if e.IsDir() {
+			continue
+		}
+		fi, ierr := e.Info()
+		if ierr != nil {
+			continue
+		}
+		total += fi.Size()
+		if strings.HasPrefix(e.Name(), ".tmp-") {
+			continue // in-flight scratch: never a victim (see evictDirTo)
+		}
+		items = append(items, evictItem{filepath.Join(dir, e.Name()), fi.Size(), fi.ModTime().UnixNano()})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].mtime < items[j].mtime })
+	return items, total, nil
+}
+
 // evictDirTo prunes a flat cache directory down to at most maxBytes by
 // removing least-recently-used entries first. mtime is the recency stamp:
 // creation time when written, last use once a hit has touched it.
@@ -51,38 +87,10 @@ func touchRecency(path string) {
 // still push eviction of finalized entries, so crash debris cannot wedge
 // the budget — `xcut cleanup` reclaims the debris itself.
 func evictDirTo(dir string, maxBytes int64) (removed int, freed int64, err error) {
-	dirEntries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, 0, nil
-		}
-		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot read cache dir", err)
+	items, total, err := scanEvictable(dir)
+	if err != nil || total <= maxBytes {
+		return 0, 0, err
 	}
-	type item struct {
-		path  string
-		size  int64
-		mtime int64
-	}
-	items := make([]item, 0, len(dirEntries))
-	var total int64
-	for _, e := range dirEntries {
-		if e.IsDir() {
-			continue
-		}
-		fi, ierr := e.Info()
-		if ierr != nil {
-			continue
-		}
-		total += fi.Size()
-		if strings.HasPrefix(e.Name(), ".tmp-") {
-			continue // in-flight scratch: never a victim (see doc comment)
-		}
-		items = append(items, item{filepath.Join(dir, e.Name()), fi.Size(), fi.ModTime().UnixNano()})
-	}
-	if total <= maxBytes {
-		return 0, 0, nil
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].mtime < items[j].mtime })
 	for _, it := range items {
 		if total <= maxBytes {
 			break
@@ -94,4 +102,22 @@ func evictDirTo(dir string, maxBytes int64) (removed int, freed int64, err error
 		}
 	}
 	return removed, freed, nil
+}
+
+// planEvictDirTo reports what evictDirTo would remove at this budget without
+// touching anything (dry-run reporting). Same walk, same order, no deletes.
+func planEvictDirTo(dir string, maxBytes int64) (count int, bytes int64, err error) {
+	items, total, err := scanEvictable(dir)
+	if err != nil || total <= maxBytes {
+		return 0, 0, err
+	}
+	for _, it := range items {
+		if total <= maxBytes {
+			break
+		}
+		count++
+		bytes += it.size
+		total -= it.size
+	}
+	return count, bytes, nil
 }

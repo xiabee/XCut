@@ -59,6 +59,12 @@ func (s *ProxyStore) EvictTo(maxBytes int64) (removed int, freed int64, err erro
 	return evictDirTo(s.dir, maxBytes)
 }
 
+// EvictionPlan reports what EvictTo would remove at this budget without
+// touching anything (dry-run reporting for `xcut cleanup`).
+func (s *ProxyStore) EvictionPlan(maxBytes int64) (count int, bytes int64, err error) {
+	return planEvictDirTo(s.dir, maxBytes)
+}
+
 // Ensure returns the proxy path for the source, generating it when missing.
 // used=false means the decision declined (source not wider than the analysis
 // canvas, or probing failed benignly) — the caller must analyze the original

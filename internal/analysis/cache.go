@@ -125,3 +125,9 @@ func (s *Store) Usage() (count int, bytes int64, err error) {
 func (s *Store) EvictTo(maxBytes int64) (removed int, freed int64, err error) {
 	return evictDirTo(s.dir, maxBytes)
 }
+
+// EvictionPlan reports what EvictTo would remove at this budget without
+// touching anything (dry-run reporting for `xcut cleanup`).
+func (s *Store) EvictionPlan(maxBytes int64) (count int, bytes int64, err error) {
+	return planEvictDirTo(s.dir, maxBytes)
+}

@@ -156,3 +156,62 @@ func TestEvictToSparesInFlightScratch(t *testing.T) {
 		t.Fatal("oldest finalized entry should be gone")
 	}
 }
+
+// TestEvictionPlanMatchesEvictTo: the dry-run plan reports exactly what a
+// real eviction at the same budget would remove, and touches nothing.
+func TestEvictionPlanMatchesEvictTo(t *testing.T) {
+	s := newTestStore(t)
+	writeEntry(t, s, "a1", "aaaa", 1000)
+	writeEntry(t, s, "a2", "bb", 2000)
+	writeEntry(t, s, "a3", "c", 3000)
+
+	// ~38 bytes total; a 20-byte budget evicts a1 then a2, keeping a3.
+	count, bytes, err := s.EvictionPlan(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || bytes == 0 {
+		t.Fatalf("plan: count=%d bytes=%d, want 2 entries", count, bytes)
+	}
+	// Planning must not delete anything.
+	for _, key := range []string{"a1", "a2", "a3"} {
+		if _, err := os.Stat(s.path(key)); err != nil {
+			t.Fatalf("plan must keep %s on disk: %v", key, err)
+		}
+	}
+
+	removed, freed, err := s.EvictTo(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != count || freed != bytes {
+		t.Fatalf("evict removed=%d freed=%d, plan said %d/%d", removed, freed, count, bytes)
+	}
+	// The plan's chosen victims are the same oldest entries.
+	if _, err := os.Stat(s.path("a3")); err != nil {
+		t.Fatal("newest entry must survive")
+	}
+}
+
+// TestProxyEvictionPlanNoTouch: the proxy plan is read-only as well.
+func TestProxyEvictionPlanNoTouch(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "proxy", "abc.mp4")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("proxy-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewProxyStore(dir)
+	count, bytes, err := store.EvictionPlan(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || bytes != int64(len("proxy-bytes")) {
+		t.Fatalf("plan: count=%d bytes=%d", count, bytes)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatal("plan must keep the proxy on disk")
+	}
+}

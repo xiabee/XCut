@@ -94,7 +94,15 @@ func cmdCleanup(a *App, args []string) error {
 		return err
 	}
 	budget := int64(a.Cfg.Resource.MaxCacheGB * (1 << 30))
-	evicted, evictedBytes, err := store.EvictTo(budget)
+	var evicted int
+	var evictedBytes int64
+	if dryRun {
+		// Dry run must only plan: a real eviction here silently deleted
+		// the cache while claiming nothing was removed.
+		evicted, evictedBytes, err = store.EvictionPlan(budget)
+	} else {
+		evicted, evictedBytes, err = store.EvictTo(budget)
+	}
 	if err != nil {
 		return err
 	}
@@ -114,7 +122,13 @@ func cmdCleanup(a *App, args []string) error {
 		return err
 	}
 	proxyBudget := int64(a.Cfg.Resource.MaxProxyGB * (1 << 30))
-	proxyEvicted, proxyEvictedBytes, err := proxies.EvictTo(proxyBudget)
+	var proxyEvicted int
+	var proxyEvictedBytes int64
+	if dryRun {
+		proxyEvicted, proxyEvictedBytes, err = proxies.EvictionPlan(proxyBudget)
+	} else {
+		proxyEvicted, proxyEvictedBytes, err = proxies.EvictTo(proxyBudget)
+	}
 	if err != nil {
 		return err
 	}
