@@ -396,8 +396,14 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 		var items []style.AssetEvents
 		for i := range assets {
 			asset := assets[i]
-			res, err := analysis.Run(jctx, store, opts, analyzers,
-				asset.Path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
+			// Same input resolution as the analyze stage: with proxy_enabled
+			// the timeline must decode the proxy and use the SAME cache key
+			// (UseProxy bit), not the original at a never-hit key — the old
+			// form re-decoded full originals on every regeneration and
+			// duplicated the analysis cache entries.
+			assetOpts, path := d.analysisInput(jctx, &asset, opts)
+			res, err := analysis.Run(jctx, store, assetOpts, analyzers,
+				path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
 			if err != nil {
 				return err
 			}

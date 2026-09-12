@@ -472,3 +472,30 @@ func TestRestoreTimelineBackupRollsBackFailedSwap(t *testing.T) {
 		t.Fatalf("rollback failed: current holds %q, want the original %q", got, original)
 	}
 }
+
+// TestTimelineWithProxySharesAnalyzeCache: the timeline stage must resolve
+// its analysis input the same way the analyze stage does — with proxy_enabled
+// it decodes the proxy under the SAME UseProxy cache key, so regenerating a
+// timeline for an already-analyzed project hits the analysis cache instead
+// of re-decoding full originals at a never-hit key.
+func TestTimelineWithProxySharesAnalyzeCache(t *testing.T) {
+	d, p := analyzeSetup(t, 1)
+	d.Cfg.Resource.ProxyEnabled = true
+	d.Cfg.Resource.AnalysisWidth = 160 // fixture is 320-wide → proxy decision fires
+
+	if err := d.AnalyzeProject(p, func(AnalyzedAsset) {}); err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err := d.analysisStore().Usage()
+	if err != nil || entries != 1 {
+		t.Fatalf("analysis cache after analyze: %d entries (%v), want 1", entries, err)
+	}
+
+	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err = d.analysisStore().Usage()
+	if err != nil || entries != 1 {
+		t.Fatalf("analysis cache after timeline: %d entries (%v), want still 1 (cache hit, no duplicate proxy=false entry)", entries, err)
+	}
+}
