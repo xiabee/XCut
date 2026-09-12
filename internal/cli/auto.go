@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -84,17 +85,11 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		db.Close()
-		want := map[string]bool{}
-		for _, in := range inputs {
-			if abs, aerr := filepath.Abs(in); aerr == nil {
-				want[abs] = true
-			}
+		ids, err := matchAssetIDs(assets, inputs)
+		if err != nil {
+			return err
 		}
-		for i := range assets {
-			if want[assets[i].Path] {
-				assetIDs = append(assetIDs, assets[i].ID)
-			}
-		}
+		assetIDs = ids
 	}
 	{
 		db, err := a.OpenDB()
@@ -124,4 +119,31 @@ func cmdAuto(a *App, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "==> done\n")
 	return nil
+}
+
+// matchAssetIDs resolves the run's inputs to stored asset IDs so the
+// timeline is scoped to THIS run's imports (two runs sharing the default
+// project name used to compose one cut from BOTH files). Every input must
+// resolve — an empty or partial match (path spelled differently than the
+// import: Windows case, a moved file) must fail loudly rather than fall
+// through to BuildTimeline's unscoped default, which silently composes the
+// cut from the whole project again.
+func matchAssetIDs(assets []storage.Asset, inputs []string) ([]string, error) {
+	want := map[string]bool{}
+	for _, in := range inputs {
+		if abs, aerr := filepath.Abs(in); aerr == nil {
+			want[abs] = true
+		}
+	}
+	ids := []string{}
+	for i := range assets {
+		if want[assets[i].Path] {
+			ids = append(ids, assets[i].ID)
+		}
+	}
+	if len(ids) != len(want) {
+		return nil, xcerr.E(xcerr.CodeValidation,
+			"not every input resolved to an imported asset — re-import the files into this project, or run auto with the exact paths that were imported", nil)
+	}
+	return ids, nil
 }

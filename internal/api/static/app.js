@@ -74,6 +74,12 @@ function selectProject(p) {
   if (ph) ph.style.display = "none";
   $("project-name").textContent = p.name;
   $("delete-project").hidden = false;
+  // Reset the player: without this, switching from a project that has a
+  // render shows the OLD project's video (and its download link) under the
+  // new project until the new project renders something.
+  $("player").removeAttribute("src");
+  $("player").load();
+  $("download").href = "#";
   // Disarm the regeneration confirm across project switches.
   const tl = $("btn-timeline");
   tl.dataset.armed = "";
@@ -251,6 +257,7 @@ async function watchUntilDone(jobID) {
   // refreshJobs polls anyway; this re-enables once nothing is running.
   // A job row that is gone for good (pruned, or serve restarted mid-job)
   // must not keep this timer polling a 404 at 1Hz forever.
+  const pid = currentProject && currentProject.id;
   let misses = 0;
   const timer = setInterval(async () => {
     let job;
@@ -266,6 +273,7 @@ async function watchUntilDone(jobID) {
     }
     if (["succeeded", "failed", "cancelled"].includes(job.status)) {
       clearInterval(timer);
+      if (projectChangedSince(pid)) return; // A's job ending must not touch B's editor
       if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
       if (job.status === "succeeded" && job.type === "render") showPlayer();
       if (job.type === "subtitles") await refreshSubtitlesStatus();
@@ -422,16 +430,48 @@ async function saveTimeline() {
   // Optimistic concurrency: send the revision we read; a mismatch (another
   // tab saved, or the timeline was regenerated) is refused with 409.
   doc.revision = timelineDoc.revision || 0;
-  doc.tracks[0].clips = kept.map((c, i) => {
+  const playDur = (x) => (x.source_end - x.source_start) / (x.speed > 0 ? x.speed : 1);
+  let dropped = 0;
+  let prevEnd = 0;
+  const outs = [];
+  kept.forEach((c, i) => {
     const copy = { ...c };
     delete copy._removed;
     copy.id = `clip_${i + 1}`;
-    // Placement accumulates *playback* durations (source range over speed) —
-    // the renderer honors speed, so a 2x clip occupies half its source range.
-    copy.timeline_start = kept.slice(0, i).reduce((s, x) => s + (x.source_end - x.source_start) / (x.speed > 0 ? x.speed : 1), 0);
-    copy.transition = undefined;
-    return copy;
+    let start = prevEnd;
+    if (i > 0) {
+      // The join between kept[i-1] and kept[i] is described by the
+      // PREVIOUS clip's transition. An xfade join shares a blend window
+      // (the previous clip's tail overlaps this clip's head by the
+      // transition duration); every other join is back-to-back (a fade
+      // needs no overlap). Preserve the transition when its window still
+      // fits both clips after the edit — reordering can change the
+      // neighbors — and degrade loudly to a cut when an xfade does not,
+      // instead of silently stripping every transition in the document.
+      const prev = kept[i - 1];
+      const t = prev.transition;
+      if (t && t.type === "xfade") {
+        const fits = t.duration > 0 &&
+          t.duration <= playDur(prev) + 1e-9 && t.duration <= playDur(c) + 1e-9;
+        if (fits) {
+          start = prevEnd - t.duration;
+        } else {
+          dropped++;
+          delete outs[i - 1].transition;
+        }
+      }
+    }
+    copy.timeline_start = start;
+    // A trailing xfade has nothing to blend with (the renderer would
+    // refuse the save) — degrade it too.
+    if (i === kept.length - 1 && copy.transition && copy.transition.type === "xfade") {
+      dropped++;
+      delete copy.transition;
+    }
+    outs.push(copy);
+    prevEnd = start + playDur(c);
   });
+  doc.tracks[0].clips = outs;
   try {
     const resp = await fetch(`/api/v1/projects/${currentProject.id}/timeline`, {
       method: "PUT",
@@ -446,7 +486,7 @@ async function saveTimeline() {
       return;
     }
     timelineDoc.revision = body.revision;
-    banner(`Timeline saved (${body.clips} clips)`);
+    banner(`Timeline saved (${body.clips} clips${dropped ? `, ${dropped} transition(s) dropped — their joins no longer fit` : ""})`);
     await refreshTimeline();
   } catch (e) { banner(`Save failed: ${e.message}`); }
 }
