@@ -25,7 +25,7 @@ async function post(path, body) {
 }
 
 function busy(on) {
-  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-subtitles"]) {
+  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-subtitles", "btn-subs-preview"]) {
     $(id).disabled = on;
   }
 }
@@ -494,12 +494,20 @@ $("btn-render").addEventListener("click", async () => {
 async function refreshSubtitlesStatus() {
   const status = $("subs-status");
   const links = $("subs-links");
-  if (!currentProject) { status.textContent = ""; links.innerHTML = ""; return; }
+  const previewBtn = $("btn-subs-preview");
+  const transcript = $("subs-transcript");
+  const hideTranscript = () => { transcript.hidden = true; transcript.textContent = ""; };
+  if (!currentProject) {
+    status.textContent = ""; links.innerHTML = "";
+    previewBtn.hidden = true; hideTranscript();
+    return;
+  }
   try {
     const st = await api(`/api/v1/projects/${currentProject.id}/subtitles`);
     if (!st.srt && !st.ass) {
       status.textContent = "none yet — transcribe to create";
       links.innerHTML = "";
+      previewBtn.hidden = true; hideTranscript();
       return;
     }
     status.textContent = st.ass ? "srt + karaoke ass ready" : "srt ready";
@@ -514,7 +522,30 @@ async function refreshSubtitlesStatus() {
       a.style.marginLeft = "8px";
       links.appendChild(a);
     }
+    previewBtn.hidden = !st.srt;
+    if (!st.srt) hideTranscript();
   } catch (_) { status.textContent = "status unavailable"; }
+}
+
+$("btn-subs-preview").addEventListener("click", async () => {
+  const transcript = $("subs-transcript");
+  if (!transcript.hidden) { transcript.hidden = true; return; }
+  try {
+    const resp = await fetch(`/api/v1/projects/${currentProject.id}/subtitles/file?format=srt`);
+    if (!resp.ok) throw new Error(`${resp.status}: ${resp.statusText}`);
+    transcript.textContent = srtToText(await resp.text()); // untrusted: textContent only
+    transcript.hidden = false;
+  } catch (e) { banner(`Preview failed: ${e.message}`); }
+});
+
+function srtToText(srt) {
+  return srt.replace(/\r/g, "")
+    .split("\n\n")
+    .map((b) => b.split("\n")
+      .filter((l) => l.trim() && !/^\d+$/.test(l.trim()) && !l.includes("-->"))
+      .join(" "))
+    .filter(Boolean)
+    .join("\n");
 }
 
 $("btn-subtitles").addEventListener("click", async () => {
