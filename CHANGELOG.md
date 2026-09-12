@@ -3,6 +3,43 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-12/13 nightly session #7
+
+### Added
+- Court ROI picker: draw the motion-analysis region on a frame of the
+  project's first asset in the web UI; saving persists a workspace
+  preset override. API: `GET/PUT/DELETE /api/v1/styles/{name}/roi`
+  (normalized 0..1 rect, validated against the preset schema).
+- Transcript preview in the Subtitles panel: a toggle fetches the
+  project's SRT and renders the cue text inline (textContent only).
+
+### Fixed
+- Analysis analyzers stream their metadata output (`metadata=print`) —
+  the previous 1 MB keep-last stdout capture silently truncated feature
+  tracks of media longer than ~40 minutes; an overflowing capture now
+  fails loudly and `StreamStdout`'s stderr is capped as documented.
+- Cache eviction is true LRU: a cache/proxy hit refreshes the entry's
+  recency, so hot analysis results survive budget pressure instead of
+  being evicted FIFO-by-creation.
+- Render publish survives a client streaming the previous output:
+  serve opens downloads share-all and the publisher POSIX-deletes a
+  held destination before renaming (old readers keep their bytes).
+- `xcut cleanup --dry-run` no longer runs the real cache eviction.
+- Two-layer config no longer drops workspace-level `workers.ai_bin`,
+  `proxy_threads`, `max_proxy_gb`, `analyzer_call_timeout` (the latter
+  three added to the merge; `proxy_enabled` may opt a workspace in).
+- A torn workspace lock file self-heals instead of deadlocking the
+  workspace until manually deleted.
+- Validation closes two silent-degrade holes: a flush join carrying an
+  xfade (output would come out shorter than the document) and a
+  fade/xfade with zero duration (rendered as a plain cut).
+- Karaoke sweeps land on their word when sidecar timestamps start after
+  the segment start, sidecar text is escaped against ASS control
+  characters, onset plateaus emit one onset (ties to the earliest hop),
+  full-scale negative samples count toward the hop peak, `silence_db`
+  is validated finite, and the ffmpeg render budget scales with output
+  length instead of a fixed 30-minute cap.
+
 ## [Unreleased] — 2026-09-11/12 nightly session #6
 
 ### Added

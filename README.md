@@ -105,6 +105,13 @@ Styles are data, not code — validated JSON presets in
   detector firing through every break), hit-driven scoring, court-ROI motion
   analysis
 
+For court-confined motion analysis, the web UI can draw the region of
+interest directly on a frame of the project's first asset ("draw court
+ROI…" in the sidebar); saving persists a workspace override of the
+selected style (`<workspace>/styles/<name>.json`, normalized 0..1 rect
+in `motion_roi`). The API surface is
+`GET/PUT/DELETE /api/v1/styles/{name}/roi`.
+
 Every selected clip carries its score, score breakdown and the reason it was
 picked in its metadata — the web UI shows the "why" per clip.
 
@@ -169,8 +176,10 @@ changes. Then:
 
 In the web UI the same loop is a button: Transcribe (pick the asset) →
 status + download links → check "burn subtitles" → Render. Word timings
-drive the karaoke fill (each word sweeps as it is sung); without them only
-plain SRT is produced.
+drive the karaoke fill (each word sweeps as it is sung; sidecar text is
+escaped, so stray braces or newlines cannot corrupt the ASS events);
+without them only plain SRT is produced. A "preview transcript" toggle
+shows the cue text inline once an SRT exists.
 
 Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
 Only one analyze/timeline/render job may be queued or running per project — a
