@@ -83,7 +83,22 @@ func (l *fileLogger) rotateLocked() {
 	for i := l.keep - 1; i >= 1; i-- {
 		_ = os.Rename(fmt.Sprintf("%s.%d", l.path, i), fmt.Sprintf("%s.%d", l.path, i+1))
 	}
-	_ = os.Rename(l.path, l.path+".1")
+	// A reader pinning the live log without the delete-share bit blocks the
+	// rename (Windows). Truncating in place anyway would silently destroy
+	// the rotation history — keep appending to the held file instead and
+	// retry on the next rotation.
+	if err := os.Rename(l.path, l.path+".1"); err != nil {
+		if !l.warned {
+			l.warned = true
+			fmt.Fprintf(os.Stderr, "xcut: log rotation postponed — the active log is held open by another reader: %v\n", err)
+		}
+		f, reopenErr := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if reopenErr != nil {
+			return // keep the closed-file dead-end warn path behavior
+		}
+		l.f = f
+		return
+	}
 	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep+1))
 	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {

@@ -90,6 +90,20 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// writeJobAccepted confirms the project row survived the enqueue race
+// against DELETE /projects/{id}: a delete committing between
+// requireProjectRow and CreateJob would leave the job running against a
+// ghost project no endpoint can address again. Gone → cancel the job
+// (queued jobs cancel before their body runs) and report 404.
+func (s *Server) writeJobAccepted(w http.ResponseWriter, r *http.Request, projectID, jobID string) {
+	if p, err := s.DB.GetProject(r.Context(), projectID); err != nil || p == nil {
+		s.Pipe.Queue.Cancel(jobID)
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
+		return
+	}
+	writeAccepted(w, jobID)
+}
+
 // decodeOptionalBody parses a small JSON body that may be omitted entirely
 // (POST with no body). An empty body leaves v untouched; a non-empty but
 // invalid body is a 400 and the caller must stop — continuing after a failed
@@ -131,7 +145,7 @@ func (s *Server) handleAssetImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeAccepted(w, id)
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 // POST /api/v1/projects/{id}/analyze
@@ -145,7 +159,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeAccepted(w, id)
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 // POST /api/v1/projects/{id}/timeline {"style": "generic_highlight"}
@@ -168,7 +182,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeAccepted(w, id)
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 // POST /api/v1/projects/{id}/subtitles {"asset": "<id>"} (asset optional,
@@ -190,7 +204,7 @@ func (s *Server) handleSubtitlesTranscribe(w http.ResponseWriter, r *http.Reques
 		writeErr(w, err)
 		return
 	}
-	writeAccepted(w, id)
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 // POST /api/v1/projects/{id}/render {"out": "D:/videos/out.mp4", "subs": true}
@@ -230,7 +244,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeAccepted(w, id)
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 func writeAccepted(w http.ResponseWriter, jobID string) {

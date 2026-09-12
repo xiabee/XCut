@@ -79,14 +79,25 @@ if ($Mode -eq "full") {
         # msvc toolchain; fall back to an installed windows-gnu toolchain.
         Push-Location crates/xcut-worker-media
         try {
-            $probe = cargo check -q 2>$null; if ($LASTEXITCODE -ne 0) { $probe = $null }
-            if (-not $probe -and (rustup toolchain list | Select-String "windows-gnu")) {
+            # A healthy MSVC setup links fine (cargo check succeeds); decide
+            # on the exit code alone — capturing output conflates "linked
+            # quietly" with "failed" and flipped the fallback ON for working
+            # MSVC installs.
+            cargo check -q 2>$null | Out-Null
+            $msvcBroken = ($LASTEXITCODE -ne 0)
+            if ($msvcBroken -and (rustup toolchain list | Select-String "windows-gnu")) {
                 $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-gnu"
                 Write-Host "== rust: msvc linker unavailable, using windows-gnu toolchain"
             }
-            Invoke-Step "cargo fmt --check" { cargo fmt --check }
-            Invoke-Step "cargo clippy" { cargo clippy --all-targets -- -D warnings }
-            Invoke-Step "cargo test" { cargo test }
+            try {
+                Invoke-Step "cargo fmt --check" { cargo fmt --check }
+                Invoke-Step "cargo clippy" { cargo clippy --all-targets -- -D warnings }
+                Invoke-Step "cargo test" { cargo test }
+            }
+            finally {
+                # The override must not leak into the caller's session.
+                Remove-Item Env:RUSTUP_TOOLCHAIN -ErrorAction SilentlyContinue
+            }
         }
         finally { Pop-Location }
     }

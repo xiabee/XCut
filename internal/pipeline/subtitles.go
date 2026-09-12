@@ -122,14 +122,25 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 		} else {
 			// Stale karaoke file must not outlive its data: resolution
 			// prefers .ass, so a scanner-blocked remove gets a short retry.
+			// If the file survives the retries it MUST be loud: any later
+			// subs-burn would publish the OLD karaoke content over the new
+			// transcript ("never a silent empty result" — this is the
+			// silent-wrong variant).
+			removed := false
 			for i := 0; i < 4; i++ {
 				if os.Remove(assPath) == nil {
+					removed = true
 					break
 				}
 				if _, statErr := os.Stat(assPath); statErr != nil {
+					removed = true
 					break // already gone
 				}
 				time.Sleep(50 * time.Millisecond)
+			}
+			if !removed {
+				d.Log.Warn("stale karaoke .ass survived removal — it still shadows the fresh .srt on burn; remove it manually or re-run transcription",
+					"path", assPath)
 			}
 		}
 		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings())
