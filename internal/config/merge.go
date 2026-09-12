@@ -52,6 +52,21 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Resource.AnalysisWidth != 0 {
 		out.Resource.AnalysisWidth = layer.Resource.AnalysisWidth
 	}
+	if layer.Resource.ProxyThreads != 0 {
+		out.Resource.ProxyThreads = layer.Resource.ProxyThreads
+	}
+	if layer.Resource.MaxProxyGB != 0 {
+		out.Resource.MaxProxyGB = layer.Resource.MaxProxyGB
+	}
+	if layer.Resource.AnalyzerCallTimeout.Duration != 0 {
+		out.Resource.AnalyzerCallTimeout = layer.Resource.AnalyzerCallTimeout
+	}
+	// A bool cannot express "unset", so a workspace may opt proxies IN but
+	// not out — turning them off is the bootstrap config / XCUT_PROXY_ENABLED
+	// / flag layer's job.
+	if layer.Resource.ProxyEnabled {
+		out.Resource.ProxyEnabled = true
+	}
 	if layer.FFmpeg.Bin != "" {
 		out.FFmpeg.Bin = layer.FFmpeg.Bin
 	}

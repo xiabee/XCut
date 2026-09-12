@@ -176,3 +176,53 @@ func TestLockOwnPIDMatchingStampReenters(t *testing.T) {
 	}
 	release()
 }
+
+// TestLockCorruptFileSelfHeals: a torn create/write (crash, power loss)
+// leaves a zero-byte or partial lock no readLock can parse — that used to
+// conflict forever (no owner to liveness-check) and only a human could fix
+// it. Old debris self-heals; fresh debris (a possible in-flight create)
+// keeps the conflict.
+func TestLockCorruptFileSelfHeals(t *testing.T) {
+	p := filepath.Join(New(t.TempDir()).Root, lockFileName)
+
+	// Fresh garbage: still a conflict (a live writer may be mid-create).
+	if err := os.WriteFile(p, []byte("{trunca"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := New(filepath.Dir(p))
+	if _, err := w.Acquire("test"); err == nil {
+		t.Fatal("fresh torn lock must still conflict")
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatal("fresh torn lock must not be deleted")
+	}
+
+	// Aged garbage: debris — removed and the lock is taken.
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	release, err := w.Acquire("test")
+	if err != nil {
+		t.Fatalf("aged torn lock must self-heal: %v", err)
+	}
+	release()
+}
+
+// TestLockEmptyFileSelfHeals: the zero-byte variant of the same debris.
+func TestLockEmptyFileSelfHeals(t *testing.T) {
+	w := New(t.TempDir())
+	p := filepath.Join(w.Root, lockFileName)
+	if err := os.WriteFile(p, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	release, err := w.Acquire("test")
+	if err != nil {
+		t.Fatalf("empty lock file must self-heal: %v", err)
+	}
+	release()
+}

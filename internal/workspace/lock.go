@@ -159,7 +159,18 @@ func (w *Workspace) release(lockPath string) {
 func (w *Workspace) removeStaleLock(lockPath string) error {
 	owner, err := readLock(lockPath)
 	if err != nil {
-		return err // unreadable → treat as a live conflict
+		// Unparseable content (zero-byte or torn create/write): no owner can
+		// be identified, so the liveness rules below are unreachable and the
+		// workspace would stay locked until a human deletes the file. Treat
+		// it as debris — but only once it is clearly not a live writer's
+		// in-flight create (that window is microseconds; 10s is generous).
+		if fi, statErr := os.Stat(lockPath); statErr != nil || time.Since(fi.ModTime()) < 10*time.Second {
+			return err
+		}
+		if rmErr := os.Remove(lockPath); rmErr != nil {
+			return err
+		}
+		return nil
 	}
 	if owner.Host == hostname() {
 		if !processAlive(owner.PID) {
