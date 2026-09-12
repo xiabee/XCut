@@ -70,5 +70,8 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Workers.Audio != "" {
 		out.Workers.Audio = layer.Workers.Audio
 	}
+	if layer.Workers.AIBin != "" {
+		out.Workers.AIBin = layer.Workers.AIBin
+	}
 	return &out
 }

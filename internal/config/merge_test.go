@@ -8,7 +8,7 @@ func TestMergeLayerOverridesAndKeeps(t *testing.T) {
 
 	layer := &Config{
 		Resource: Resource{MaxConcurrentJobs: 5, FrameSampleFPS: 4},
-		Workers:  Workers{Audio: "rust"},
+		Workers:  Workers{Audio: "rust", AIBin: "C:/sidecars/fake-ai.py"},
 		Log:      Log{Level: "debug"},
 	}
 	got := MergeLayer(base, layer)
@@ -21,6 +21,9 @@ func TestMergeLayerOverridesAndKeeps(t *testing.T) {
 	}
 	if got.Workers.Audio != "rust" {
 		t.Fatalf("layered audio = %q", got.Workers.Audio)
+	}
+	if got.Workers.AIBin != "C:/sidecars/fake-ai.py" {
+		t.Fatalf("layered ai_bin = %q (workspace workers.ai_bin must not be dropped)", got.Workers.AIBin)
 	}
 	if got.Log.Level != "debug" {
 		t.Fatalf("layered log level = %q", got.Log.Level)
