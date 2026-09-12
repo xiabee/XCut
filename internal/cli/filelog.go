@@ -97,6 +97,10 @@ func (l *fileLogger) rotateLocked() {
 			return // keep the closed-file dead-end warn path behavior
 		}
 		l.f = f
+		// Reset the counter so the capped writer does not re-attempt the
+		// (still failing) rename on every subsequent write — the file may
+		// grow to ~2x maxBytes before the next try, which is fine.
+		l.written = 0
 		return
 	}
 	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep+1))
