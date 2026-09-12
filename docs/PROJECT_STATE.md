@@ -3,20 +3,18 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
+Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #6 work, all pushed (see git log; every milestone
-  fast-gated, pushed, and independently accepted on the remote-node node)
+- HEAD: session #7 work, all pushed (see git log; every milestone
+  fast-gated, pushed, and independently accepted on the remote-node node;
+  the full gate — race, cross-compile, Rust, govulncheck, gosec — re-run
+  green at the session's final HEAD)
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
-  entry; remote-node remote runs after every milestone (session #6 so far:
-  15 runs = 14 PASS + 1 FAIL whose node log caught a real Windows rename
-  flake — fixed by the retryable rename below). Session #5: 18 runs =
-  17 PASS + 1 FAIL (that FAIL caught a real race — see NIGHTLY_PROGRESS
-  M37).
+  entry; remote-node remote runs after every milestone
 
 ## Working Architecture
 
@@ -46,10 +44,16 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
   aware since session #6 — max of YDIF/UDIF/VDIF normalized per channel
   span, catching chroma-only scene switches), audio RMS
   (astats), **audio onsets** (PCM pipe → Go DSP: 20 ms peak envelope → flux
-  → median+k·MAD adaptive threshold → local-max peaks), **court-ROI motion**
+  → median+k·MAD adaptive threshold → local-max peaks; plateaus emit one
+  onset, ties to the earliest hop), **court-ROI motion**
   (crop before signalstats; ROI in the analyzer name = cache-safe).
-  Fingerprint-keyed cache with budget eviction (analyzer versions are part
-  of the cache key); optional **analysis proxies** (opt-in
+  All three metadata-print analyzers **stream** their ffmpeg output
+  (session #7: `metadataCollector` as the StreamStdout sink) — analyzer
+  memory is flat in media duration; the old 1 MB keep-last capture
+  silently truncated long-media tracks. Fingerprint-keyed cache with
+  budget eviction — **true LRU since session #7** (a hit refreshes the
+  entry's recency; hot results survive budget pressure); optional
+  **analysis proxies** (opt-in
   `resource.proxy_enabled`: fingerprint+geometry-keyed low-res
   proxies at the analysis geometry under `cache/proxy`, own LRU budget
   `resource.max_proxy_gb`, own encode thread budget `resource.proxy_threads`,
@@ -73,13 +77,21 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
   **Revision** (PUT saves must send the revision they read; mismatch → 409;
   regeneration bumps it too — stale editors can no longer silently destroy
   a doc), strict validation (xfade overlaps validated against transition
-  duration; trailing xfade refused — nothing to blend with), manual editing
-  (GET/PUT + UI editor), renderer with trim/normalize/concat **or a single
-  join filtergraph chaining xfade+acrossfade (transition joins) and concat
-  (hard joins) — cut/fade/xfade may be mixed freely within one timeline**,
-  ffprobe verify, atomic publish; render output refused if it would
-  overwrite a source media file, a timeline-referenced clip source, or the
-  timeline document. Publish uses replace semantics (`RetryableReplace`):
+  duration; trailing xfade refused — nothing to blend with; a flush join
+  carrying an xfade refused — the blend would shorten the output; a
+  zero-duration fade/xfade refused — it renders as a plain cut), manual
+  editing (GET/PUT + UI editor), renderer with trim/normalize/concat **or a
+  single join filtergraph chaining xfade+acrossfade (transition joins) and
+  concat (hard joins) — cut/fade/xfade may be mixed freely within one
+  timeline**, ffprobe verify, atomic publish; the ffmpeg budget scales with
+  output length (30-minute floor + headroom per output second — a fixed
+  30-minute cap could not render multi-hour timelines); render output
+  refused if it would overwrite a source media file, a timeline-referenced
+  clip source, or the timeline document. Publish uses replace semantics
+  (`RetryableReplace`): a client streaming the previous output no longer
+  fails a re-render — serve opens downloads share-all, so the publisher
+  POSIX-deletes the held name and renames; the old reader keeps its bytes
+  until EOF (session #7). Publish uses replace semantics (`RetryableReplace`):
   a client streaming the previous output no longer fails a re-render —
   serve opens downloads share-all, so the publisher POSIX-deletes the held
   name and renames; the old reader keeps its bytes until EOF (session #7).
@@ -97,7 +109,13 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
   browser-verified end to end.
 - **Web UI** (go:embed, zero deps): project CRUD, import, analyze →
   timeline → render with job progress, clip editor with per-clip score +
-  why, MP4 playback/download. Untrusted text rendered textContent-only.
+  why, MP4 playback/download. Subtitles panel with asset picker,
+  transcript preview, status + downloads; court ROI picker (draw the
+  motion region on a reference frame, saved as a workspace preset
+  override). Project-scoped refreshes carry stale-response guards
+  (switching projects discards in-flight responses — a slow response can
+  no longer render project A's data under project B). Untrusted text
+  rendered textContent-only.
 - **Workers**: Rust media worker (protocol v1, audio_rms) optional;
   AI sidecar protocol v1 (capabilities/health/analyze; bounded response
   caps, per-call timeouts, .py sidecar support); reference sidecar in
@@ -177,8 +195,14 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
   density with hysteresis (enter/exit rates + sustained-low close) and
   chunks over-dense spans instead of truncating. The fix produced a
   60s/8-clip highlight from that match end-to-end; annotated multi-source
-  evaluation (xcut eval) is still the missing ingredient for tuning, and
-  court ROI still needs per-source manual rects.
+  evaluation (xcut eval) is still the missing ingredient for tuning. The
+  court ROI is drawn in the UI (session #7) but is per-preset — a
+  per-source rect needs a schema extension.
+- Render publish vs holds: a client streaming the previous output no
+  longer blocks a re-render (share-all downloads + POSIX delete + rename,
+  session #7). An EXTERNAL program that opens without the Windows
+  delete-share bit (some players) still pins the name — the publish
+  reports the rename error honestly instead of pretending to succeed.
 - Race detector on Windows hosts needs a cgo/C toolchain (gcc); the gate
   runs it when one is present and skips loudly otherwise (docker runner
   remains the fallback). This machine's windows-gnu gcc satisfies it since
@@ -209,8 +233,8 @@ Updated: 2026-09-12 03:20 (+08:00) — nightly session #6, mid-night checkpoint
 2. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
-3. Web UI polish candidates: transcript preview in the Subtitles panel;
-   render-with-subs for the API/UI pairing already works.
+3. Per-source court ROI (the session #7 UI picker is per-preset) — needs a
+   preset schema extension or a project-level ROI store.
 4. Optional: re-enable push/PR CI when quota recovers (restore notes in
    ci.yml; consider concurrency cancel + docs-only paths-ignore).
 5. Phase 4 (desktop packaging, model registry, FFmpeg sandbox) — needs
