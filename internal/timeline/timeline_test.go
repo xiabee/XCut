@@ -278,11 +278,34 @@ func TestValidateRejectsTrailingXfade(t *testing.T) {
 		t.Fatalf("trailing fade rejected: %v", err)
 	}
 
-	// xfade between clips (not trailing) stays legal.
+	// xfade between clips (not trailing) stays legal — with the overlap the
+	// transition declares (flush joins are refused, see below).
 	tl = mk(nil)
 	tl.Tracks[0].Clips[0].Transition = &Transition{Type: "xfade", Duration: 1}
+	tl.Tracks[0].Clips[1].TimelineStart = 3 // 4 - 1: shares the blend window
 	if err := tl.Validate(lookup); err != nil {
-		t.Fatalf("mid xfade rejected: %v", err)
+		t.Fatalf("overlapping mid xfade rejected: %v", err)
+	}
+
+	// A flush join carrying an xfade would blend across the previous clip's
+	// tail and shorten the output — refused with the honest fix in the text.
+	tl = mk(nil)
+	tl.Tracks[0].Clips[0].Transition = &Transition{Type: "xfade", Duration: 1}
+	err = tl.Validate(lookup)
+	if err == nil {
+		t.Fatal("flush-join xfade accepted")
+	}
+	if !asMulti(err, &me) {
+		t.Fatalf("not a MultiError: %v", err)
+	}
+	found = false
+	for _, d := range me.Details() {
+		if strings.Contains(d, "flush join") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("details do not mention the flush join: %v", me.Details())
 	}
 }
 

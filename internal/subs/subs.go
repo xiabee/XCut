@@ -141,9 +141,21 @@ func WriteKaraokeASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
 // karaokeLine builds the {\kf} tag stream for one segment. Each word's fill
 // runs until the next word starts (gaps belong to the previous word, the
 // classic KTV feel); the last word fills to the segment end.
+//
+// ASS sweeps are cumulative from the Dialogue start (s.Start), but whisper-
+// style word timestamps typically begin slightly AFTER the segment start —
+// without a leading offset every sweep fires early by that gap. A zero-width
+// {\k} span absorbs it so word i's fill lands on word i.
 func karaokeLine(s Segment) (string, float64) {
 	end := s.End
 	var b strings.Builder
+	if len(s.Words) > 0 {
+		if lead := int(math.Round((s.Words[0].Start - s.Start) * 100)); lead > 0 {
+			// {\k} (instant) with no text advances the karaoke clock without
+			// showing anything.
+			fmt.Fprintf(&b, "{\\k%d}", lead)
+		}
+	}
 	for i, wd := range s.Words {
 		next := s.End
 		if i+1 < len(s.Words) && s.Words[i+1].Start > wd.Start {
@@ -156,15 +168,31 @@ func karaokeLine(s Segment) (string, float64) {
 		if cs < 0 {
 			cs = 0
 		}
-		fmt.Fprintf(&b, "{\\kf%d}%s", cs, wd.Word)
+		fmt.Fprintf(&b, "{\\kf%d}%s", cs, assEscape(wd.Word))
 		if i+1 < len(s.Words) {
 			b.WriteString(" ")
 		}
 	}
 	if b.Len() == 0 { // words empty — HasWordTimings guards, belt and braces
-		b.WriteString(s.Text)
+		b.WriteString(assEscape(s.Text))
 	}
 	return b.String(), end
+}
+
+// assEscape neutralizes ASS control characters in sidecar-produced text.
+// Sidecar output is untrusted: `{`/`}` inject live override tags (corrupting
+// the karaoke fill and colors), a backslash starts a tag, and a newline
+// would split the Dialogue event and corrupt the whole [Events] section.
+// The replacements are cosmetic (lyrics never legitimately contain them).
+func assEscape(s string) string {
+	r := strings.NewReplacer(
+		"{", "(",
+		"}", ")",
+		"\\", "/",
+		"\r", " ",
+		"\n", " ",
+	)
+	return r.Replace(s)
 }
 
 // assHeader is the ASS preamble: one Karaoke style (secondary color white =

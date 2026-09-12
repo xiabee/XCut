@@ -169,3 +169,23 @@ func TestBuildErrors(t *testing.T) {
 		t.Fatal("expected error for bad config")
 	}
 }
+
+// TestValidateSilenceDB: a NaN/±Inf silence_db poisons the audible test and
+// the score normalization (every segment silently scored 0); it must be
+// refused at validation like its neighbor knobs.
+func TestValidateSilenceDB(t *testing.T) {
+	for _, bad := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), 1, -121} {
+		cfg := DefaultConfig()
+		cfg.SilenceDB = bad
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("silence_db %v accepted", bad)
+		}
+	}
+	for _, ok := range []float64{-42, -90, -120, 0} {
+		cfg := DefaultConfig()
+		cfg.SilenceDB = ok
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("silence_db %v rejected: %v", ok, err)
+		}
+	}
+}

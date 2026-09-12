@@ -54,8 +54,10 @@ func IoU(a, b Interval) float64 {
 }
 
 // mergeIntervals returns the union of possibly overlapping intervals as a
-// sorted, disjoint list (touching intervals are not merged: the measure is
-// unaffected).
+// sorted, disjoint list. Touching intervals ARE merged (Start <= cur.End):
+// every consumer measures union length, which merging touching intervals
+// cannot change — and not merging them would let contiguous ranges pile up
+// as separate output entries.
 func mergeIntervals(ivs []Interval) []Interval {
 	if len(ivs) == 0 {
 		return nil

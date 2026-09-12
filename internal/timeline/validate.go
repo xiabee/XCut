@@ -118,6 +118,15 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			if ci > 0 && c.TimelineStart > prevEnd+eps {
 				errs = append(errs, fmt.Sprintf("%s: leaves a %.6gs gap after the previous clip (ends %g, starts %g) — the renderer joins clips back-to-back, so gaps cannot be honored", ctx, c.TimelineStart-prevEnd, prevEnd, c.TimelineStart))
 			}
+			// A flush join carrying an xfade is the mirror of the gap rule:
+			// the renderer would blend across the previous clip's tail and
+			// produce output shorter than the document claims. Require the
+			// overlap the transition declares.
+			if ci > 0 && prev != nil && prev.Transition != nil &&
+				prev.Transition.Type == "xfade" && prev.Transition.Duration > 0 &&
+				c.TimelineStart >= prevEnd-eps && c.TimelineStart <= prevEnd+eps {
+				errs = append(errs, fmt.Sprintf("%s: xfade on a flush join would blend into the previous clip's tail and shorten the output — overlap this clip's start by the transition duration (%gs), or use cut/fade", ctx, prev.Transition.Duration))
+			}
 			if end > prevEnd {
 				prevEnd = end
 			}

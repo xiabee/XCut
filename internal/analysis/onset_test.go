@@ -200,3 +200,37 @@ func TestOnsetAnalyzerTimeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+// TestDetectOnsetsPlateauYieldsOneOnset: two hops with bit-equal flux are a
+// plateau — the earliest hop wins and the other is suppressed. The old
+// strictly-greater check let both pass, doubling the hit (inflating
+// hit_count/density downstream).
+func TestDetectOnsetsPlateauYieldsOneOnset(t *testing.T) {
+	n := 100
+	db := make([]float64, n)
+	for i := range db {
+		db[i] = -40
+	}
+	// One 20 dB step spread over two hops: flux[11] == flux[12] exactly.
+	db[11] = -30
+	db[12] = -20
+	got := detectOnsets(db, 50)
+	if len(got) != 1 {
+		t.Fatalf("plateau produced %d onsets, want 1 (%v)", len(got), got)
+	}
+	if math.Abs(got[0].T-11/50.0) > 1e-9 {
+		t.Fatalf("earliest hop must win: onset at %g, want %g", got[0].T, 11/50.0)
+	}
+}
+
+// TestAbsorbFullScaleNegative: |−32768| overflows int16 back to negative —
+// the loudest possible sample used to be dropped from the hop peak. The
+// envelope must reach full scale.
+func TestAbsorbFullScaleNegative(t *testing.T) {
+	p := newOnsetProcessor()
+	// 0x8000 = -32768 in int16 LE.
+	p.absorb(0x8000)
+	if p.cur != 32768 {
+		t.Fatalf("full-scale negative peak = %d, want 32768", p.cur)
+	}
+}

@@ -86,7 +86,8 @@ func (c Config) Validate() error {
 		c.MotionFloor >= 0 && c.MotionFloor < c.CutThreshold &&
 		c.MergeGap >= 0 && c.MinDuration > 0 &&
 		!math.IsNaN(c.CutThreshold) && !math.IsNaN(c.MotionFloor) &&
-		!math.IsNaN(c.MergeGap) && !math.IsNaN(c.MinDuration)
+		!math.IsNaN(c.MergeGap) && !math.IsNaN(c.MinDuration) &&
+		finiteSilenceDB(c.SilenceDB)
 	if !sane {
 		return xcerr.E(xcerr.CodeValidation, "invalid event config", nil)
 	}
@@ -396,6 +397,14 @@ func clamp(v, lo, hi float64) float64 {
 		return hi
 	}
 	return v
+}
+
+// finiteSilenceDB gates the audio threshold: NaN/±Inf poisons both the
+// audible test and the score normalization (every segment silently scored
+// 0), and anything above 0 or below the −120 dBFS floor is nonsense for a
+// dBFS threshold.
+func finiteSilenceDB(db float64) bool {
+	return !math.IsNaN(db) && !math.IsInf(db, 0) && db <= 0 && db >= -120
 }
 
 func round4(v float64) float64 {

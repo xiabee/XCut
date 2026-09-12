@@ -112,3 +112,67 @@ func TestASSTimeFormat(t *testing.T) {
 		}
 	}
 }
+
+// TestKaraokeLeadSpan: whisper-style word timestamps typically start after
+// the segment start. ASS \kf fills are cumulative from the Dialogue start,
+// so without a leading offset every sweep fired early by that gap. The
+// zero-width {\k} span absorbs it; total centiseconds still cover the whole
+// Dialogue (lead + fills == segment duration).
+func TestKaraokeLeadSpan(t *testing.T) {
+	tt, err := Parse([]byte(`{"segments": [
+		{"start": 1.0, "end": 2.5, "text": "第一 句", "words": [
+			{"start": 1.2, "end": 1.5, "word": "第一"},
+			{"start": 1.7, "end": 2.4, "word": "句"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := WriteKaraokeASS(tt, KaraokeStyle{}, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	// Lead 0.2s = 20cs, word 1 fills 1.2→1.7 (50cs), word 2 fills 1.7→2.5 (80cs).
+	if !strings.Contains(out, `{\k20}{\kf50}第一 {\kf80}句`) {
+		t.Fatalf("karaoke line missing the lead span or wrong fills:\n%s", out)
+	}
+}
+
+// TestKaraokeEscapesControlChars: sidecar text is untrusted — braces would
+// inject live ASS override tags and a newline would split the Dialogue event,
+// corrupting the whole [Events] section from that point.
+func TestKaraokeEscapesControlChars(t *testing.T) {
+	tt, err := Parse([]byte(`{"segments": [
+		{"start": 1.0, "end": 2.0, "text": "bad", "words": [
+			{"start": 1.0, "end": 1.5, "word": "{\\b1}坏"},
+			{"start": 1.5, "end": 2.0, "word": "line\nbreak"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := WriteKaraokeASS(tt, KaraokeStyle{}, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if strings.Contains(out, "{\b1}") {
+		t.Fatalf("raw override tag leaked into the Dialogue line:\n%s", out)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "Dialogue:") && strings.Count(l, ",,") < 3 {
+			// Dialogue lines have a fixed comma structure; an embedded raw
+			// newline would have produced stray continuation lines.
+			continue
+		}
+	}
+	dialogue := 0
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "Dialogue: ") {
+			dialogue++
+		}
+	}
+	if dialogue != 1 {
+		t.Fatalf("expected exactly 1 Dialogue event (a raw newline would split it), got %d:\n%s", dialogue, out)
+	}
+	if !strings.Contains(out, "(/b1)坏") || !strings.Contains(out, "line break") {
+		t.Fatalf("escape replacements missing:\n%s", out)
+	}
+}

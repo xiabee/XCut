@@ -87,7 +87,7 @@ func (a AudioOnsetAnalyzer) Analyze(ctx context.Context, opts Options, path stri
 type onsetProcessor struct {
 	rem   []byte // bytes carried between chunks (sample alignment)
 	db    []float64
-	cur   int16 // running peak of the current hop
+	cur   int32 // running peak of the current hop (int32: |−32768| overflows int16)
 	inHop int   // samples consumed of the current hop
 }
 
@@ -122,9 +122,9 @@ func (p *onsetProcessor) consume(chunk []byte) error {
 
 func (p *onsetProcessor) absorb(raw uint16) {
 	v := int16(raw)
-	a := v
+	a := int32(v)
 	if a < 0 {
-		a = -a
+		a = -a // int32 math: |−32768| overflows back to negative in int16
 	}
 	if a > p.cur {
 		p.cur = a
@@ -195,10 +195,11 @@ func detectOnsets(db []float64, hopRate float64) []Sample {
 		if f < thr {
 			continue
 		}
-		// Local maximum (earliest wins ties).
+		// Local maximum (earliest wins ties — a strictly-greater-only check
+		// emitted one onset per hop across a plateau of equal flux).
 		isPeak := true
 		for j := maxInt(0, i-halfPeak); j <= minInt(n-1, i+halfPeak); j++ {
-			if flux[j] > f {
+			if flux[j] > f || (flux[j] == f && j < i) {
 				isPeak = false
 				break
 			}
