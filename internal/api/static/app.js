@@ -82,6 +82,7 @@ function selectProject(p) {
   refreshJobs();
   refreshTimeline();
   refreshSubtitlesStatus();
+  refreshROIStatus();
 }
 
 async function deleteProject() {
@@ -590,6 +591,7 @@ async function loadStyles() {
       o.value = s; o.textContent = s;
       sel.appendChild(o);
     }
+    refreshROIStatus();
   } catch (_) { /* non-fatal */ }
 }
 
@@ -598,3 +600,121 @@ setInterval(refreshHealth, 15000);
 refreshProjects();
 loadStyles();
 refreshJobs();
+
+/* ---------- court ROI editor ---------- */
+/* A normalized rect (0..1) persisted as a workspace override of the
+ * selected style; the style engine feeds it to the frame_diff_roi analyzer
+ * so crowd movement off the court cannot dominate the motion signal. */
+let roiRect = null;      // {x,y,w,h} drawn but not yet saved
+let roiAssetId = null;   // asset whose frame is on display
+
+function roiStyleName() { return $("style").value; }
+
+async function refreshROIStatus() {
+  const status = $("roi-status");
+  const clearBtn = $("btn-roi-clear");
+  if (!currentProject || !roiStyleName()) { status.textContent = ""; clearBtn.hidden = true; return; }
+  try {
+    const { roi } = await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`);
+    if (roi) {
+      status.textContent = `ROI x=${roi.x.toFixed(2)} y=${roi.y.toFixed(2)} w=${roi.w.toFixed(2)} h=${roi.h.toFixed(2)}`;
+      clearBtn.hidden = false;
+    } else {
+      status.textContent = "full frame (no ROI)";
+      clearBtn.hidden = true;
+    }
+  } catch (_) { status.textContent = "roi status unavailable"; }
+}
+
+function drawROIOverlay() {
+  const canvas = $("roi-canvas");
+  const video = $("roi-video");
+  canvas.width = video.clientWidth || 320;
+  canvas.height = video.clientHeight || 240;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!roiRect) return;
+  ctx.strokeStyle = "#4cc38a";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(roiRect.x * canvas.width, roiRect.y * canvas.height,
+    roiRect.w * canvas.width, roiRect.h * canvas.height);
+}
+
+async function openROIEditor() {
+  if (!currentProject) return;
+  const opt = $("subs-asset").selectedOptions[0];
+  if (!opt) { banner("Import an asset first — the ROI editor draws over its first frame"); return; }
+  roiAssetId = opt.value;
+  roiRect = null;
+  $("btn-roi-save").disabled = true;
+  $("roi-editor").hidden = false;
+  const video = $("roi-video");
+  video.src = `/api/v1/projects/${currentProject.id}/assets/${roiAssetId}/file#t=1`;
+  video.currentTime = 1;
+  video.pause();
+  drawROIOverlay();
+}
+
+function closeROIEditor() {
+  $("roi-editor").hidden = true;
+  const video = $("roi-video");
+  video.removeAttribute("src");
+  video.load();
+}
+
+$("btn-roi").addEventListener("click", openROIEditor);
+$("btn-roi-cancel").addEventListener("click", closeROIEditor);
+$("btn-roi-clear").addEventListener("click", async () => {
+  try {
+    await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`, { method: "DELETE" });
+    banner("Court ROI cleared — analysis uses the full frame again");
+    refreshROIStatus();
+  } catch (e) { banner(`Clear failed: ${e.message}`); }
+});
+$("btn-roi-save").addEventListener("click", async () => {
+  if (!roiRect) return;
+  try {
+    await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(roiRect),
+    });
+    banner("Court ROI saved as a workspace override of this style");
+    closeROIEditor();
+    refreshROIStatus();
+  } catch (e) { banner(`Save failed: ${e.message}`); }
+});
+$("style").addEventListener("change", refreshROIStatus);
+
+(() => {
+  const video = $("roi-video");
+  const canvas = $("roi-canvas");
+  let dragStart = null;
+  const norm = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1),
+      y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1),
+    };
+  };
+  canvas.addEventListener("pointerdown", (e) => {
+    dragStart = norm(e);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragStart) return;
+    const p = norm(e);
+    roiRect = {
+      x: Math.min(dragStart.x, p.x),
+      y: Math.min(dragStart.y, p.y),
+      w: Math.abs(p.x - dragStart.x),
+      h: Math.abs(p.y - dragStart.y),
+    };
+    drawROIOverlay();
+    $("btn-roi-save").disabled = roiRect.w < 0.02 || roiRect.h < 0.02;
+  });
+  canvas.addEventListener("pointerup", () => { dragStart = null; });
+  video.addEventListener("loadedmetadata", drawROIOverlay);
+  window.addEventListener("resize", () => { if (!$("roi-editor").hidden) drawROIOverlay(); });
+})();

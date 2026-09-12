@@ -69,6 +69,26 @@
       </fieldset>
 
       <fieldset>
+        <legend>Court ROI (motion analysis region)</legend>
+        <div class="row">
+          <button id="btn-roi">draw court ROI…</button>
+          <button id="btn-roi-clear" hidden>clear ROI</button>
+          <span id="roi-status" class="hint">checking…</span>
+        </div>
+        <div id="roi-editor" hidden>
+          <div id="roi-stage">
+            <video id="roi-video" muted preload="metadata"></video>
+            <canvas id="roi-canvas"></canvas>
+          </div>
+          <div class="row">
+            <button id="btn-roi-save" disabled>save ROI</button>
+            <button id="btn-roi-cancel">cancel</button>
+            <span class="hint">drag a rectangle over the court area — saved as a workspace override of the selected style.</span>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>Timeline</legend>
         <table id="clips"><thead><tr>
           <th>#</th><th>source</th><th>duration</th><th>score</th><th>why</th><th></th>
