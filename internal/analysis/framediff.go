@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -42,7 +43,8 @@ func (a FrameDiffAnalyzer) Analyze(ctx context.Context, opts Options, path strin
 		"metadata=print:key=%s:file=-,metadata=print:key=%s:file=-,metadata=print:key=%s:file=-",
 		formatFPS(opts.SampleFPS), opts.AnalysisWidth, yDifKey, uDifKey, vDifKey)
 
-	out, errOut, err := media.Run(ctx, opts.Tools.FFmpeg,
+	out := newMetadataCollector(yDifKey, uDifKey, vDifKey)
+	err := media.StreamStdout(ctx, opts.Tools.FFmpeg, out.sink,
 		"-hide_banner", "-nostdin", "-v", "error",
 		"-threads", strconv.Itoa(maxThreads(opts.Tools.Threads)),
 		"-i", path,
@@ -51,18 +53,18 @@ func (a FrameDiffAnalyzer) Analyze(ctx context.Context, opts Options, path strin
 	)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "video analysis timed out", ctx.Err())
+			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "video analysis timed out or was cancelled", ctx.Err())
 		}
-		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "video analysis failed", fmt.Errorf("%v: %s", err, tailBytes(errOut)))
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "video analysis failed", err)
 	}
 
-	perKey, err := parseMetadataPrintKeys(out, yDifKey, uDifKey, vDifKey)
+	perKey, err := out.finish()
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot parse video analysis output", err)
 	}
 	if len(perKey[yDifKey]) == 0 {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
-			fmt.Sprintf("no %s samples in analyzer output (%d bytes)", yDifKey, len(out)), nil)
+			fmt.Sprintf("no %s samples in analyzer output (%d bytes streamed)", yDifKey, out.bytesSeen), nil)
 	}
 	samples := combineChannelDiffs(perKey[yDifKey], perKey[uDifKey], perKey[vDifKey])
 	track := FeatureTrack{
@@ -128,41 +130,16 @@ func parseMetadataPrint(out []byte, key string) ([]Sample, error) {
 //
 // Each requested key gets its own sample list, sorted by time.
 func parseMetadataPrintKeys(out []byte, keys ...string) (map[string][]Sample, error) {
-	wanted := make(map[string]bool, len(keys))
-	for _, k := range keys {
-		wanted[k] = true
-	}
-	sc := bufio.NewScanner(strings.NewReader(string(out)))
+	c := newMetadataCollector(keys...)
+	sc := bufio.NewScanner(bytes.NewReader(out))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	samples := make(map[string][]Sample, len(keys))
-	pendingT := -1.0
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(line, "frame:") {
-			t, ok := extractPtsTime(line)
-			if !ok {
-				pendingT = -1
-				continue
-			}
-			pendingT = t
-			continue
-		}
-		if pendingT < 0 {
-			continue
-		}
-		if k, v, ok := strings.Cut(line, "="); ok && wanted[strings.TrimSpace(k)] {
-			f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-			if err != nil {
-				continue // tolerate single malformed lines
-			}
-			samples[strings.TrimSpace(k)] = append(samples[strings.TrimSpace(k)], Sample{T: pendingT, V: f})
-			pendingT = -1
-		}
+		c.line(sc.Text())
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
-	return samples, nil
+	return c.samples, nil
 }
 
 // extractPtsTime pulls the trailing "pts_time:<value>" from a frame line.

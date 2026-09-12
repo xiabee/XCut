@@ -67,7 +67,8 @@ func (a FrameDiffROIAnalyzer) Analyze(ctx context.Context, opts Options, path st
 	filter := fmt.Sprintf("fps=%s,scale=%d:-2,crop=%s,signalstats,metadata=print:key=lavfi.signalstats.YDIF:file=-",
 		formatFPS(opts.SampleFPS), opts.AnalysisWidth, a.ROI.filterExpr())
 
-	out, errOut, err := media.Run(ctx, opts.Tools.FFmpeg,
+	out := newMetadataCollector("lavfi.signalstats.YDIF")
+	err := media.StreamStdout(ctx, opts.Tools.FFmpeg, out.sink,
 		"-hide_banner", "-nostdin", "-v", "error",
 		"-threads", strconv.Itoa(maxThreads(opts.Tools.Threads)),
 		"-i", path,
@@ -76,15 +77,18 @@ func (a FrameDiffROIAnalyzer) Analyze(ctx context.Context, opts Options, path st
 	)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "ROI motion analysis timed out", ctx.Err())
+			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "ROI motion analysis timed out or was cancelled", ctx.Err())
 		}
-		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "ROI motion analysis failed",
-			fmt.Errorf("%v: %s", err, tailBytes(errOut)))
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "ROI motion analysis failed", err)
 	}
 
-	samples, err := parseMetadataPrint(out, "lavfi.signalstats.YDIF")
+	perKey, err := out.finish()
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot parse ROI motion analysis output", err)
+	}
+	samples := perKey["lavfi.signalstats.YDIF"]
+	if len(samples) == 0 {
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "no YDIF samples in ROI analyzer output", nil)
 	}
 	for i := range samples {
 		samples[i].V /= 255.0

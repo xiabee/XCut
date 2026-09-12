@@ -71,13 +71,28 @@ func Version(ctx context.Context, bin string) (string, error) {
 // growing host memory for the child's whole runtime.
 const maxCapturedOutput = 1 << 20
 
-// cappedBuffer retains the LAST max bytes written to it.
+// stdoutCaptureCap is the stdout budget for Run. A caller whose tool writes
+// parseable data to stdout must either stay under it or use StreamStdout —
+// silently keeping only the last N bytes of a data stream once produced
+// feature tracks that quietly covered only the tail of long media. Var so
+// tests can exercise the overflow path cheaply.
+var stdoutCaptureCap = maxCapturedOutput
+
+// cappedBuffer retains the LAST max bytes written to it and reports whether
+// anything was dropped (overflowed — the retained bytes are a tail, not the
+// full stream).
 type cappedBuffer struct {
-	b   []byte
-	max int
+	b          []byte
+	max        int
+	total      int64
+	overflowed bool
 }
 
 func (c *cappedBuffer) Write(p []byte) (int, error) {
+	c.total += int64(len(p))
+	if c.total > int64(c.max) {
+		c.overflowed = true
+	}
 	if len(p) >= c.max {
 		c.b = append(c.b[:0], p[len(p)-c.max:]...)
 		return len(p), nil
@@ -92,6 +107,8 @@ func (c *cappedBuffer) Write(p []byte) (int, error) {
 // Run executes an ffmpeg/ffprobe-style tool with args under ctx, capturing
 // capped stdout/stderr. It enforces the package security contract and runs
 // under the global process limiter (resource.max_ffmpeg_processes).
+// Stderr truncation is fine (diagnostics, tail-kept); stdout truncation is
+// NOT — Run fails loudly instead of handing back a silently halved stream.
 func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte, err error) {
 	if bin == "" {
 		return nil, nil, xcerr.E(xcerr.CodeInternal, "empty binary path", nil)
@@ -102,12 +119,16 @@ func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte
 	}
 	defer release()
 	cmd := exec.CommandContext(ctx, bin, args...)
-	outBuf := &cappedBuffer{max: maxCapturedOutput}
+	outBuf := &cappedBuffer{max: stdoutCaptureCap}
 	errBuf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = outBuf
 	cmd.Stderr = errBuf
 	if err := cmd.Run(); err != nil {
 		return outBuf.b, errBuf.b, err
+	}
+	if outBuf.overflowed {
+		return nil, errBuf.b, xcerr.E(xcerr.CodeResourceLimit,
+			"tool stdout exceeded the capture budget — parse it with StreamStdout instead", nil)
 	}
 	return outBuf.b, errBuf.b, nil
 }

@@ -1,7 +1,6 @@
 package media
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -36,8 +35,10 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 	defer release()
 
 	cmd := exec.CommandContext(ctx, bin, args...)
-	var errBuf bytes.Buffer
-	cmd.Stderr = &errBuf
+	// stderr is diagnostics: last-64KB wins (bounded intake — a corrupt file
+	// can emit decode errors per frame for the whole pass).
+	errBuf := &cappedBuffer{max: 64 << 10}
+	cmd.Stderr = errBuf
 	stdout, pipeErr := cmd.StdoutPipe()
 	if pipeErr != nil {
 		return xcerr.E(xcerr.CodeFFmpegFailure, "cannot create process pipe", pipeErr)
@@ -78,7 +79,7 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 			return xcerr.E(xcerr.CodeCancelled, "streaming process cancelled", ctx.Err())
 		}
 		const tail = 2000
-		s := errBuf.String()
+		s := string(errBuf.b)
 		if len(s) > tail {
 			s = s[len(s)-tail:]
 		}

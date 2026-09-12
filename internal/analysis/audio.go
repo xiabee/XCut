@@ -31,7 +31,8 @@ func (a AudioAnalyzer) Analyze(ctx context.Context, opts Options, path string, h
 		"aresample=44100,asetnsamples=n=%d:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
 		audioWindowSamples)
 
-	out, errOut, err := media.Run(ctx, opts.Tools.FFmpeg,
+	out := newMetadataCollector("lavfi.astats.Overall.RMS_level")
+	err := media.StreamStdout(ctx, opts.Tools.FFmpeg, out.sink,
 		"-hide_banner", "-nostdin", "-v", "error",
 		"-threads", strconv.Itoa(maxThreads(opts.Tools.Threads)),
 		"-i", path,
@@ -40,14 +41,18 @@ func (a AudioAnalyzer) Analyze(ctx context.Context, opts Options, path string, h
 	)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "audio analysis timed out", ctx.Err())
+			return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "audio analysis timed out or was cancelled", ctx.Err())
 		}
-		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "audio analysis failed", fmt.Errorf("%v: %s", err, tailBytes(errOut)))
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "audio analysis failed", err)
 	}
 
-	samples, err := parseMetadataPrint(out, "lavfi.astats.Overall.RMS_level")
+	perKey, err := out.finish()
 	if err != nil {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot parse audio analysis output", err)
+	}
+	samples := perKey["lavfi.astats.Overall.RMS_level"]
+	if len(samples) == 0 {
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "no RMS samples in audio analyzer output", nil)
 	}
 	// astats reports -inf for digital silence; JSON cannot carry it (cache
 	// serialization) and -120 dBFS is the documented stand-in.

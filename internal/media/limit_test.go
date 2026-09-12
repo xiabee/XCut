@@ -196,15 +196,21 @@ func TestRunCapsCapturedOutput(t *testing.T) {
 		t.Fatal("capped capture must keep the last bytes (tail semantics)")
 	}
 
-	// Same flood on stdout with a clean exit must not fail the call.
+	// Same flood on stdout with a clean exit must FAIL loudly: a truncated
+	// stdout is not diagnostics but data (the analyzers once silently
+	// covered only the tail of long media this way). Stderr keeps tail
+	// semantics; stdout callers over the cap must stream instead.
 	t.Setenv("XCUT_TEST_CHATTY", "stdout")
 	t.Setenv("XCUT_TEST_CHATTY_EXIT", "0")
 	stdout, _, err := Run(context.Background(), os.Args[0],
 		"-test.run=TestHelperChattyWriter$", "-test.v")
-	if err != nil {
-		t.Fatalf("chatty successful child must succeed: %v", err)
+	if err == nil {
+		t.Fatal("chatty stdout child must fail once the capture cap overflows")
 	}
-	if len(stdout) != maxCapturedOutput || !bytes.Contains(stdout, []byte("END-MARKER")) {
-		t.Fatal("stdout cap must keep the last bytes")
+	if stdout != nil {
+		t.Fatal("overflowed stdout must not be returned as if complete")
+	}
+	if !strings.Contains(xcerr.UserMessage(err), "StreamStdout") {
+		t.Fatalf("overflow error must point at StreamStdout: %v", err)
 	}
 }
