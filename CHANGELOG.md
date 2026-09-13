@@ -14,6 +14,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   paths).
 
 ### Added
+- **Brand icon on the desktop client**: the window (title bar, taskbar,
+  Alt-Tab) now carries a programmatic xcut mark — drawn at runtime into
+  an in-memory ICO (16/32/48), no binary asset in the repo, no resource
+  compiler. CreateIconFromResourceEx silently rejects both PNG and BMP
+  payloads on current Windows builds, so the path goes through a temp
+  file + LoadImageW (verified via WM_GETICON returning live handles).
 - **Double-click friendly**: running the exe with no subcommand on
   Windows now opens the desktop client instead of printing usage and
   exiting (the console-flash "crash"). FFmpeg/ffprobe are also looked up

@@ -102,6 +102,7 @@ func cmdClient(a *App, args []string) error {
 	defer w.Destroy()
 	w.SetTitle("xcut — local-first auto editing")
 	w.SetSize(1500, 940, webview2.HintNone)
+	setWindowIcon(w.Window())
 	w.Navigate(url)
 
 	// External exits (Ctrl+C, a fatal serve error) terminate the UI loop;
