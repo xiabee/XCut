@@ -1,166 +1,150 @@
 # XCut
 
-**Local-first automatic video editing.** XCut turns raw footage into highlight
-cuts with a deterministic pipeline: probe → analyze → events → style →
-timeline → render. No cloud, no telemetry, no AI required.
+**本地优先的自动视频剪辑。** XCut 用一条确定性流水线把原始素材变成高光成片：
+探测 → 分析 → 事件 → 风格 → 时间线 → 渲染。无云端、无遥测、不依赖 AI。
 
-- Core: **Go** (single static binary)
-- Optional hot-path worker: **Rust** (`xcut-worker-media`)
-- Media tooling: **FFmpeg / ffprobe**
-- Storage: **SQLite** (pure-Go driver, no CGO)
-- Status: **Alpha** — pipeline, localhost web UI and HTTP API work end-to-end
-  (see [docs/ROADMAP.md](docs/ROADMAP.md))
+[English](README_EN.md) | 中文
 
-## Why XCut
+- 核心：**Go**（单一静态二进制）
+- 可选热路径 worker：**Rust**（`xcut-worker-media`）
+- 媒体工具：**FFmpeg / ffprobe**
+- 存储：**SQLite**（纯 Go 驱动，无 CGO）
+- 状态：**Alpha** —— 流水线、本地 Web UI 与 HTTP API 已端到端可用
+  （见 [docs/ROADMAP.md](docs/ROADMAP.md)）
 
-Most "AI video editing" tools ship your footage to someone else's server.
-XCut is built for personal machines — mini PCs, home servers, gaming desktops —
-with hard resource budgets, a localhost-only security default, and a
-deterministic baseline that works with nothing but FFmpeg installed. AI is a
-future *enhancer* (optional sidecar workers), never the foundation.
+## 为什么是 XCut
 
-Target scenarios: badminton, KTV, vlogs, stage performance, sports highlights.
+大多数"AI 视频剪辑"工具会把你的素材上传到别人的服务器。XCut 为个人电脑
+而生——迷你主机、家庭服务器、游戏桌面——带着严格的资源预算、仅监听
+本机的安全默认值，以及一条只装 FFmpeg 就能工作的确定性基线。AI 是未来的
+*增强项*（可选 sidecar worker），永远不是地基。
 
-## Quick Start
+目标场景：羽毛球、KTV、Vlog、舞台演出、体育高光。
 
-Prerequisites: **FFmpeg + ffprobe** on PATH (or set `XCUT_FFMPEG` /
-`XCUT_FFPROBE`). Go 1.25+ to build.
+## 快速开始
+
+前置条件：PATH 上有 **FFmpeg + ffprobe**（或设置 `XCUT_FFMPEG` /
+`XCUT_FFPROBE`）。构建需要 Go 1.25+。
 
 ```sh
-# build (Windows / Linux / macOS)
-go build -o xcut ./cmd/xcut          # produces xcut.exe on Windows
+# 构建（Windows / Linux / macOS）
+go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 
-# check your environment
+# 环境自检
 ./xcut doctor
 
-# one-shot: import → analyze → timeline → render
+# 一条龙：导入 → 分析 → 时间线 → 渲染
 ./xcut auto my-video.mp4 --project first-run --style generic_highlight
 
-# output lands in the project directory of your workspace:
-#   ~/.xcut/projects/<project-id>/render.mp4  (or the --out path you passed)
+# 成片落在工作区的工程目录里：
+#   ~/.xcut/projects/<project-id>/render.mp4  （或你传的 --out 路径）
 ```
 
-Verify the result with any player or `ffprobe`.
+用任意播放器或 `ffprobe` 验证结果。
 
-### Step by step
+### 分步执行
 
 ```sh
-./xcut init                                   # create ~/.xcut workspace
-./xcut project create badminton-2026          # new project
-./xcut import badminton-2026 match.mp4        # probe + fingerprint assets
-./xcut analyze badminton-2026                 # motion/audio features → events
+./xcut init                                   # 创建 ~/.xcut 工作区
+./xcut project create badminton-2026          # 新建工程
+./xcut import badminton-2026 match.mp4        # 探测 + 指纹入库
+./xcut analyze badminton-2026                 # 运动/音频特征 → 事件
 ./xcut timeline badminton-2026 --style badminton_highlight
-#   regenerating overwrites manual edits — the previous document is kept
-#   as timeline.backup.json; `--restore-backup` swaps it back
+#   重新生成会覆盖手动编辑——上一版文档保留为 timeline.backup.json；
+#   `--restore-backup` 可以换回来
 ./xcut render badminton-2026 --out cut.mp4
-./xcut jobs badminton-2026                    # job history (crash-safe)
+./xcut jobs badminton-2026                    # 任务历史（崩溃安全）
 ```
 
-## Configuration
+## 配置
 
-`./xcut config show` prints the effective config; precedence is
-defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
-< CLI flags.
+`./xcut config show` 打印生效配置；优先级为
+默认值 < 配置文件（`<workspace>/config.json`）< 环境变量（`XCUT_*`）< CLI 参数。
 
-Knobs (the complete resource/config surface; defaults shown):
+关键旋钮（完整资源/配置面；展示默认值）：
 
-| Key | Default | Meaning |
+| 键 | 默认值 | 含义 |
 |---|---|---|
-| `workspace` | `~/.xcut` | data directory (DB, cache, temp, projects) |
-| `resource.max_concurrent_jobs` | 2 | hard cap on parallel jobs |
-| `resource.max_ffmpeg_processes` | 2 | hard cap on parallel ffmpeg/ffprobe |
-| `resource.max_render_workers` | 1 | independent cap on concurrent render jobs |
-| `resource.max_analysis_workers` | 2 | per-analysis ffmpeg call concurrency |
-| `resource.ffmpeg_threads` | 2 | per-process `-threads` |
-| `resource.frame_sample_fps` | 2 | analysis sampling rate |
-| `resource.analysis_width` | 640 | analysis downscale width |
-| `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |
-| `resource.max_proxy_gb` | 2 | proxy disk budget (LRU-evicted) |
-| `resource.proxy_threads` | inherit | one-shot proxy encode threads (decode-bound; higher cuts cold-start) |
-| `resource.analyzer_call_timeout` | `30m` | per-analyzer ffmpeg budget (hang protection) |
-| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
-| `jobs.max_history` | 500 | terminal job rows kept (pruned as jobs finish) |
-| `job.stale_running_after` | `2h` | age-gate for CLI startup orphan reconciliation |
-| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve log file rotation |
-| `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
-| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
-| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar binary (capability-detected) |
-| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | toolchain override (or `XCUT_FFMPEG`/`XCUT_FFPROBE`) |
+| `workspace` | `~/.xcut` | 数据目录（数据库、缓存、临时、工程） |
+| `resource.max_concurrent_jobs` | 2 | 并行任务硬上限 |
+| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限 |
+| `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
+| `resource.max_analysis_workers` | 2 | 单次分析的 ffmpeg 并发 |
+| `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |
+| `resource.frame_sample_fps` | 2 | 分析采样率 |
+| `resource.analysis_width` | 640 | 分析降采样宽度 |
+| `resource.proxy_enabled` | `false` | 生成低分辨率分析代理（需主动开启） |
+| `resource.max_proxy_gb` | 2 | 代理磁盘预算（LRU 逐出） |
+| `resource.proxy_threads` | 继承 | 一次性代理编码线程（解码受限；调高可缩短冷启动） |
+| `resource.analyzer_call_timeout` | `30m` | 单分析器 ffmpeg 预算（防挂死） |
+| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | 磁盘预算 |
+| `jobs.max_history` | 500 | 保留的终态任务行数（随任务完成修剪） |
+| `job.stale_running_after` | `2h` | CLI 启动孤儿任务对账的年龄门槛 |
+| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve 日志轮转 |
+| `server.listen` | `127.0.0.1:8619` | 除 `listen_remote` 外强制本机回环 |
+| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` 音频分析器 |
+| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar 二进制（能力自动探测） |
+| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | 工具链覆盖（或 `XCUT_FFMPEG`/`XCUT_FFPROBE`） |
 
-Nothing runs unbounded: jobs, processes, cache, proxies, temp and logs all
-have configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space;
-`xcut cache stats|clear` inspects and clears the analysis/proxy caches.
+没有任何东西无界运行：任务、进程、缓存、代理、临时文件与日志都有配置
+上限。`xcut cleanup [--dry-run]` 回收临时空间；`xcut cache stats|clear`
+检查并清理分析/代理缓存。
 
-## Styles
+## 风格（Styles）
 
-Styles are data, not code — validated JSON presets in
-`internal/style/presets/` (embedded) overridable from `<workspace>/styles/`:
+风格是数据而非代码——`internal/style/presets/` 里的受校验 JSON 预设
+（内嵌），可被 `<workspace>/styles/` 覆盖：
 
-- `generic_highlight` — balanced motion/audio scoring
-- `generic_xfade` — like generic_highlight, with real crossfade (xfade) joins
-- `ktv_mv` — audio-led (singing/energy), onset-density weighted, longer clips
-  for music scenes
-- `badminton_highlight` — motion-heavy rally mode: onset-density clustering
-  with hysteresis (real court audio never goes silent — ambience keeps the
-  detector firing through every break), hit-driven scoring, court-ROI motion
-  analysis
+- `generic_highlight` —— 运动/音频均衡打分
+- `generic_xfade` —— 类似 generic_highlight，但接缝用真正的交叉淡化（xfade）
+- `ktv_mv` —— 音频主导（歌声/能量），按 onset 密度加权，音乐场景用更长片段
+- `badminton_highlight` —— 重运动的 rally 模式：onset 密度聚类带迟滞
+  （真实球场音频从不安静——环境声会让检测器在每个间隙持续触发）、
+  击球驱动打分、球场 ROI 运动分析
 
-For court-confined motion analysis, the web UI can draw the region of
-interest directly on a frame of the project's first asset ("draw court
-ROI…" in the sidebar); saving persists a workspace override of the
-selected style (`<workspace>/styles/<name>.json`, normalized 0..1 rect
-in `motion_roi`). The API surface is
-`GET/PUT/DELETE /api/v1/styles/{name}/roi`.
+针对球场区域运动分析，Web UI 可以直接在工程素材的某一帧上框选感兴趣
+区域（侧栏"框选球场 ROI…"）；保存为该素材自己的区域
+（`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/roi`），时间线生成
+时覆盖所选风格的 per-preset 区域——每个固定机位的球场位置都可以不同，
+没有自己区域的素材回退到风格设置。风格级区域走
+`GET/PUT/DELETE /api/v1/styles/{name}/roi`。
 
-Every selected clip carries its score, score breakdown and the reason it was
-picked in its metadata — the web UI shows the "why" per clip.
+每个入选片段都在元数据里携带得分、分项与入选原因——Web UI 会展示每段
+的"为什么"。
 
-The web UI speaks English and Chinese: the selector in the topbar switches
-instantly, the choice persists, and first-time visitors get whichever
-language their browser prefers (no dependencies — a plain JSON dictionary
-keyed by the English strings, drift-checked by a Go test).
+Web UI 支持中英文：顶栏选择器即时切换，偏好持久化，首次访问自动跟随
+浏览器语言（零依赖——以英文字符串为键的纯 JSON 词典，Go 测试防漂移）。
 
-## Timeline & rendering
+## 时间线与渲染
 
-The renderer applies the timeline exactly as validated: `cut`, `fade`
-(through black) and `xfade` (real crossfade) transitions may be freely mixed
-within one timeline; per-clip `speed` is honored for both video and audio.
-Unsupported constructs (audio tracks, multi-track timelines, clip effects)
-are refused loudly instead of silently dropped. Output is ffprobe-verified
-before an atomic publish, and a render is refused if its `--out` would
-overwrite any source media.
+渲染器严格按校验后的时间线执行：`cut`、`fade`（经黑场）与 `xfade`
+（真正交叉淡化）可在同一条时间线内自由混用；逐片段 `speed` 对视频与
+音频同时生效。不支持的结构（音轨、多轨时间线、片段特效）会被响亮拒绝
+而非悄悄丢弃。输出经 ffprobe 校验后原子发布；若 `--out` 会覆盖任何源
+素材，渲染直接拒绝。
 
-## Serve (local web UI + HTTP API)
+## Serve（本地 Web UI + HTTP API）
 
 ```sh
-./xcut serve                # http://127.0.0.1:8619, ctrl+c to stop
+./xcut client     # 原生桌面窗口（WebView2）承载内嵌 UI
+./xcut serve      # 同一套 UI 跑在浏览器 http://127.0.0.1:8619
 ```
 
-Two ways in:
+创建工程、导入本地视频路径，然后带着实时任务进度跑 分析 → 时间线 →
+渲染——渲染出的 MP4 直接在页面里播放。编辑工作区是一条真正的时间线：
+片段按时长比例渲染成色块并带客户端截取的缩略图，接缝显示可编辑的转场
+徽标（cut / fade / xfade），色块可拖动排序，边缘手柄可裁剪，检查器
+编辑所选片段的裁剪、速度、音量与转场（Delete 移除、Space 播放、
+Ctrl+S 保存）。逐片段预览跟随标尺播放头。工程还能通过 AI sidecar 把
+语音转写成字幕并烧录进成片（普通 SRT 或卡拉 OK 式逐字填充的 ASS），
+球场 ROI 直接在帧上框选。UI 是内嵌进二进制的原生 HTML/JS（`go:embed`）：
+不需要 Node、没有构建步骤、没有额外文件。设计文档：
+docs/CLIENT_DESIGN.md。
 
-```sh
-./xcut client     # native desktop window (WebView2) over the embedded UI
-./xcut serve      # same UI in your browser at http://127.0.0.1:8619
-```
+![xcut web UI：一个已导入素材的工程、四个成功任务，渲染的高光正在
+结果面板中播放](docs/img/web-ui.png)
 
-Create a project, import a local video path, and run analyze → timeline →
-render with live job progress — the rendered MP4 plays right in the page.
-The editing workspace is a real timeline: clips render as blocks sized by
-duration with client-captured thumbnails, joins show editable transition
-badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
-and the inspector edits trim, speed, volume and the transition of the
-selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
-preview follows the ruler playhead. Projects can also transcribe speech
-to subtitles through an AI sidecar and burn them (plain SRT or
-karaoke-style word-fill ASS) into the render, and the court ROI is drawn
-directly on a frame. The UI is vanilla HTML/JS embedded in the binary
-(`go:embed`): no Node, no build step, no extra files. Design:
-docs/CLIENT_DESIGN.md.
-
-![xcut web UI: a project with imported asset, four succeeded jobs, and the
-rendered highlight playing in the result panel](docs/img/web-ui.png)
-
-HTTP API (`/api/v1`, loopback-only):
+HTTP API（`/api/v1`，仅本机回环）：
 
 ```sh
 curl http://127.0.0.1:8619/api/v1/health
@@ -168,100 +152,91 @@ curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
-curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
-curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
-curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # which subtitle artifacts exist
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # burn the subtitles into the render
+curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # 取消排队/运行中的任务（202；终态 409）
+curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # 片段预览（支持 range）
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # 经 AI sidecar 语音转写（202 + 任务）
+curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # 查询已有字幕产物
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # 把字幕烧录进成片
+curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<aid>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # 每源球场 ROI
 ```
 
-## Subtitles (KTV/guitar sing-along)
+## 字幕（KTV/吉他弹唱）
 
-Speech-to-text is an AI capability, so it follows the sidecar rule: the core
-never runs or downloads models. The reference sidecar
-(`scripts/xcut-ai-sidecar.py`) probes for a locally installed Whisper backend
-— `openai-whisper`, `faster-whisper` (`pip install faster-whisper`) or
-whisper.cpp's `whisper-cli` — and honestly reports unavailable until one is
-installed; install any of them and the capability turns on with zero XCut
-changes. Then:
+语音转文字是 AI 能力，因此遵循 sidecar 规则：核心绝不运行或下载模型。
+参考 sidecar（`scripts/xcut-ai-sidecar.py`）探测本机安装的 Whisper 后端
+——`openai-whisper`、`faster-whisper`（`pip install faster-whisper`）或
+whisper.cpp 的 `whisper-cli`——没有安装时如实报告不可用；装好任意一个，
+能力即刻点亮，XCut 零改动。然后：
 
 ```sh
-./xcut subtitles song.mp4 --ass        # transcript with word timings → karaoke ASS (SRT by default)
-./xcut render proj --subs lyrics.ass   # burn subtitles into the render (audio stream-copied)
+./xcut subtitles song.mp4 --ass        # 带词级时间戳的转写 → 卡拉 OK ASS（默认 SRT）
+./xcut render proj --subs lyrics.ass   # 把字幕烧录进成片（音频流直拷）
 ```
 
-In the web UI the same loop is a button: Transcribe (pick the asset) →
-status + download links → check "burn subtitles" → Render. Word timings
-drive the karaoke fill (each word sweeps as it is sung; sidecar text is
-escaped, so stray braces or newlines cannot corrupt the ASS events);
-without them only plain SRT is produced. A "preview transcript" toggle
-shows the cue text inline once an SRT exists.
+在 Web UI 里同样的链路就是一个按钮：转写（选素材）→ 状态 + 下载链接 →
+勾选"烧录字幕"→ 渲染。词级时间戳驱动卡拉 OK 填充（每个字随演唱扫过；
+sidecar 文本会被转义，杂散花括号或换行无法破坏 ASS 事件）；没有词级
+时间戳时只产出普通 SRT。SRT 生成后，"预览文本"开关可以内联显示字幕内容。
 
-Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
-Only one analyze/timeline/render job may be queued or running per project — a
-duplicate trigger returns `409` (imports are never deduplicated). Active jobs
-show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
-cancelled with Ctrl+C.
-Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
-authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
-measured 12 MB RAM, ~0% CPU (docs/PERFORMANCE.md).
+异步任务端点返回 `202` 与 `job_id`；轮询 `GET /api/v1/jobs/{id}`。
+每个工程同时只允许一个 analyze/timeline/render 任务排队或运行——重复
+触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
+CLI 运行（在你自己的终端里同步执行）用 Ctrl+C 取消。
+仅监听本机回环是设计决定：在认证机制出现之前，`xcut serve` **拒绝**
+非回环地址（见 `docs/SECURITY.md`）。空闲占用极小——实测 12 MB 内存、
+约 0% CPU（docs/PERFORMANCE.md）。
 
-## Optional Rust worker
+## 可选的 Rust worker
 
-The Rust worker accelerates audio analysis and validates the process-boundary
-protocol used by all future workers (AI sidecars included). It is **never
-required**:
+Rust worker 加速音频分析，并为所有未来 worker（包括 AI sidecar）验证
+进程边界协议。它**永远不是必需品**：
 
 ```sh
 cargo build --release -p xcut-worker-media
-# then either put target/release/xcut-worker-media on PATH or set:
+# 然后把 target/release/xcut-worker-media 放上 PATH，或设置：
 #   {"workers": {"media_bin": "/path/to/xcut-worker-media", "audio": "auto"}}
 ```
 
-`auto` mode falls back to the built-in FFmpeg analyzer whenever the worker is
-missing or hits a codec gap.
+`auto` 模式在 worker 缺失或遇到编解码缺口时自动回退到内置 FFmpeg 分析器。
 
-## Development
-
-```sh
-go build ./... && go vet ./... && go test ./...   # Go side
-cargo test                                          # Rust side (crates/)
-```
-
-Tests generate all media fixtures on the fly with FFmpeg `lavfi` — no binary
-fixtures in the repo. Integration tests skip automatically when FFmpeg is
-absent.
-
-Architecture, decisions, security model, performance policy and the nightly
-log live in [`docs/`](docs/):
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, boundaries, worker protocol
-- [docs/DECISIONS.md](docs/DECISIONS.md) — ADR log (why Go/Rust/SQLite/JSON…)
-- [docs/SECURITY.md](docs/SECURITY.md) — threat model and controls
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — measured baselines
-- [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — what actually works right now
-- [docs/ROADMAP.md](docs/ROADMAP.md) — where this is going
-- [docs/USAGE.md](docs/USAGE.md) — per-command reference
-- [docs/EVAL.md](docs/EVAL.md) — selection-quality evaluation (`xcut eval`)
-
-## Packaging
+## 开发
 
 ```sh
-scripts/build-release.ps1   # Windows (PowerShell 5.1+)
-scripts/build-release.sh    # Linux/macOS (bash)
+go build ./... && go vet ./... && go test ./...   # Go 侧
+cargo test                                          # Rust 侧（crates/）
 ```
 
-produces versioned binaries under `dist/`:
+测试用 FFmpeg `lavfi` 现场生成全部媒体 fixture——仓库里没有二进制
+fixture。缺少 FFmpeg 时集成测试自动跳过。
 
-| Artifact | Platforms |
+架构、决策、安全模型、性能策略与夜间开发日志都在 [`docs/`](docs/)：
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 流水线、边界、worker 协议
+- [docs/DECISIONS.md](docs/DECISIONS.md) — ADR 日志（为什么是 Go/Rust/SQLite/JSON…）
+- [docs/SECURITY.md](docs/SECURITY.md) — 威胁模型与控制措施
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — 实测基线
+- [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — 当前真实可用状态
+- [docs/ROADMAP.md](docs/ROADMAP.md) — 演进方向
+- [docs/USAGE.md](docs/USAGE.md) — 逐命令参考
+- [docs/EVAL.md](docs/EVAL.md) — 选择质量评估（`xcut eval`）
+
+## 打包
+
+```sh
+scripts/build-release.ps1   # Windows（PowerShell 5.1+）
+scripts/build-release.sh    # Linux/macOS（bash）
+```
+
+在 `dist/` 下产出带版本号的二进制：
+
+| 产物 | 平台 |
 |---|---|
-| `xcut` (core + embedded web UI) | windows/amd64, linux/amd64, linux/arm64 |
-| `xcut-worker-media` (optional) | windows/amd64, linux/amd64 (static musl) |
+| `xcut`（核心 + 内嵌 Web UI） | windows/amd64, linux/amd64, linux/arm64 |
+| `xcut-worker-media`（可选） | windows/amd64, linux/amd64（静态 musl） |
 
-The Go binaries are fully static (no CGO) — drop-in executables. The Linux
-Rust worker is built with the bundled `rust-lld` against the musl target, so
-no platform toolchain is needed for the build.
+Go 二进制完全静态（无 CGO）——即拷即用。Linux 的 Rust worker 用内置
+`rust-lld` 针对 musl 目标构建，无需平台工具链。
 
-## License
+## 许可证
 
 [MIT](LICENSE)
