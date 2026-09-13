@@ -37,8 +37,24 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] KTV pipeline v2: onset-density weighted selection (honest naming — high-energy signal, no chorus claims)
 - [x] AI sidecar protocol v1 (capabilities/health/analyze, bounded output), capability detection in doctor; reference sidecar ships, models remain optional/local
 
-## Phase 4 — Polish
+## Phase 4 — Desktop client & polish
 
-- [ ] Desktop packaging (Wails/Tauri wrapper, tray), installer
+The desktop client is designed in docs/CLIENT_DESIGN.md (native WebView2
+shell over the existing serve pipeline + a modern editing workspace; the
+web UI stays the same asset tree served to browsers).
+
+- [x] C1 — native shell: `xcut client` (WebView2 window over the
+      in-process loopback server, Windows build-tagged with a
+      `--browser`/serve fallback elsewhere; WebView2 detection in
+      doctor). Design: docs/CLIENT_DESIGN.md §2–3.
+- [ ] C2 — workspace redesign: three-pane editing layout (media pool /
+      preview / timeline + inspector), modern design tokens, asset
+      thumbnails.
+- [ ] C3 — visual timeline: clip blocks sized by duration, editable
+      transition badges on joins, drag reorder, click-select, ruler +
+      playhead linked to the preview.
+- [ ] C4 — inspector & polish: clip property editing (trim/speed/
+      volume), keyboard shortcuts, empty states, docs.
+- [ ] Desktop packaging (icon, installer/zip, tray) — after C1–C4.
 - [ ] Model registry (explicit installs, no silent downloads)
 - [ ] Sandbox options for FFmpeg (job objects / containers)

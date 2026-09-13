@@ -7,114 +7,138 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <h1>✂ xcut</h1>
-  <span id="health" class="health">connecting…</span>
+<header class="topbar">
+  <div class="brand"><svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h9l-2.2 4H16v2H8.5L6 14H3l3.2-5.2L3 4zm10 6h4v2h-4z"/></svg><span>xcut</span></div>
+
+  <div class="proj-picker">
+    <button id="proj-current" class="proj-current" hidden>no project <span class="caret">▾</span></button>
+    <div class="proj-menu-wrap">
+      <ul id="project-list" class="proj-menu" hidden></ul>
+    </div>
+    <form id="new-project" class="proj-new">
+      <input id="np-name" placeholder="new project name" autocomplete="off" required>
+      <button type="submit" title="create project">＋</button>
+    </form>
+    <button id="delete-project" class="icon-danger" hidden title="delete this project">🗑</button>
+  </div>
+
   <span id="banner" class="banner" hidden></span>
+  <span id="health" class="health">connecting…</span>
 </header>
 
-<main>
-  <aside>
-    <h2>Projects</h2>
-    <form id="new-project">
-      <input id="np-name" placeholder="new project name" autocomplete="off" required>
-      <button type="submit">Create</button>
-    </form>
-    <ul id="project-list"></ul>
-    <button id="delete-project" class="danger" hidden>Delete project</button>
+<main class="workspace">
+  <aside class="rail">
+    <section class="panel" id="panel-media">
+      <h2>Media</h2>
+      <form id="import-form" class="import-row">
+        <input id="import-path" placeholder="local video path, e.g. D:\videos\match.mp4" autocomplete="off" required>
+        <button type="submit">Import</button>
+      </form>
+      <div id="asset-grid" class="asset-grid"></div>
+    </section>
+
+    <section class="panel" id="panel-pipeline">
+      <h2>Pipeline</h2>
+      <div class="steps">
+        <label class="field">style
+          <select id="style"></select>
+        </label>
+        <div class="step-row">
+          <button id="btn-analyze" class="step">1 · Analyze</button>
+          <button id="btn-timeline" class="step">2 · Timeline</button>
+          <button id="btn-render" class="step primary">3 · Render</button>
+        </div>
+        <label class="check"><input type="checkbox" id="burn-subs"> burn subtitles into the render</label>
+        <p class="hint">analyze → timeline → render; every step records a job.
+        Regenerating (step 2) overwrites manual edits saved in the timeline — that is by design.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-subs">
+      <h2>Subtitles <span class="tag">AI sidecar</span></h2>
+      <div class="row">
+        <label class="field">asset
+          <select id="subs-asset"></select>
+        </label>
+        <button id="btn-subtitles">Transcribe</button>
+      </div>
+      <div class="row">
+        <button id="btn-subs-preview" class="ghost" hidden>preview transcript</button>
+        <span id="subs-status" class="hint">checking…</span>
+        <span id="subs-links"></span>
+      </div>
+      <pre id="subs-transcript" class="transcript" hidden></pre>
+      <p class="hint">speech-to-text needs a local Whisper backend; word-timed
+      results also produce a karaoke .ass for sing-along burning.</p>
+    </section>
+
+    <section class="panel" id="panel-roi">
+      <h2>Court ROI <span class="tag">motion region</span></h2>
+      <div class="row">
+        <button id="btn-roi">draw court ROI…</button>
+        <button id="btn-roi-clear" class="ghost" hidden>clear</button>
+        <span id="roi-status" class="hint">checking…</span>
+      </div>
+      <div id="roi-editor" hidden>
+        <div id="roi-stage">
+          <video id="roi-video" muted preload="metadata"></video>
+          <canvas id="roi-canvas"></canvas>
+        </div>
+        <div class="row">
+          <button id="btn-roi-save" disabled>save ROI</button>
+          <button id="btn-roi-cancel" class="ghost">cancel</button>
+          <span class="hint">drag a rectangle over the court area — saved as a workspace override of the selected style.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-jobs">
+      <h2>Jobs</h2>
+      <ul id="jobs" class="jobs"></ul>
+    </section>
   </aside>
 
-  <section id="detail" class="empty">
-    <p class="placeholder">Select or create a project.</p>
+  <section id="detail" class="stage empty">
+    <div class="placeholder">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 10h22l-5 9h13v4H22l-5.5 10H10l7-12.5L8 10z" opacity=".5"/></svg>
+      <p>Select or create a project.</p>
+    </div>
 
-    <div id="project-view" hidden>
-      <h2 id="project-name"></h2>
-
-      <fieldset>
-        <legend>Assets</legend>
-        <form id="import-form">
-          <input id="import-path" placeholder="local video path, e.g. D:\videos\match.mp4" autocomplete="off" required>
-          <button type="submit">Import</button>
-        </form>
-        <table id="assets"><thead><tr>
-          <th>file</th><th>duration</th><th>size</th><th>codec</th>
-        </tr></thead><tbody></tbody></table>
-      </fieldset>
-
-      <fieldset>
-        <legend>Auto edit</legend>
-        <div class="row">
-          <label>style <select id="style"></select></label>
-          <button id="btn-analyze">1 · Analyze</button>
-          <button id="btn-timeline">2 · Timeline</button>
-          <button id="btn-render">3 · Render</button>
-          <label class="hint"><input type="checkbox" id="burn-subs"> burn subtitles</label>
+    <div id="project-view" class="editor" hidden>
+      <div class="preview-pane panel">
+        <div class="video-frame"><video id="player" controls></video></div>
+        <div class="transport">
+          <button id="btn-play" class="icon-btn" title="play / pause (space)">▶</button>
+          <span id="player-time" class="time">0:00 / 0:00</span>
+          <a id="download" href="#" download class="ghost">download mp4</a>
         </div>
-        <p class="hint">analyze → timeline → render; every step records a job below.
-        Regenerating (step 2) overwrites any manual edits saved below — that is by design.</p>
-      </fieldset>
+      </div>
 
-      <fieldset>
-        <legend>Subtitles (AI sidecar — needs a local Whisper backend)</legend>
-        <div class="row">
-          <label class="hint">asset <select id="subs-asset"></select></label>
-          <button id="btn-subtitles">Transcribe</button>
-          <button id="btn-subs-preview" hidden>preview transcript</button>
-          <span id="subs-status" class="hint">checking…</span>
-          <span id="subs-links"></span>
-        </div>
-        <pre id="subs-transcript" class="transcript" hidden></pre>
-        <p class="hint">speech-to-text over this project's first asset; word-timed
-        results also produce a karaoke .ass for sing-along burning.</p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Court ROI (motion analysis region)</legend>
-        <div class="row">
-          <button id="btn-roi">draw court ROI…</button>
-          <button id="btn-roi-clear" hidden>clear ROI</button>
-          <span id="roi-status" class="hint">checking…</span>
-        </div>
-        <div id="roi-editor" hidden>
-          <div id="roi-stage">
-            <video id="roi-video" muted preload="metadata"></video>
-            <canvas id="roi-canvas"></canvas>
-          </div>
-          <div class="row">
-            <button id="btn-roi-save" disabled>save ROI</button>
-            <button id="btn-roi-cancel">cancel</button>
-            <span class="hint">drag a rectangle over the court area — saved as a workspace override of the selected style.</span>
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Timeline</legend>
-        <table id="clips"><thead><tr>
-          <th>#</th><th>source</th><th>duration</th><th>score</th><th>why</th><th></th>
-        </tr></thead><tbody></tbody></table>
-        <p class="hint">drag rows to reorder · ▶ previews the clip's source at its start offset</p>
-        <video id="clip-preview" controls preload="metadata" hidden></video>
-        <div class="row" style="margin-top:8px">
+      <div class="timeline-pane panel">
+        <div class="tl-head">
+          <h2>Timeline</h2>
           <button id="btn-tl-save" disabled>Save changes</button>
-          <button id="btn-tl-reset" disabled>Reset</button>
-          <button id="btn-tl-restore" hidden title="swap the pre-regeneration document back in">Restore backup</button>
+          <button id="btn-tl-reset" class="ghost" disabled>Reset</button>
+          <button id="btn-tl-restore" class="ghost" hidden title="swap the pre-regeneration document back in">Restore backup</button>
           <span class="hint" id="tl-status"></span>
         </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Jobs</legend>
-        <ul id="jobs" class="jobs"></ul>
-      </fieldset>
-
-      <fieldset>
-        <legend>Result</legend>
-        <video id="player" controls></video>
-        <p class="hint"><a id="download" href="#" download>download mp4</a></p>
-      </fieldset>
+        <div id="tl-strip" class="tl-strip">
+          <div class="tl-empty">generate a timeline (step 2) to start editing</div>
+        </div>
+        <video id="clip-preview" controls preload="metadata" hidden></video>
+        <p class="hint">click a clip to inspect · drag blocks to reorder · edits save via “Save changes”</p>
+      </div>
     </div>
   </section>
+
+  <aside class="inspector" id="inspector">
+    <div id="insp-empty" class="insp-empty">
+      <h2>Inspector</h2>
+      <p class="hint">select a clip in the timeline to edit its trim, speed,
+      volume and transition.</p>
+    </div>
+    <div id="insp-clip" hidden></div>
+  </aside>
 </main>
 
 <script src="app.js"></script>

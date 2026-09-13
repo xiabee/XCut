@@ -3,6 +3,27 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-13 desktop client (C1–C4)
+
+### Added
+- Desktop client: `xcut client` opens a native WebView2 window over the
+  in-process loopback server (window close drains like serve; `--browser`
+  opens the system browser; non-Windows builds degrade to serve + browser;
+  WebView2 detection in `xcut doctor`). The shell is github.com/jchv/
+  go-webview2 (MIT, pure-Go syscall binding); it embeds Microsoft's
+  authorized-for-redistribution WebView2Loader.dll — see
+  docs/CLIENT_DESIGN.md §2.
+- Modern editing workspace (the same UI served to browsers): three-pane
+  editor (media pool / preview / timeline + inspector), redesigned dark
+  theme, media cards with client-captured thumbnails, preview transport.
+- Visual timeline editor: clip blocks sized by duration, editable
+  transition badges on joins, drag reorder, click-select, trim handles on
+  block edges, time ruler that seeks the preview, playhead following the
+  per-clip preview.
+- Inspector for the selected clip: trim in/out, speed, volume, transition
+  type + duration, remove/undo (Delete key), with the clip's score and
+  "why" surfaced. Keyboard: Space (play), Delete (remove), Ctrl+S (save).
+
 ## [Unreleased] — 2026-09-12/13 nightly session #7
 
 ### Added

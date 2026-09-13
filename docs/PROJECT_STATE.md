@@ -108,14 +108,24 @@ Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
   with asset picker, status line, download links, burn-subs checkbox —
   browser-verified end to end.
 - **Web UI** (go:embed, zero deps): project CRUD, import, analyze →
-  timeline → render with job progress, clip editor with per-clip score +
-  why, MP4 playback/download. Subtitles panel with asset picker,
+  timeline → render with job progress, MP4 playback with transport,
+  download. **Modern editing workspace** (2026-09-13): three-pane editor —
+  media pool with client-captured thumbnails, visual timeline (clip
+  blocks sized by duration, editable transition badges, drag reorder,
+  edge-handle trimming, time ruler seeking the preview, playhead), and an
+  inspector for the selected clip (trim/speed/volume/transition, score +
+  why; Delete/Space/Ctrl+S shortcuts). Subtitles panel with asset picker,
   transcript preview, status + downloads; court ROI picker (draw the
   motion region on a reference frame, saved as a workspace preset
   override). Project-scoped refreshes carry stale-response guards
   (switching projects discards in-flight responses — a slow response can
   no longer render project A's data under project B). Untrusted text
   rendered textContent-only.
+- **Desktop client** (`xcut client`, 2026-09-13): the same UI in a native
+  WebView2 window over the in-process loopback server — window close
+  drains like serve, `--browser` falls back to the system browser,
+  non-Windows builds degrade to serve + browser, doctor reports the
+  WebView2 runtime. Design: docs/CLIENT_DESIGN.md.
 - **Workers**: Rust media worker (protocol v1, audio_rms) optional;
   AI sidecar protocol v1 (capabilities/health/analyze; bounded response
   caps, per-call timeouts, .py sidecar support); reference sidecar in

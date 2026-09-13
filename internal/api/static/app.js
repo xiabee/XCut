@@ -55,16 +55,40 @@ async function refreshHealth() {
 /* ---------- projects ---------- */
 async function refreshProjects() {
   const { projects } = await api("/api/v1/projects");
-  const ul = $("project-list");
-  ul.innerHTML = "";
+  const menu = $("project-list");
+  menu.innerHTML = "";
   for (const p of projects) {
     const li = document.createElement("li");
     li.textContent = p.name;
     if (currentProject && p.id === currentProject.id) li.classList.add("active");
-    li.addEventListener("click", () => selectProject(p));
-    ul.appendChild(li);
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    // created_at is a unix timestamp (seconds).
+    const d = new Date(p.created_at * 1000);
+    meta.textContent = isNaN(d) ? "" : d.toISOString().slice(0, 10);
+    li.appendChild(meta);
+    li.addEventListener("click", () => { closeProjMenu(); selectProject(p); });
+    menu.appendChild(li);
   }
 }
+
+function closeProjMenu() { $("project-list").classList.remove("open"); }
+
+$("proj-current").addEventListener("click", () => {
+  $("project-list").classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".proj-picker")) closeProjMenu();
+});
+
+$("new-project").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await post("/api/v1/projects", { name: $("np-name").value });
+    $("np-name").value = "";
+    await refreshProjects();
+  } catch (err) { banner(`Create failed: ${err.message}`); }
+});
 
 function selectProject(p) {
   currentProject = p;
@@ -72,7 +96,9 @@ function selectProject(p) {
   $("detail").classList.remove("empty");
   const ph = document.querySelector("#detail .placeholder");
   if (ph) ph.style.display = "none";
-  $("project-name").textContent = p.name;
+  $("proj-current").innerHTML = "";
+  $("proj-current").append(p.name, Object.assign(document.createElement("span"), { className: "caret", textContent: " ▾" }));
+  $("proj-current").hidden = false;
   $("delete-project").hidden = false;
   // Reset the player: without this, switching from a project that has a
   // render shows the OLD project's video (and its download link) under the
@@ -80,6 +106,7 @@ function selectProject(p) {
   $("player").removeAttribute("src");
   $("player").load();
   $("download").href = "#";
+  $("btn-play").textContent = "▶";
   // Disarm the regeneration confirm across project switches.
   const tl = $("btn-timeline");
   tl.dataset.armed = "";
@@ -97,12 +124,12 @@ async function deleteProject() {
   const btn = $("delete-project");
   if (btn.dataset.armed !== "1") {
     btn.dataset.armed = "1";
-    btn.textContent = `Really delete "${currentProject.name}"? Click again`;
-    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Delete project"; }, 4000);
+    btn.title = `really delete "${currentProject.name}"? click again`;
+    setTimeout(() => { btn.dataset.armed = ""; btn.title = "delete this project"; }, 4000);
     return;
   }
   btn.dataset.armed = "";
-  btn.textContent = "Delete project";
+  btn.title = "delete this project";
   try {
     await api(`/api/v1/projects/${currentProject.id}`, { method: "DELETE" });
     currentProject = null;
@@ -112,11 +139,12 @@ async function deleteProject() {
     if (ph) ph.style.display = "";
     btn.hidden = true;
     $("player").removeAttribute("src");
+    $("proj-current").hidden = true;
     await refreshProjects();
   } catch (e) { banner(`Delete failed: ${e.message}`); }
 }
 
-/* ---------- assets ---------- */
+/* ---------- media pool ---------- */
 // Stale-response guard: every project-scoped refresh captures the project id
 // when the request starts and discards the response if the user has since
 // switched projects — otherwise a slow response from A lands after B was
@@ -125,31 +153,59 @@ function projectChangedSince(pid) {
   return !currentProject || currentProject.id !== pid;
 }
 
+function fmtDur(s) {
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+}
+
+// thumbCache: asset id → dataURL, captured once by the media pool's
+// client-side frame grab and reused by the timeline strip blocks.
+const thumbCache = new Map();
+
 async function refreshAssets() {
   if (!currentProject) return;
   const pid = currentProject.id;
   const { assets } = await api(`/api/v1/projects/${pid}`);
   if (projectChangedSince(pid)) return;
-  const tbody = $("assets").querySelector("tbody");
-  tbody.innerHTML = "";
+  const grid = $("asset-grid");
+  grid.innerHTML = "";
   for (const a of assets) {
-    const tr = document.createElement("tr");
-    const dur = `${Math.floor(a.duration_s / 60)}:${String(Math.round(a.duration_s % 60)).padStart(2, "0")}`;
     const mb = (a.size_bytes / 1048576).toFixed(1) + " MB";
+    const card = document.createElement("div");
+    card.className = "asset-card";
+    const thumb = document.createElement("div");
+    thumb.className = "asset-thumb";
+    const meta = document.createElement("div");
+    meta.className = "asset-meta";
     // Untrusted by policy: filenames are user input, textContent only.
-    const tdName = document.createElement("td");
-    tdName.textContent = a.filename;
-    tdName.title = a.filename;
-    const tdDur = document.createElement("td");
-    tdDur.textContent = dur;
-    const tdSize = document.createElement("td");
-    tdSize.textContent = mb;
-    const tdCodec = document.createElement("td");
-    tdCodec.textContent = a.video_codec + (a.has_audio ? " +" + a.audio_codec : "");
-    tr.append(tdName, tdDur, tdSize, tdCodec);
-    tbody.appendChild(tr);
+    const name = document.createElement("div");
+    name.className = "asset-name";
+    name.textContent = a.filename;
+    name.title = a.filename;
+    const sub = document.createElement("div");
+    sub.className = "asset-sub";
+    sub.textContent = `${fmtDur(a.duration_s)} · ${mb} · ${a.video_codec}${a.has_audio ? " + " + a.audio_codec : ""}`;
+    meta.append(name, sub);
+    card.append(thumb, meta);
+    grid.appendChild(card);
+    // Real thumbnail: seek a client-side video to 1s and paint a frame.
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "metadata";
+    v.style.display = "none";
+    v.src = `/api/v1/projects/${pid}/assets/${encodeURIComponent(a.id)}/file#t=1`;
+    v.addEventListener("loadeddata", () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = 184; c.height = 104;
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        thumb.appendChild(c);
+        thumbCache.set(a.id, c.toDataURL("image/jpeg", 0.6));
+        v.src = ""; // release the decoder
+      } catch (_) { /* frame capture is best-effort */ }
+    }, { once: true });
+    grid.appendChild(v);
   }
-  // The transcribe picker mirrors the asset list (first = default).
+  // The transcribe/ROI picker mirrors the asset list (first = default).
   const sel = $("subs-asset");
   sel.innerHTML = "";
   for (const a of assets) {
@@ -189,6 +245,7 @@ async function refreshJobs() {
       status.className = "status";
       status.textContent = `${j.status}${pct}`;
       const type = document.createElement("span");
+      type.className = "type";
       type.textContent = j.type;
       const meta = document.createElement("span");
       meta.className = "meta";
@@ -287,18 +344,41 @@ function showPlayer() {
   $("download").href = `/api/v1/projects/${currentProject.id}/render`;
 }
 
+/* ---------- preview transport ---------- */
+$("btn-play").addEventListener("click", togglePlay);
+function togglePlay() {
+  const p = $("player");
+  if (!p.src) return;
+  if (p.paused) p.play().catch(() => {});
+  else p.pause();
+}
+function fmtClock(s) {
+  if (!isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+$("player").addEventListener("timeupdate", () => {
+  const p = $("player");
+  $("player-time").textContent = `${fmtClock(p.currentTime)} / ${fmtClock(p.duration)}`;
+});
+$("player").addEventListener("play", () => { $("btn-play").textContent = "⏸"; });
+$("player").addEventListener("pause", () => { $("btn-play").textContent = "▶"; });
+
 /* ---------- timeline editing ---------- */
-let timelineDoc = null; // last fetched timeline JSON
-let clipEdits = null;   // working copy of timelineDoc.tracks[0].clips
-let dragIndex = -1;     // clipEdits index being dragged (HTML5 DnD reorder)
+let timelineDoc = null;   // last fetched timeline JSON
+let clipEdits = null;     // working copy of timelineDoc.tracks[0].clips
+let dragIndex = -1;       // clipEdits index being dragged (HTML5 DnD reorder)
+let selectedIndex = -1;   // clip open in the inspector
 
 async function refreshTimeline() {
   timelineDoc = null;
   clipEdits = null;
   dragIndex = -1;
+  selectedIndex = -1;
   const prev = $("clip-preview");
   if (prev) { prev.hidden = true; prev.removeAttribute("src"); prev.load(); }
-  renderClips();
+  renderInspector();
+  renderTimeline();
   if (!currentProject) return;
   const pid = currentProject.id;
   try {
@@ -308,109 +388,363 @@ async function refreshTimeline() {
     clipEdits = JSON.parse(JSON.stringify(timeline.tracks[0].clips));
     $("btn-tl-restore").hidden = !has_backup;
   } catch (_) { /* no timeline yet — expected before first generation */ }
-  renderClips();
+  renderTimeline();
 }
 
-function renderClips() {
-  const tbody = document.querySelector("#clips tbody");
-  tbody.innerHTML = "";
-  const has = Array.isArray(clipEdits);
-  $("btn-tl-save").disabled = !has;
-  $("btn-tl-reset").disabled = !has;
+const EPS = 1e-6;
+const playDur = (c) => (c.source_end - c.source_start) / (c.speed > 0 ? c.speed : 1);
+
+function totalDuration() {
+  if (!clipEdits || clipEdits.length === 0) return 0;
+  const last = clipEdits[clipEdits.length - 1];
+  return last.timeline_start + playDur(last);
+}
+
+// renderTimeline draws the visual strip: a time ruler, one block per clip
+// (width ∝ timeline duration), a transition badge on every join, and the
+// playhead. Click selects (→ inspector), drag reorders, edge handles trim.
+function renderTimeline() {
+  const strip = $("tl-strip");
+  strip.innerHTML = "";
+  const has = Array.isArray(clipEdits) && clipEdits.length > 0;
+  $("btn-tl-save").disabled = !clipEdits;
+  $("btn-tl-reset").disabled = !clipEdits;
   if (!has) $("btn-tl-restore").hidden = true;
   if (!has) {
-    $("tl-status").textContent = timelineDoc === null ? "generate a timeline first" : "";
+    const empty = document.createElement("div");
+    empty.className = "tl-empty";
+    empty.textContent = timelineDoc === null ? "generate a timeline (step 2) to start editing" : "every clip removed — save to empty it, or Reset";
+    strip.appendChild(empty);
+    renderInspector();
     return;
   }
-  const playDur = (c) => (c.source_end - c.source_start) / (c.speed > 0 ? c.speed : 1);
-  $("tl-status").textContent = `${clipEdits.filter(c => !c._removed).length} clips · ` +
-    `${(clipEdits.filter(c => !c._removed).reduce((s, c) => s + playDur(c), 0)).toFixed(1)}s`;
+
+  const total = Math.max(totalDuration(), 0.001);
+  const w = strip.clientWidth || 800;
+  const px = (t) => (t / total) * (w - 4) + 2;
+
+  const ruler = document.createElement("div");
+  ruler.className = "tl-ruler";
+  const tickStep = niceTick(total);
+  for (let t = 0; t <= total; t += tickStep) {
+    const tick = document.createElement("div");
+    tick.className = "tick";
+    tick.style.left = px(t) + "px";
+    tick.textContent = fmtClock(t);
+    tick.addEventListener("click", (e) => { e.stopPropagation(); seekPreviewTo(t); });
+    ruler.appendChild(tick);
+  }
+  strip.appendChild(ruler);
+
+  const track = document.createElement("div");
+  track.className = "tl-track";
+  strip.appendChild(track);
+
   clipEdits.forEach((c, i) => {
-    const tr = document.createElement("tr");
-    if (c._removed) tr.className = "removed";
-    const dur = playDur(c).toFixed(1) + "s" + (c.speed && c.speed !== 1 ? ` @${c.speed}x` : "");
+    if (c._removed) return;
+    const startX = px(c.timeline_start);
+    const endX = px(c.timeline_start + playDur(c));
+    const block = document.createElement("div");
+    block.className = "tl-clip" + (i === selectedIndex ? " selected" : "");
+    block.style.left = startX + "px";
+    block.style.width = Math.max(endX - startX, 24) + "px";
+    block.draggable = true;
 
-    const tdNum = document.createElement("td");
-    tdNum.textContent = i + 1;
-    const tdRange = document.createElement("td");
-    tdRange.textContent = `${c.source_start.toFixed(1)}s – ${c.source_end.toFixed(1)}s`;
-    const tdDur = document.createElement("td");
-    tdDur.textContent = dur;
-    // Clip metadata comes from the style engine (score breakdown / reason).
-    // Untrusted by policy: textContent only, never innerHTML.
-    const tdScore = document.createElement("td");
-    tdScore.textContent = (c.metadata && c.metadata.score) || "";
-    tdScore.title = (c.metadata && c.metadata.score_breakdown) || "";
-    const tdWhy = document.createElement("td");
-    tdWhy.textContent = (c.metadata && c.metadata.reason) || "";
-    tdWhy.title = (c.metadata && c.metadata.score_breakdown) || "";
-    const tdAct = document.createElement("td");
-    tdAct.innerHTML =
-      `<button data-act="preview" title="preview this clip's source at its start offset">▶</button>` +
-      `<button data-act="up" title="move up">↑</button>` +
-      `<button data-act="down" title="move down">↓</button>` +
-      `<button data-act="del" title="remove">${c._removed ? "undo" : "✕"}</button>`;
-
-    // Drag to reorder (HTML5 DnD, no deps): drop reorders clipEdits and the
-    // existing save path recomputes timeline_start from the new order.
-    if (!c._removed) {
-      tr.draggable = true;
-      tr.dataset.index = i;
-      tr.addEventListener("dragstart", (e) => {
-        dragIndex = i;
-        tr.classList.add("dragging");
-        e.dataTransfer.effectAllowed = "move";
-        try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) { /* IE-style targets */ }
-      });
-      tr.addEventListener("dragend", () => tr.classList.remove("dragging"));
-      tr.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        tr.classList.toggle("drop-target", dragIndex >= 0 && dragIndex !== i);
-      });
-      tr.addEventListener("dragleave", () => tr.classList.remove("drop-target"));
-      tr.addEventListener("drop", (e) => {
-        e.preventDefault();
-        tr.classList.remove("drop-target");
-        if (dragIndex < 0 || dragIndex === i) return;
-        const [moved] = clipEdits.splice(dragIndex, 1);
-        clipEdits.splice(i, 0, moved);
-        dragIndex = -1;
-        renderClips();
-      });
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    if (thumbCache.has(c.asset_id)) {
+      thumb.style.backgroundImage = `url(${thumbCache.get(c.asset_id)})`;
     }
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    const asset = (timelineDoc.tracks[0].clips.find((o) => o.asset_id === c.asset_id) || {});
+    const nm = document.createElement("div");
+    nm.className = "name";
+    nm.textContent = asset.source || "clip " + (i + 1);
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = `${fmtClock(c.source_start)}–${fmtClock(c.source_end)} @${c.speed}x`;
+    lbl.append(nm, sub);
+    block.append(thumb, lbl);
 
-    tr.append(tdNum, tdRange, tdDur, tdScore, tdWhy, tdAct);
-    tr.addEventListener("click", (e) => {
-      const act = e.target.dataset && e.target.dataset.act;
-      if (!act) return;
-      if (act === "del") c._removed = !c._removed;
-      if (act === "up" && i > 0) [clipEdits[i - 1], clipEdits[i]] = [clipEdits[i], clipEdits[i - 1]];
-      if (act === "down" && i < clipEdits.length - 1) [clipEdits[i + 1], clipEdits[i]] = [clipEdits[i], clipEdits[i + 1]];
-      if (act === "preview") { previewClip(c); return; }
-      renderClips();
+    const hL = document.createElement("div");
+    hL.className = "trimL";
+    hL.title = "drag to trim the head";
+    const hR = document.createElement("div");
+    hR.className = "trimR";
+    hR.title = "drag to trim the tail";
+    block.append(hL, hR);
+
+    block.addEventListener("click", (e) => {
+      if (e.target.classList.contains("trimL") || e.target.classList.contains("trimR")) return;
+      selectClip(i);
     });
-    tbody.appendChild(tr);
+    block.addEventListener("dragstart", (e) => {
+      dragIndex = i;
+      block.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) { /* IE-style targets */ }
+    });
+    block.addEventListener("dragend", () => block.classList.remove("dragging"));
+    block.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      block.classList.toggle("tl-drop-hint", dragIndex >= 0 && dragIndex !== i);
+    });
+    block.addEventListener("dragleave", () => block.classList.remove("tl-drop-hint"));
+    block.addEventListener("drop", (e) => {
+      e.preventDefault();
+      block.classList.remove("tl-drop-hint");
+      if (dragIndex < 0 || dragIndex === i) return;
+      const [moved] = clipEdits.splice(dragIndex, 1);
+      clipEdits.splice(i, 0, moved);
+      if (selectedIndex === dragIndex) selectedIndex = i;
+      else if (dragIndex < selectedIndex && selectedIndex <= i) selectedIndex--;
+      else if (i <= selectedIndex && selectedIndex < dragIndex) selectedIndex++;
+      dragIndex = -1;
+      renderTimeline();
+    });
+    attachTrim(block, hL, hR, i, -1, px, total);
+    attachTrim(block, hR, hL, i, +1, px, total);
+    track.appendChild(block);
   });
+
+  // Transition badges on every join (the join belongs to the LEFT clip).
+  for (let i = 1; i < clipEdits.length; i++) {
+    const prev = clipEdits[i - 1];
+    if (prev._removed) continue;
+    const t = prev.transition;
+    const kind = t && t.type !== "cut" ? t.type : "cut";
+    const badge = document.createElement("div");
+    badge.className = "tl-join";
+    badge.style.left = px(clipEdits[i].timeline_start) + "px";
+    const k = document.createElement("span");
+    k.className = "k";
+    k.textContent = { xfade: "⤬", fade: "◐" }[kind] || "|";
+    const lbl = document.createElement("span");
+    lbl.textContent = kind === "xfade" ? `${(t.duration || 0).toFixed(1)}s` : kind;
+    badge.append(k, lbl);
+    badge.title = `${kind} join — select the previous clip to edit it`;
+    badge.addEventListener("click", (e) => { e.stopPropagation(); selectClip(i - 1); });
+    track.appendChild(badge);
+  }
+
+  const playhead = document.createElement("div");
+  playhead.className = "tl-playhead";
+  playhead.id = "tl-playhead";
+  track.appendChild(playhead);
+  renderInspector();
+}
+
+// niceTick picks a human ruler step so ~6-12 ticks fit any duration.
+function niceTick(total) {
+  const steps = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  for (const s of steps) if (total / s <= 12) return s;
+  return 900;
+}
+
+// attachTrim wires one edge handle: dragging adjusts the clip's source
+// range (in/out). dir −1 = head (source_start), +1 = tail (source_end).
+function attachTrim(block, handle, other, i, dir, px, total) {
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const strip = $("tl-strip");
+    const startX = e.clientX;
+    const clip = clipEdits[i];
+    const orig = dir < 0 ? clip.source_start : clip.source_end;
+    const secsPerPx = total / Math.max(strip.clientWidth, 1);
+    const move = (ev) => {
+      const dt = (ev.clientX - startX) * secsPerPx * (clip.speed > 0 ? clip.speed : 1);
+      let v = orig + dir * dt;
+      if (dir < 0) {
+        v = Math.max(0, Math.min(v, clip.source_end - 0.1));
+        clip.source_start = v;
+      } else {
+        v = Math.max(clip.source_start + 0.1, v);
+        clip.source_end = v;
+      }
+      renderTimeline();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      renderTimeline();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+
+function selectClip(i) {
+  selectedIndex = i;
+  renderTimeline();
+}
+
+function seekPreviewTo(t) {
+  // Find the clip covering timeline position t and play its source there.
+  for (let i = 0; i < (clipEdits || []).length; i++) {
+    const c = clipEdits[i];
+    if (c._removed) continue;
+    const end = c.timeline_start + playDur(c);
+    if (t >= c.timeline_start - EPS && t <= end + EPS) {
+      selectClip(i);
+      playClipAt(c, c.source_start + (t - c.timeline_start) * (c.speed > 0 ? c.speed : 1));
+      return;
+    }
+  }
 }
 
 // previewClip plays the clip's source media from its start offset in the
 // editor preview player. The media URL is the project-scoped asset endpoint
 // (DB-registered path only — no client-supplied paths).
-function previewClip(c) {
+function previewClip(c) { playClipAt(c, c.source_start); }
+
+function playClipAt(c, sourceAt) {
   const video = $("clip-preview");
   if (!video || !currentProject || !c.asset_id) return;
   video.hidden = false;
-  video.src = `/api/v1/projects/${currentProject.id}/assets/${encodeURIComponent(c.asset_id)}/file`;
+  if (!video.src.includes(`/assets/${encodeURIComponent(c.asset_id)}/`)) {
+    video.src = `/api/v1/projects/${currentProject.id}/assets/${encodeURIComponent(c.asset_id)}/file`;
+  }
   const seek = () => {
-    if (c.source_start > 0 && isFinite(c.source_start)) {
-      try { video.currentTime = c.source_start; } catch (_) { /* not seekable yet */ }
+    if (isFinite(sourceAt) && sourceAt > 0) {
+      try { video.currentTime = sourceAt; } catch (_) { /* not seekable yet */ }
     }
     video.play().catch(() => { /* autoplay policies — user can press play */ });
   };
   if (video.readyState >= 1) seek();
   else video.addEventListener("loadedmetadata", seek, { once: true });
-  video.scrollIntoView({ block: "nearest" });
+}
+
+// The playhead mirrors the per-clip preview's position over the strip.
+$("clip-preview").addEventListener("timeupdate", () => {
+  const ph = document.getElementById("tl-playhead");
+  if (!ph || selectedIndex < 0 || !clipEdits) return;
+  const c = clipEdits[selectedIndex];
+  if (!c) return;
+  const strip = document.getElementById("tl-strip");
+  const total = Math.max(totalDuration(), 0.001);
+  const p = c.timeline_start + $("clip-preview").currentTime * (c.speed > 0 ? c.speed : 1);
+  ph.style.left = (p / total) * (strip.clientWidth - 4) + 2 + "px";
+});
+
+/* ---------- inspector ---------- */
+function renderInspector() {
+  const empty = $("insp-empty");
+  const box = $("insp-clip");
+  if (selectedIndex < 0 || !clipEdits || !clipEdits[selectedIndex]) {
+    box.innerHTML = "";
+    box.hidden = true;
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  box.hidden = false;
+  const c = clipEdits[selectedIndex];
+  box.innerHTML = "";
+
+  const name = document.createElement("h3");
+  name.textContent = `Clip ${selectedIndex + 1}`;
+  box.appendChild(name);
+
+  const stat = (k, v) => {
+    const row = document.createElement("div");
+    row.className = "insp-stat";
+    const key = document.createElement("span");
+    key.textContent = k;
+    const val = document.createElement("b");
+    val.textContent = v;
+    row.append(key, val);
+    return row;
+  };
+  box.appendChild(stat("timeline in", fmtClock(c.timeline_start)));
+  box.appendChild(stat("duration", playDur(c).toFixed(1) + "s"));
+  if (c.metadata && c.metadata.score !== undefined) {
+    box.appendChild(stat("score", String(c.metadata.score)));
+    if (c.metadata.reason) box.appendChild(stat("why", String(c.metadata.reason)));
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "insp-grid";
+  const field = (label, type, value, attrs) => {
+    const l = document.createElement("label");
+    const s = document.createElement("span");
+    s.textContent = label;
+    const input = document.createElement("input");
+    input.type = type;
+    input.value = value;
+    Object.assign(input, attrs || {});
+    l.append(s, input);
+    grid.appendChild(l);
+    return input;
+  };
+  const inTrim = field("trim in (s)", "number", c.source_start.toFixed(2), { step: "0.1", min: "0" });
+  const outTrim = field("trim out (s)", "number", c.source_end.toFixed(2), { step: "0.1" });
+  const speed = field("speed (×)", "number", String(c.speed), { step: "0.05", min: "0.1", max: "4" });
+  const volume = field("volume (0–1)", "number", String(c.volume), { step: "0.05", min: "0", max: "1" });
+  box.appendChild(grid);
+
+  // Transition editor: applies to the join AFTER this clip (server side the
+  // transition rides the left clip). cut | fade | xfade + duration.
+  const t = c.transition || { type: "cut", duration: 0 };
+  const trow = document.createElement("label");
+  trow.className = "field";
+  const tspan = document.createElement("span");
+  tspan.textContent = "transition to next clip";
+  const tsel = document.createElement("select");
+  for (const [v, label] of [["cut", "cut (hard join)"], ["fade", "fade (through black)"], ["xfade", "crossfade (xfade)"]]) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label;
+    if (t.type === v) o.selected = true;
+    tsel.appendChild(o);
+  }
+  trow.append(tspan, tsel);
+  const tdur = field("xfade duration (s)", "number", (t.duration || 0).toFixed(2), { step: "0.1", min: "0" });
+  box.appendChild(trow);
+  box.appendChild(tdur);
+
+  const apply = document.createElement("div");
+  apply.className = "insp-row";
+  const btnApply = document.createElement("button");
+  btnApply.textContent = "Apply";
+  btnApply.className = "primary";
+  btnApply.addEventListener("click", () => {
+    const ns = parseFloat(inTrim.value), ne = parseFloat(outTrim.value);
+    if (!isFinite(ns) || !isFinite(ne) || ns < 0 || ne <= ns) {
+      banner("Trim rejected: out must be after in");
+      return;
+    }
+    c.source_start = ns;
+    c.source_end = ne;
+    const sp = parseFloat(speed.value);
+    if (isFinite(sp) && sp >= 0.1 && sp <= 4) c.speed = sp;
+    const vol = parseFloat(volume.value);
+    if (isFinite(vol) && vol >= 0 && vol <= 1) c.volume = vol;
+    const tt = tsel.value;
+    const td = parseFloat(tdur.value) || 0;
+    if (tt === "cut") delete c.transition;
+    else c.transition = { type: tt, duration: tt === "xfade" ? td : (td || 0) };
+    renderTimeline();
+  });
+  const btnPreview = document.createElement("button");
+  btnPreview.textContent = "▶ preview";
+  btnPreview.addEventListener("click", () => previewClip(c));
+  const btnRemove = document.createElement("button");
+  btnRemove.textContent = c._removed ? "undo remove" : "remove";
+  btnRemove.className = "danger";
+  btnRemove.addEventListener("click", () => {
+    c._removed = !c._removed;
+    selectedIndex = -1;
+    renderTimeline();
+  });
+  apply.append(btnApply, btnPreview, btnRemove);
+  box.appendChild(apply);
+
+  const note = document.createElement("div");
+  note.className = "insp-note";
+  note.textContent = "applies to the working copy — “Save changes” writes it to the server (revision-checked).";
+  box.appendChild(note);
 }
 
 async function restoreBackup() {
@@ -430,7 +764,6 @@ async function saveTimeline() {
   // Optimistic concurrency: send the revision we read; a mismatch (another
   // tab saved, or the timeline was regenerated) is refused with 409.
   doc.revision = timelineDoc.revision || 0;
-  const playDur = (x) => (x.source_end - x.source_start) / (x.speed > 0 ? x.speed : 1);
   let dropped = 0;
   let prevEnd = 0;
   const outs = [];
@@ -495,55 +828,28 @@ $("btn-tl-save").addEventListener("click", saveTimeline);
 $("btn-tl-restore").addEventListener("click", restoreBackup);
 $("btn-tl-reset").addEventListener("click", refreshTimeline);
 
-/* ---------- wiring ---------- */
-$("delete-project").addEventListener("click", deleteProject);
-
-$("new-project").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    const { project } = await post("/api/v1/projects", { name: $("np-name").value.trim() });
-    $("np-name").value = "";
-    banner("");
-    await refreshProjects();
-    selectProject(project);
-  } catch (err) { banner(`Create failed: ${err.message}`); }
-});
-
-$("import-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!currentProject) return;
-  const path = $("import-path").value.trim();
-  if (!path) return;
-  try {
-    await trigger("/assets", { path });
-    $("import-path").value = "";
-  } catch (err) { banner(`Import failed: ${err.message}`); busy(false); }
-});
-
-$("btn-analyze").addEventListener("click", async () => {
-  try { await trigger("/analyze", {}); } catch (e) { banner(`Analyze failed: ${e.message}`); busy(false); }
-});
-$("btn-timeline").addEventListener("click", async () => {
-  const btn = $("btn-timeline");
-  // Regeneration replaces the stored timeline — manual edits in the editor
-  // are lost (the pre-regeneration document stays recoverable via Restore
-  // backup). Two-step confirm, same pattern as delete: the first click asks.
-  if (timelineDoc && btn.dataset.armed !== "1") {
-    btn.dataset.armed = "1";
-    btn.textContent = "Replace timeline? Click again";
-    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "2 · Timeline"; }, 4000);
+/* ---------- keyboard ---------- */
+document.addEventListener("keydown", (e) => {
+  const typing = /^(input|select|textarea)$/i.test(e.target.tagName);
+  if (e.key === "Escape") { closeProjMenu(); return; }
+  if (typing) return;
+  if (e.key === " ") { e.preventDefault(); togglePlay(); return; }
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedIndex >= 0 && clipEdits) {
+    e.preventDefault();
+    const c = clipEdits[selectedIndex];
+    if (c) c._removed = !c._removed;
+    selectedIndex = -1;
+    renderTimeline();
     return;
   }
-  btn.dataset.armed = "";
-  btn.textContent = "2 · Timeline";
-  try { await trigger("/timeline", { style: $("style").value }); } catch (e) { banner(`Timeline failed: ${e.message}`); busy(false); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    if (!$("btn-tl-save").disabled) saveTimeline();
+  }
 });
-$("btn-render").addEventListener("click", async () => {
-  try {
-    await trigger("/render", { subs: $("burn-subs").checked });
-    showPlayerSoon();
-  } catch (e) { banner(`Render failed: ${e.message}`); busy(false); }
-});
+
+/* ---------- wiring ---------- */
+$("delete-project").addEventListener("click", deleteProject);
 
 /* ---------- subtitles (AI sidecar) ---------- */
 async function refreshSubtitlesStatus() {
@@ -576,7 +882,6 @@ async function refreshSubtitlesStatus() {
       a.href = base + fmt;
       a.download = "";
       a.textContent = `download .${fmt}`;
-      a.style.marginLeft = "8px";
       links.appendChild(a);
     }
     previewBtn.hidden = !st.srt;
@@ -615,32 +920,6 @@ $("btn-subtitles").addEventListener("click", async () => {
   } catch (e) { banner(`Transcribe failed: ${e.message}`); busy(false); }
 });
 
-let playerTimer = null;
-function showPlayerSoon() {
-  clearTimeout(playerTimer);
-  playerTimer = setTimeout(showPlayer, 1500);
-}
-
-async function loadStyles() {
-  try {
-    const { styles } = await api("/api/v1/styles");
-    const sel = $("style");
-    sel.innerHTML = "";
-    for (const s of styles) {
-      const o = document.createElement("option");
-      o.value = s; o.textContent = s;
-      sel.appendChild(o);
-    }
-    refreshROIStatus();
-  } catch (_) { /* non-fatal */ }
-}
-
-refreshHealth();
-setInterval(refreshHealth, 15000);
-refreshProjects();
-loadStyles();
-refreshJobs();
-
 /* ---------- court ROI editor ---------- */
 /* A normalized rect (0..1) persisted as a workspace override of the
  * selected style; the style engine feeds it to the frame_diff_roi analyzer
@@ -654,8 +933,10 @@ async function refreshROIStatus() {
   const status = $("roi-status");
   const clearBtn = $("btn-roi-clear");
   if (!currentProject || !roiStyleName()) { status.textContent = ""; clearBtn.hidden = true; return; }
+  const pid = currentProject.id;
   try {
     const { roi } = await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`);
+    if (projectChangedSince(pid)) return;
     if (roi) {
       status.textContent = `ROI x=${roi.x.toFixed(2)} y=${roi.y.toFixed(2)} w=${roi.w.toFixed(2)} h=${roi.h.toFixed(2)}`;
       clearBtn.hidden = false;
@@ -674,7 +955,7 @@ function drawROIOverlay() {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!roiRect) return;
-  ctx.strokeStyle = "#4cc38a";
+  ctx.strokeStyle = "#3dd68c";
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(roiRect.x * canvas.width, roiRect.y * canvas.height,
@@ -758,3 +1039,56 @@ $("style").addEventListener("change", refreshROIStatus);
   video.addEventListener("loadedmetadata", drawROIOverlay);
   window.addEventListener("resize", () => { if (!$("roi-editor").hidden) drawROIOverlay(); });
 })();
+
+/* ---------- pipeline steps ---------- */
+$("btn-analyze").addEventListener("click", async () => {
+  try { await trigger("/analyze", {}); }
+  catch (e) { banner(`Analyze failed: ${e.message}`); }
+});
+
+$("btn-timeline").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  // Two-step confirm: regenerating overwrites manual edits (the backup
+  // keeps one level of undo). The confirm disarms itself after 4s.
+  if (timelineDoc && btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "overwrite edits?";
+    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "2 · Timeline"; }, 4000);
+    return;
+  }
+  btn.dataset.armed = "";
+  btn.textContent = "2 · Timeline";
+  try { await trigger("/timeline", { style: $("style").value }); }
+  catch (err) { banner(`Timeline failed: ${err.message}`); }
+});
+
+$("btn-render").addEventListener("click", async () => {
+  try { await trigger("/render", { subs: $("burn-subs").checked }); showPlayerSoon(); }
+  catch (e) { banner(`Render failed: ${e.message}`); }
+});
+
+let playerTimer = null;
+function showPlayerSoon() {
+  clearTimeout(playerTimer);
+  playerTimer = setTimeout(showPlayer, 1500);
+}
+
+async function loadStyles() {
+  try {
+    const { styles } = await api("/api/v1/styles");
+    const sel = $("style");
+    sel.innerHTML = "";
+    for (const s of styles) {
+      const o = document.createElement("option");
+      o.value = s; o.textContent = s;
+      sel.appendChild(o);
+    }
+    refreshROIStatus();
+  } catch (_) { /* non-fatal */ }
+}
+
+refreshHealth();
+setInterval(refreshHealth, 15000);
+refreshProjects();
+loadStyles();
+refreshJobs();

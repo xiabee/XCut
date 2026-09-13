@@ -131,15 +131,26 @@ overwrite any source media.
 ./xcut serve                # http://127.0.0.1:8619, ctrl+c to stop
 ```
 
-Then open http://127.0.0.1:8619 in a browser: create a project, import a
-local video path, and run analyze → timeline → render with live job progress —
-the rendered MP4 plays right in the page. The built-in timeline editor shows
-every clip with its score and "why", previews the clip's source at its start
-offset, and supports drag-to-reorder with a save/backup-restore round-trip.
-Projects can also transcribe speech to subtitles through an AI sidecar and
-burn them (plain SRT or karaoke-style word-fill ASS) into the render. The UI
-is vanilla HTML/JS embedded
-in the binary (`go:embed`): no Node, no build step, no extra files.
+Two ways in:
+
+```sh
+./xcut client     # native desktop window (WebView2) over the embedded UI
+./xcut serve      # same UI in your browser at http://127.0.0.1:8619
+```
+
+Create a project, import a local video path, and run analyze → timeline →
+render with live job progress — the rendered MP4 plays right in the page.
+The editing workspace is a real timeline: clips render as blocks sized by
+duration with client-captured thumbnails, joins show editable transition
+badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
+and the inspector edits trim, speed, volume and the transition of the
+selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
+preview follows the ruler playhead. Projects can also transcribe speech
+to subtitles through an AI sidecar and burn them (plain SRT or
+karaoke-style word-fill ASS) into the render, and the court ROI is drawn
+directly on a frame. The UI is vanilla HTML/JS embedded in the binary
+(`go:embed`): no Node, no build step, no extra files. Design:
+docs/CLIENT_DESIGN.md.
 
 ![xcut web UI: a project with imported asset, four succeeded jobs, and the
 rendered highlight playing in the result panel](docs/img/web-ui.png)
