@@ -1,4 +1,4 @@
-# Build the Windows distribution zip from the binaries in dist/.
+﻿# Build the Windows distribution zip from the binaries in dist/.
 # Usage: powershell -File scripts/make-installer.ps1 [-Version v0.1.0-alpha]
 # Prereq: scripts/build-release.ps1 has produced dist/xcut-<version>-windows-amd64.exe
 param(
@@ -38,7 +38,7 @@ XCut — 本地优先的自动视频剪辑 / local-first automatic video editing
 
 【安全 / Security】
   仅监听本机回环 (127.0.0.1)；不联网、无遥测。
-"@ | Out-File -FilePath (Join-Path $stage "说明-README.txt") -Encoding utf8
+"@ | Out-File -FilePath (Join-Path $stage "QUICKSTART.txt") -Encoding utf8
 
     Compress-Archive -Path (Join-Path $stage "*") `
         -DestinationPath (Join-Path "dist" "XCut-$Version-windows-amd64.zip") -Force
