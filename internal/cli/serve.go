@@ -19,32 +19,47 @@ func init() {
 	register("serve", "run the local HTTP API", usageSyntax("xcut serve [--addr host:port]"), cmdServe)
 }
 
-// cmdServe runs the localhost API. Remote listening is refused outright:
-// authentication does not exist yet, so LAN exposure is a vulnerability, not
-// a feature (DECISIONS D8).
-func cmdServe(a *App, args []string) error {
+// runningServe is a started server: the listener is live and the pipeline
+// is swept. Callers own the shutdown sequence (shutdownServe) and close.
+type runningServe struct {
+	srv        *api.Server
+	httpServer *http.Server
+	ln         net.Listener
+	// errCh receives a fatal serve error (anything but http.ErrServerClosed).
+	errCh chan error
+	close func() // releases the DB handle
+}
+
+// serveAddr validates and resolves the listen address for serve/client.
+func serveAddr(a *App, args []string) (string, error) {
 	addr := ""
 	pos, err := parseCommandArgs(args, map[string]*string{"addr": &addr})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(pos) != 0 {
-		return xcerr.E(xcerr.CodeValidation, "usage: xcut serve [--addr host:port]", nil)
+		return "", xcerr.E(xcerr.CodeValidation, "usage: xcut serve [--addr host:port]", nil)
 	}
 	if addr == "" {
 		addr = a.Cfg.Server.Listen
 	}
 	if a.Cfg.Server.ListenRemote || !isLoopbackAddr(addr) {
-		return xcerr.E(xcerr.CodeValidation,
+		return "", xcerr.E(xcerr.CodeValidation,
 			"remote listening is not available yet (no authentication); "+
 				"set server.listen to a 127.0.0.1 address", nil)
 	}
+	return addr, nil
+}
 
+// startServeCore is the serve pipeline shared by `xcut serve` and the
+// `xcut client` shell: open the DB, take over logging, sweep orphans and
+// temp debris, bind loopback and start serving. The caller owns shutdown:
+// shutdownServe for the drain, then r.close for the DB handle.
+func startServeCore(a *App, addr string) (*runningServe, error) {
 	db, err := a.OpenDB()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer db.Close()
 
 	// Serve mode logs to stderr AND a rotated file in the workspace so a
 	// long-running instance stays diagnosable without unbounded log growth.
@@ -85,12 +100,12 @@ func cmdServe(a *App, args []string) error {
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return xcerr.E(xcerr.CodeInternal, "cannot bind "+addr, err)
+		db.Close()
+		return nil, xcerr.E(xcerr.CodeInternal, "cannot bind "+addr, err)
 	}
-	fmt.Fprintf(a.Stdout, "xcut serving http://%s (loopback only, ctrl+c to stop)\n", addr)
-	a.Log.Info("server started", "addr", addr, "version", version.Version)
+	fmt.Fprintf(a.Stdout, "xcut serving http://%s (loopback only)\n", ln.Addr().String())
+	a.Log.Info("server started", "addr", ln.Addr().String(), "version", version.Version)
 
-	// Graceful shutdown on signal.
 	errCh := make(chan error, 1)
 	go func() {
 		if serr := httpServer.Serve(ln); serr != nil && !errors.Is(serr, http.ErrServerClosed) {
@@ -98,11 +113,58 @@ func cmdServe(a *App, args []string) error {
 		}
 	}()
 
+	return &runningServe{
+		srv:        srv,
+		httpServer: httpServer,
+		ln:         ln,
+		errCh:      errCh,
+		close:      func() { db.Close() },
+	}, nil
+}
+
+// shutdownServe drains in-flight work gracefully: HTTP connections first
+// (bounded), then the job queue (bounded), with a loud note when a wedged
+// job is left for the startup sweep to reconcile.
+func shutdownServe(a *App, r *runningServe) error {
+	a.Log.Info("server shutting down")
+	fmt.Fprintln(a.Stdout, "shutting down — in-flight jobs drain before exit")
+	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = r.httpServer.Shutdown(shCtx)
+	// Job contexts derive from the app context, so they were cancelled by
+	// the signal and are winding down; give the cleanup a generous bound.
+	// A job wedged outside its cancellation must not own the shutdown — the
+	// startup sweep reconciles whatever it leaves.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer drainCancel()
+	if err := r.srv.Shutdown(drainCtx); err != nil {
+		a.Log.Warn("job drain timed out; startup sweep will reconcile", "err", err)
+		fmt.Fprintln(a.Stdout, "warning: some jobs did not finish winding down (startup sweep will reconcile them)")
+	}
+	fmt.Fprintln(a.Stdout, "server stopped")
+	return nil
+}
+
+// cmdServe runs the localhost API. Remote listening is refused outright:
+// authentication does not exist yet, so LAN exposure is a vulnerability, not
+// a feature (DECISIONS D8).
+func cmdServe(a *App, args []string) error {
+	addr, err := serveAddr(a, args)
+	if err != nil {
+		return err
+	}
+
+	r, err := startServeCore(a, addr)
+	if err != nil {
+		return err
+	}
+	defer r.close()
+
+	// Graceful shutdown on signal.
 	select {
-	case err := <-errCh:
+	case err := <-r.errCh:
 		return xcerr.E(xcerr.CodeInternal, "server error", err)
 	case <-a.Ctx.Done():
-		a.Log.Info("server shutting down")
 		// Graceful drain waits for in-flight jobs; a wedged drain must not
 		// own the terminal — the second Ctrl+C is a hard exit.
 		forceCh := make(chan os.Signal, 1)
@@ -114,21 +176,7 @@ func cmdServe(a *App, args []string) error {
 			os.Exit(130)
 		}()
 		fmt.Fprintln(a.Stdout, "shutting down — press ctrl+c again to force quit")
-		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpServer.Shutdown(shCtx)
-		// Job contexts derive from the app context, so they were cancelled
-		// by the signal and are winding down; give the cleanup a generous
-		// bound. A job wedged outside its cancellation must not own the
-		// shutdown — the startup sweep reconciles whatever it leaves.
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer drainCancel()
-		if err := srv.Shutdown(drainCtx); err != nil {
-			a.Log.Warn("job drain timed out; startup sweep will reconcile", "err", err)
-			fmt.Fprintln(a.Stdout, "warning: some jobs did not finish winding down (startup sweep will reconcile them)")
-		}
-		fmt.Fprintln(a.Stdout, "server stopped")
-		return nil
+		return shutdownServe(a, r)
 	}
 }
 

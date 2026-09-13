@@ -286,6 +286,12 @@ func cmdDoctor(a *App, args []string) error {
 		add("GPU", "OPTIONAL", "not detected (CPU-only mode)")
 	}
 
+	if v, detail := clientShellInfo(); v != "" {
+		add("Client shell", "OPTIONAL", "WebView2 "+v)
+	} else {
+		add("Client shell", "OPTIONAL", detail)
+	}
+
 	for _, c := range checks {
 		mark := map[string]string{"OK": "✓", "FAIL": "✗", "WARN": "!", "OPTIONAL": "·"}[c.Status]
 		fmt.Fprintf(a.Stdout, "%-14s %s %-9s %s\n", c.Name, mark, c.Status, c.Detail)

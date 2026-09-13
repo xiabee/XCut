@@ -199,7 +199,7 @@ func lookup(name string) (command, bool) {
 func writesWorkspace(name string, args []string) bool {
 	switch name {
 	case "init", "import", "analyze", "timeline", "render", "auto",
-		"cleanup", "serve":
+		"cleanup", "serve", "client":
 		return true
 	case "project":
 		// list/show read; create/delete write.
