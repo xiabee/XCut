@@ -40,7 +40,6 @@ window.XCUT_I18N = {
     "clear": "清除",
     "save ROI": "保存 ROI",
     "cancel": "取消",
-    "drag a rectangle over the court area — saved as a workspace override of the selected style.": "在球场区域拖出一个矩形——将保存为所选风格的工作区覆盖。",
 
     "Jobs": "任务",
     "Cancel": "取消",
@@ -118,11 +117,13 @@ window.XCUT_I18N = {
     "Preview failed: {msg}": "预览失败：{msg}",
     "Clear failed: {msg}": "清除失败：{msg}",
 
-    "ROI x={x} y={y} w={w} h={h}": "ROI x={x} y={y} w={w} h={h}",
+    "per-source ROI x={x} y={y} w={w} h={h} (overrides the style)": "本源 ROI x={x} y={y} w={w} h={h}（覆盖风格设置）",
+    "style ROI x={x} y={y} w={w} h={h} (fallback for this asset)": "风格 ROI x={x} y={y} w={w} h={h}（本源回退）",
     "full frame (no ROI)": "全画面（无 ROI）",
     "roi status unavailable": "ROI 状态不可用",
     "Import an asset first — the ROI editor draws over its first frame": "请先导入素材 — ROI 编辑器在其首帧上框选",
-    "Court ROI cleared — analysis uses the full frame again": "球场 ROI 已清除 — 分析恢复使用全画面",
-    "Court ROI saved as a workspace override of this style": "球场 ROI 已保存为该风格的工作区覆盖"
+    "Per-source ROI cleared — this asset falls back to the style's region": "本源 ROI 已清除 — 该素材回退到风格的区域",
+    "Court ROI saved for this asset — it overrides the style's region": "本源的球场 ROI 已保存 — 将覆盖风格设置的区域",
+    "drag a rectangle over the court area — saved for this asset; it overrides the style's region.": "在球场区域拖出一个矩形——保存到该素材，并覆盖风格设置的区域。"
   }
 };

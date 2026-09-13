@@ -103,6 +103,30 @@ func (d Deps) analyzers() ([]analysis.Analyzer, error) {
 	}, d.Log)
 }
 
+// assetAnalyzers appends the style-driven analyzers for ONE asset to the
+// baseline set: a per-source motion ROI (assets.motion_roi) overrides the
+// preset's own court region; with neither, the baseline runs unchanged.
+// The ROI is part of the analyzer name, so distinct regions produce
+// distinct cache keys and can never cross-contaminate.
+func assetAnalyzers(base []analysis.Analyzer, preset *style.Preset, a *storage.Asset) ([]analysis.Analyzer, error) {
+	extras := preset.Analyzers()
+	if a.MotionROI != nil {
+		if !a.MotionROI.Valid() {
+			return nil, xcerr.E(xcerr.CodeValidation,
+				"asset has an invalid motion_roi", nil)
+		}
+		extras = []analysis.Analyzer{analysis.FrameDiffROIAnalyzer{ROI: analysis.ROI{
+			X: a.MotionROI.X, Y: a.MotionROI.Y, W: a.MotionROI.W, H: a.MotionROI.H,
+		}}}
+	}
+	if len(extras) == 0 {
+		return base, nil
+	}
+	run := make([]analysis.Analyzer, 0, len(base)+len(extras))
+	run = append(run, base...)
+	return append(run, extras...), nil
+}
+
 func (d Deps) analysisOpts() analysis.Options {
 	return analysis.Options{
 		Tools:         d.tools(),
@@ -387,9 +411,6 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 		if err != nil {
 			return err
 		}
-		// Style-driven analyzers (e.g. a court-ROI motion pass) extend the
-		// baseline set; the cache keys keep them separate from plain runs.
-		analyzers = append(analyzers, preset.Analyzers()...)
 		store := d.analysisStore()
 		opts := d.analysisOpts()
 
@@ -402,12 +423,19 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 			// form re-decoded full originals on every regeneration and
 			// duplicated the analysis cache entries.
 			assetOpts, path := d.analysisInput(jctx, &asset, opts)
-			res, err := analysis.Run(jctx, store, assetOpts, analyzers,
+			run, err := assetAnalyzers(analyzers, preset, &asset)
+			if err != nil {
+				return err
+			}
+			res, err := analysis.Run(jctx, store, assetOpts, run,
 				path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
 			if err != nil {
 				return err
 			}
-			segs, err := event.Build(res.Tracks, asset.DurationSec, preset.EventConfig)
+			// A per-source ROI produced a frame_diff_roi track; when the
+			// preset leaves the motion source on its default, segment THIS
+			// asset from its own region instead of the full-frame signal.
+			segs, err := event.Build(res.Tracks, asset.DurationSec, eventConfigFor(preset, &asset))
 			if err != nil {
 				return err
 			}
@@ -432,6 +460,18 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 		*result = *tl
 		return nil
 	}
+}
+
+// eventConfigFor returns the event config for ONE asset: an asset-scoped
+// ROI upgrades the default motion source to the ROI track, so the cut is
+// driven by what happened on the court instead of the whole frame; a
+// preset-set motion_track keeps precedence.
+func eventConfigFor(preset *style.Preset, a *storage.Asset) event.Config {
+	cfg := preset.EventConfig
+	if a.MotionROI != nil && cfg.MotionTrack == "" {
+		cfg.MotionTrack = "frame_diff_roi"
+	}
+	return cfg
 }
 
 // WriteRegeneratedTimeline publishes a style-regenerated document as the

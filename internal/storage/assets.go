@@ -3,41 +3,69 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
+// MotionROI is a normalized region of interest (0..1) attached to ONE
+// asset — the per-source court region. It overrides the preset's
+// motion_roi for this source during timeline generation. Stored as JSON
+// in the assets.motion_roi column (” = unset).
+type MotionROI struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
+// Valid mirrors the style.Validate motion_roi rule.
+func (r *MotionROI) Valid() bool {
+	if r == nil {
+		return false
+	}
+	for _, v := range []float64{r.X, r.Y, r.W, r.H} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return r.X >= 0 && r.Y >= 0 && r.W > 0 && r.H > 0 && r.X+r.W <= 1 && r.Y+r.H <= 1
+}
+
 // Asset is an imported media file within a project.
 type Asset struct {
-	ID          string  `json:"id"`
-	ProjectID   string  `json:"project_id"`
-	Path        string  `json:"path"`
-	Filename    string  `json:"filename"`
-	Fingerprint string  `json:"fingerprint"`
-	DurationSec float64 `json:"duration_s"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	FPS         float64 `json:"fps"`
-	VideoCodec  string  `json:"video_codec"`
-	AudioCodec  string  `json:"audio_codec,omitempty"`
-	HasAudio    bool    `json:"has_audio"`
-	Bitrate     int64   `json:"bitrate"`
-	SizeBytes   int64   `json:"size_bytes"`
-	ProbeJSON   string  `json:"probe_json,omitempty"`
-	CreatedAt   int64   `json:"created_at"`
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"project_id"`
+	Path        string     `json:"path"`
+	Filename    string     `json:"filename"`
+	Fingerprint string     `json:"fingerprint"`
+	DurationSec float64    `json:"duration_s"`
+	Width       int        `json:"width"`
+	Height      int        `json:"height"`
+	FPS         float64    `json:"fps"`
+	VideoCodec  string     `json:"video_codec"`
+	AudioCodec  string     `json:"audio_codec,omitempty"`
+	HasAudio    bool       `json:"has_audio"`
+	Bitrate     int64      `json:"bitrate"`
+	SizeBytes   int64      `json:"size_bytes"`
+	ProbeJSON   string     `json:"probe_json,omitempty"`
+	CreatedAt   int64      `json:"created_at"`
+	MotionROI   *MotionROI `json:"motion_roi,omitempty"`
 }
 
 const assetCols = `id, project_id, path, filename, fingerprint, duration_s, width, height,
-fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at`
+fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at, motion_roi`
 
 func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 	var a Asset
 	var hasAudio int
+	var roiJSON string
 	err := row.Scan(&a.ID, &a.ProjectID, &a.Path, &a.Filename, &a.Fingerprint,
 		&a.DurationSec, &a.Width, &a.Height, &a.FPS,
 		&a.VideoCodec, &a.AudioCodec, &hasAudio, &a.Bitrate, &a.SizeBytes,
-		&a.ProbeJSON, &a.CreatedAt)
+		&a.ProbeJSON, &a.CreatedAt, &roiJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -45,6 +73,14 @@ func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 		return nil, err
 	}
 	a.HasAudio = hasAudio != 0
+	if roiJSON != "" {
+		roi := &MotionROI{}
+		if err := json.Unmarshal([]byte(roiJSON), roi); err != nil {
+			return nil, xcerr.E(xcerr.CodeStorageFailure,
+				"asset "+a.ID+" has a corrupt motion_roi", err)
+		}
+		a.MotionROI = roi
+	}
 	return &a, nil
 }
 
@@ -129,4 +165,29 @@ func (d *DB) ListAssets(ctx context.Context, projectID string) ([]Asset, error) 
 		out = append(out, *a)
 	}
 	return out, rows.Err()
+}
+
+// SetAssetROI stores (roi != nil) or clears (roi == nil) the asset's
+// per-source motion ROI. Reports NotFound when the asset id is unknown.
+func (d *DB) SetAssetROI(ctx context.Context, assetID string, roi *MotionROI) error {
+	if roi != nil && !roi.Valid() {
+		return xcerr.E(xcerr.CodeValidation,
+			"roi must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 (normalized to the frame)", nil)
+	}
+	value := ""
+	if roi != nil {
+		b, err := json.Marshal(roi)
+		if err != nil {
+			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize motion roi", err)
+		}
+		value = string(b)
+	}
+	res, err := d.ExecContext(ctx, `UPDATE assets SET motion_roi = ? WHERE id = ?`, value, assetID)
+	if err != nil {
+		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset roi", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return xcerr.E(xcerr.CodeNotFound, "asset not found", nil)
+	}
+	return nil
 }

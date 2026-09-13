@@ -965,26 +965,40 @@ $("btn-subtitles").addEventListener("click", async () => {
 });
 
 /* ---------- court ROI editor ---------- */
-/* A normalized rect (0..1) persisted as a workspace override of the
- * selected style; the style engine feeds it to the frame_diff_roi analyzer
- * so crowd movement off the court cannot dominate the motion signal. */
+/* A normalized rect (0..1) stored per SOURCE (assets.motion_roi): each
+ * fixed camera has the court in a different spot, so the asset's own
+ * region overrides the selected style's per-preset one during timeline
+ * generation. Assets without their own rect fall back to the style's. */
 let roiRect = null;      // {x,y,w,h} drawn but not yet saved
 let roiAssetId = null;   // asset whose frame is on display
 
 function roiStyleName() { return $("style").value; }
+function roiAsset() { return $("subs-asset").selectedOptions[0] || null; }
+
+function fmtROI(label, roi) {
+  return tf(label, { x: roi.x.toFixed(2), y: roi.y.toFixed(2), w: roi.w.toFixed(2), h: roi.h.toFixed(2) });
+}
 
 async function refreshROIStatus() {
   const status = $("roi-status");
   const clearBtn = $("btn-roi-clear");
-  if (!currentProject || !roiStyleName()) { status.textContent = ""; clearBtn.hidden = true; return; }
+  const asset = roiAsset();
+  if (!currentProject || !asset) { status.textContent = ""; clearBtn.hidden = true; return; }
   const pid = currentProject.id;
   try {
-    const { roi } = await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`);
+    const [own, preset] = await Promise.all([
+      api(`/api/v1/projects/${pid}/assets/${asset.value}/roi`),
+      roiStyleName()
+        ? api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`)
+        : Promise.resolve({ roi: null }),
+    ]);
     if (projectChangedSince(pid)) return;
-    if (roi) {
-      status.textContent = tf("ROI x={x} y={y} w={w} h={h}",
-        { x: roi.x.toFixed(2), y: roi.y.toFixed(2), w: roi.w.toFixed(2), h: roi.h.toFixed(2) });
+    if (own.roi) {
+      status.textContent = fmtROI("per-source ROI x={x} y={y} w={w} h={h} (overrides the style)", own.roi);
       clearBtn.hidden = false;
+    } else if (preset.roi) {
+      status.textContent = fmtROI("style ROI x={x} y={y} w={w} h={h} (fallback for this asset)", preset.roi);
+      clearBtn.hidden = true;
     } else {
       status.textContent = t("full frame (no ROI)");
       clearBtn.hidden = true;
@@ -1009,7 +1023,7 @@ function drawROIOverlay() {
 
 async function openROIEditor() {
   if (!currentProject) return;
-  const opt = $("subs-asset").selectedOptions[0];
+  const opt = roiAsset();
   if (!opt) { banner(t("Import an asset first — the ROI editor draws over its first frame")); return; }
   roiAssetId = opt.value;
   roiRect = null;
@@ -1031,22 +1045,27 @@ function closeROIEditor() {
 
 $("btn-roi").addEventListener("click", openROIEditor);
 $("btn-roi-cancel").addEventListener("click", closeROIEditor);
+$("subs-asset").addEventListener("change", refreshROIStatus);
 $("btn-roi-clear").addEventListener("click", async () => {
+  const asset = roiAsset();
+  if (!currentProject || !asset) return;
   try {
-    await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`, { method: "DELETE" });
-    banner(t("Court ROI cleared — analysis uses the full frame again"));
+    await api(`/api/v1/projects/${currentProject.id}/assets/${asset.value}/roi`, { method: "DELETE" });
+    banner(t("Per-source ROI cleared — this asset falls back to the style's region"));
     refreshROIStatus();
   } catch (e) { banner(tf("Clear failed: {msg}", { msg: e.message })); }
 });
 $("btn-roi-save").addEventListener("click", async () => {
-  if (!roiRect) return;
+  if (!roiRect || !currentProject) return;
+  const asset = roiAsset();
+  if (!asset) return;
   try {
-    await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`, {
+    await api(`/api/v1/projects/${currentProject.id}/assets/${asset.value}/roi`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(roiRect),
     });
-    banner(t("Court ROI saved as a workspace override of this style"));
+    banner(t("Court ROI saved for this asset — it overrides the style's region"));
     closeROIEditor();
     refreshROIStatus();
   } catch (e) { banner(tf("Save failed: {msg}", { msg: e.message })); }

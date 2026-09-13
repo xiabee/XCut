@@ -6,6 +6,16 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-13 night session #8
 
 ### Added
+- Per-source court ROI: the court ROI editor now saves per ASSET
+  (`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/roi`, stored in the
+  new `assets.motion_roi` column, migration v4). Each fixed camera gets
+  its own normalized rect; during timeline generation an asset's own
+  region overrides the preset's per-preset one, and assets without a
+  rect fall back to the preset (or the full frame). Distinct regions are
+  distinct analyzer names, so the analysis cache keeps sources strictly
+  separated; when the preset leaves `motion_track` on its default, an
+  asset with its own ROI segments its events from the ROI track instead
+  of the full-frame signal.
 - UI language switch (English / 中文) in the web client topbar. The choice
   persists in localStorage and first-time visitors get the browser
   language's match automatically. Zero dependencies: the zh dictionary is

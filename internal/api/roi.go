@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/xiabee/XCut/internal/pipeline"
+	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/style"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -107,4 +108,72 @@ func finiteRect(x, y, w, h float64) bool {
 		}
 	}
 	return x >= 0 && y >= 0 && w > 0 && h > 0 && x+w <= 1 && y+h <= 1
+}
+
+// Per-source court ROI: the same normalized rect, but stored on ONE asset
+// (assets.motion_roi) instead of the preset. During timeline generation an
+// asset's own region overrides the preset's; assets without one fall back
+// to the preset's (or the full frame). Different regions are different
+// analyzer names, so the analysis cache keeps them strictly separate.
+
+func (s *Server) assetROIHandlerScope(w http.ResponseWriter, r *http.Request) (*storage.Asset, error) {
+	asset, err := s.DB.GetAsset(r.Context(), r.PathValue("assetID"))
+	if err != nil {
+		return nil, err
+	}
+	if asset == nil || asset.ProjectID != r.PathValue("id") {
+		return nil, xcerr.E(xcerr.CodeNotFound, "asset not found in this project", nil)
+	}
+	return asset, nil
+}
+
+func (s *Server) handleAssetROIGet(w http.ResponseWriter, r *http.Request) {
+	asset, err := s.assetROIHandlerScope(w, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"roi": asset.MotionROI})
+}
+
+func (s *Server) handleAssetROIPut(w http.ResponseWriter, r *http.Request) {
+	asset, err := s.assetROIHandlerScope(w, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+		W float64 `json:"w"`
+		H float64 `json:"h"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err := dec.Decode(&body); err != nil {
+		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
+		return
+	}
+	roi := &storage.MotionROI{X: body.X, Y: body.Y, W: body.W, H: body.H}
+	if err := s.DB.SetAssetROI(r.Context(), asset.ID, roi); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"roi": roi})
+}
+
+func (s *Server) handleAssetROIDelete(w http.ResponseWriter, r *http.Request) {
+	asset, err := s.assetROIHandlerScope(w, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if asset.MotionROI == nil {
+		writeErr(w, xcerr.E(xcerr.CodeNotFound, "this asset has no per-source roi to clear", nil))
+		return
+	}
+	if err := s.DB.SetAssetROI(r.Context(), asset.ID, nil); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"roi": nil})
 }

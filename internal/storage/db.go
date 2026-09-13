@@ -159,6 +159,14 @@ ON jobs(project_id, type)
 WHERE status IN ('queued', 'running')
   AND type IN ('analyze', 'timeline', 'render', 'subtitles');
 `},
+	// v4: per-source motion ROI. A fixed camera per file means the court
+	// sits at a different spot in each source; the per-preset rect cannot
+	// express that. The rect is JSON (normalized 0..1) or '' when unset —
+	// the per-preset motion_roi stays as the fallback for assets without
+	// their own region.
+	{id: 4, name: "asset-motion-roi", stmt: `
+ALTER TABLE assets ADD COLUMN motion_roi TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is
