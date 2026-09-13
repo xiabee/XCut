@@ -1,14 +1,26 @@
 # XCut Command Reference
 
-_Generated from `xcut <command> --help` output (commit 68f7fa7)._
+_Generated from `xcut <command> --help` output; refreshed for v0.1.4-alpha._
 
 Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
+
+**No subcommand (Windows)**: double-clicking the exe opens the desktop
+client (equivalent to `xcut client`); if another instance is already
+running, its UI is opened in the browser instead. FFmpeg/ffprobe placed
+next to the executable are picked up automatically (before PATH).
 
 ## xcut analyze
 ```
 usage: xcut analyze <project> [assetID...]
 
 run baseline analyzers over project assets
+```
+
+## xcut client
+```
+usage: xcut client [--addr host:port] [--browser]
+
+open the desktop editing client (native window over the local server)
 ```
 
 ## xcut auto
