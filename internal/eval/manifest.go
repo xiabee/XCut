@@ -24,6 +24,32 @@ type Case struct {
 	Media    string  `json:"media"`
 	Style    string  `json:"style,omitempty"` // style preset; caller applies a default
 	Expected []Range `json:"expected"`
+	// AssetROI (optional) pins a per-source motion region on the case's
+	// single asset before the timeline runs — letting manifests A/B the
+	// court-ROI override the same way styles are A/B'd.
+	AssetROI *ROI `json:"asset_roi,omitempty"`
+}
+
+// ROI is a normalized region of interest (0..1). Same rule as the
+// preset/asset motion_roi; kept local so this package stays storage-free.
+type ROI struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
+// Valid mirrors style.Validate's motion_roi rule.
+func (r *ROI) Valid() bool {
+	if r == nil {
+		return false
+	}
+	for _, v := range []float64{r.X, r.Y, r.W, r.H} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return r.X >= 0 && r.Y >= 0 && r.W > 0 && r.H > 0 && r.X+r.W <= 1 && r.Y+r.H <= 1
 }
 
 // maxManifestBytes caps manifest size (a manifest is small text by design).

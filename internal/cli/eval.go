@@ -195,8 +195,22 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]eval
 		return nil, err
 	}
 	d := ea.Pipeline(db)
-	if _, err := d.ImportAsset(p, c.Media); err != nil {
+	asset, err := d.ImportAsset(p, c.Media)
+	if err != nil {
 		return nil, err
+	}
+	// Per-case court ROI: applied to the imported asset so the timeline
+	// segments THIS case from its own region (manifest A/B support).
+	if c.AssetROI != nil {
+		if !c.AssetROI.Valid() {
+			return nil, xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("case %s: asset_roi must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1", c.Name), nil)
+		}
+		if err := db.SetAssetROI(ea.Ctx, asset.ID, &storage.MotionROI{
+			X: c.AssetROI.X, Y: c.AssetROI.Y, W: c.AssetROI.W, H: c.AssetROI.H,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	tl, err := d.BuildTimeline(p, styleName)
 	if err != nil {

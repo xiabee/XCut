@@ -32,6 +32,7 @@ file. Keep media and manifests in a **gitignored local directory**
       "name": "match_day_1",
       "media": "media/badminton1.mp4",
       "style": "badminton_highlight",
+      "asset_roi": {"x": 0.05, "y": 0.1, "w": 0.5, "h": 0.6},
       "expected": [
         {"start": 12.0, "end": 24.5, "label": "rally_1"},
         {"start": 41.0, "end": 55.0, "label": "rally_2"}
@@ -40,6 +41,11 @@ file. Keep media and manifests in a **gitignored local directory**
   ]
 }
 ```
+
+`asset_roi` (optional) pins a per-source motion region on the case's single
+asset before the timeline runs — normalized 0..1, same rule as the preset's
+`motion_roi` and the asset endpoint. Use it to A/B the court-ROI override:
+run the manifest with different rects and diff `results.json`.
 
 ## Run
 
