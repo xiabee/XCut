@@ -93,11 +93,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// flashes and vanishes). Launch the desktop client instead; scripts
 	// always name a subcommand, so nothing legitimate changes. On other
 	// systems the classic usage print stays.
+	doubleClick := false
 	if len(rest) == 0 {
 		if runtime.GOOS != "windows" {
 			usage(stdout)
 			return exitOK
 		}
+		doubleClick = true
 		rest = []string{"client"}
 	}
 
@@ -158,6 +160,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		ws := a.Workspace()
 		release, lerr := ws.Acquire(name)
 		if lerr != nil {
+			// A double-clicked second launch hitting the lock means an
+			// instance is already running: surface it in the browser
+			// instead of an invisible console error. Scripts keep the
+			// hard failure.
+			if doubleClick && openExistingInstance("http://"+cfg.Server.Listen) {
+				return exitOK
+			}
 			fmt.Fprintf(stderr, "xcut %s: %s\n", name, xcerr.UserMessage(lerr))
 			return exitFailure
 		}
