@@ -108,6 +108,12 @@ a:hover { text-decoration: underline; }
   margin-left: auto; padding: 4px 8px; font-size: 12px;
   color: var(--dim); background: var(--bg); width: auto;
 }
+/* Persistent setup guidance (e.g. FFmpeg missing) — stays until resolved,
+   unlike the transient banner. */
+.syswarn {
+  flex: 0 0 auto; padding: 8px 16px; font-size: 13px;
+  color: #3d2f00; background: #ffd75e; border-bottom: 1px solid #e6b800;
+}
 
 /* ---------- workspace grid ---------- */
 .workspace {

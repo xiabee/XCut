@@ -6,6 +6,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-13 night session #8
 
 ### Added
+- **Double-click friendly**: running the exe with no subcommand on
+  Windows now opens the desktop client instead of printing usage and
+  exiting (the console-flash "crash"). FFmpeg/ffprobe are also looked up
+  next to the executable (or its `bin/` folder) before PATH — drop the
+  two exes beside xcut.exe and everything works with zero setup. The
+  health endpoint reports `ffmpeg: ok|missing`, and the UI shows a
+  persistent yellow setup banner (EN/ZH) until the toolchain appears.
+  `scripts/make-installer.ps1` packages the distribution zip.
 - Per-source court ROI: the court ROI editor now saves per ASSET
   (`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/roi`, stored in the
   new `assets.motion_roi` column, migration v4). Each fixed camera gets

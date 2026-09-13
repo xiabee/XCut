@@ -203,6 +203,10 @@ func Env(cfg *Config) {
 
 // Resolve validates and repairs the config after defaults+file+env+flags merge.
 func Resolve(cfg *Config) error {
+	// Proximity lookup first: a double-clicked release exe has no PATH
+	// setup, so tools placed next to the binary win before PATH does.
+	neighborTools(cfg)
+
 	if ws := strings.TrimSpace(cfg.Workspace); ws == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {

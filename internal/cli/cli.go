@@ -72,11 +72,6 @@ const exitUsage = 2
 
 // Run executes the CLI and returns the process exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		usage(stdout)
-		return exitOK
-	}
-
 	gfs := flag.NewFlagSet("xcut", flag.ContinueOnError)
 	gfs.SetOutput(io.Discard) // suppress flag's own usage print; we render errors ourselves
 	cfgPath := gfs.String("config", "", "path to config file (default: <workspace>/config.json)")
@@ -92,9 +87,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	rest := gfs.Args()
+
+	// No subcommand: on Windows this is almost always a double-click on the
+	// exe — printing usage and exiting looks like a crash (the console
+	// flashes and vanishes). Launch the desktop client instead; scripts
+	// always name a subcommand, so nothing legitimate changes. On other
+	// systems the classic usage print stays.
 	if len(rest) == 0 {
-		usage(stdout)
-		return exitOK
+		if runtime.GOOS != "windows" {
+			usage(stdout)
+			return exitOK
+		}
+		rest = []string{"client"}
 	}
 
 	name, cmdArgs := rest[0], rest[1:]

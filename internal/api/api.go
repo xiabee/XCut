@@ -9,9 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"strings"
 	"sync"
 
+	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
@@ -107,11 +109,21 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+	// Cheap presence check (no process spawn): the double-clicked-exe
+	// audience has no PATH set up, and the UI must be able to tell them
+	// WHY analyze/render would fail.
+	t := media.ResolveTools(s.Pipe.Cfg)
+	_, ffmpegErr := exec.LookPath(t.FFmpeg)
+	resp := map[string]any{
 		"ok":      true,
 		"version": version.Version,
 		"commit":  version.Commit,
-	})
+		"ffmpeg":  "ok",
+	}
+	if ffmpegErr != nil {
+		resp["ffmpeg"] = "missing"
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleProjectsList(w http.ResponseWriter, r *http.Request) {

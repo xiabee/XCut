@@ -65,6 +65,12 @@ func TestHealth(t *testing.T) {
 	if rec.Code != http.StatusOK || out["ok"] != true {
 		t.Fatalf("health: %d %v", rec.Code, out)
 	}
+	// Toolchain presence drives the UI's setup banner: the field must
+	// always be one of the two known states (which one depends on whether
+	// the test host has ffmpeg on PATH).
+	if ff, ok := out["ffmpeg"].(string); !ok || (ff != "ok" && ff != "missing") {
+		t.Fatalf("health ffmpeg state = %v, want ok|missing", out["ffmpeg"])
+	}
 }
 
 func TestProjectCRUD(t *testing.T) {

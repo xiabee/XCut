@@ -80,10 +80,16 @@ function banner(msg) {
 /* ---------- health ---------- */
 async function refreshHealth() {
   const el = $("health");
+  const warn = $("syswarn");
   try {
     const h = await api("/api/v1/health");
     el.textContent = `v${h.version} · ${t("online")}`;
     el.className = "health ok";
+    // Setup guidance: a double-clicked exe usually means no PATH-managed
+    // FFmpeg. Stay visible until the toolchain appears.
+    warn.hidden = h.ffmpeg !== "missing";
+    if (warn.hidden) warn.textContent = "";
+    else warn.textContent = t("FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.");
   } catch (_) {
     el.textContent = t("offline");
     el.className = "health bad";

@@ -13,6 +13,7 @@ window.XCUT_I18N = {
     "online": "在线",
     "offline": "离线",
     "Lost contact with the server — retrying…": "与服务器失去联系 — 正在重试…",
+    "FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.": "未检测到 FFmpeg —— 请把 ffmpeg.exe 和 ffprobe.exe 放到 xcut.exe 同目录（或其旁边的 bin 目录），或安装到 PATH 后重启应用。",
 
     "Media": "媒体",
     "Import": "导入",
