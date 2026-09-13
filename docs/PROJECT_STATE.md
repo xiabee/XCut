@@ -109,7 +109,11 @@ Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
   browser-verified end to end.
 - **Web UI** (go:embed, zero deps): project CRUD, import, analyze →
   timeline → render with job progress, MP4 playback with transport,
-  download. **Modern editing workspace** (2026-09-13): three-pane editor —
+  download. **UI language switch** (2026-09-13 night #8): English / 中文
+  via the topbar selector — localStorage-persisted, browser-language
+  auto-detect on first visit, zero deps (plain-JSON dictionary in
+  i18n.js + data-i18n attributes + t()/tf() in app.js), drift-gated by
+  static_i18n_test.go. **Modern editing workspace** (2026-09-13): three-pane editor —
   media pool with client-captured thumbnails, visual timeline (clip
   blocks sized by duration, editable transition badges, drag reorder,
   edge-handle trimming, time ruler seeking the preview, playhead), and an

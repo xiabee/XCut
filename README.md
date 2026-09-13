@@ -115,6 +115,11 @@ in `motion_roi`). The API surface is
 Every selected clip carries its score, score breakdown and the reason it was
 picked in its metadata — the web UI shows the "why" per clip.
 
+The web UI speaks English and Chinese: the selector in the topbar switches
+instantly, the choice persists, and first-time visitors get whichever
+language their browser prefers (no dependencies — a plain JSON dictionary
+keyed by the English strings, drift-checked by a Go test).
+
 ## Timeline & rendering
 
 The renderer applies the timeline exactly as validated: `cut`, `fade`

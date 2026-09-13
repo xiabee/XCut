@@ -5,6 +5,44 @@ const $ = (id) => document.getElementById(id);
 let currentProject = null;
 let pollTimer = null;
 
+/* ---------- i18n ---------- */
+/* Dictionary lives in i18n.js (window.XCUT_I18N, plain JSON so the Go test
+ * gate can parse it). Keys are the English source strings; t() falls back
+ * to the key itself, so English needs no entry. The choice persists in
+ * localStorage and defaults to the browser language. */
+const I18N = (typeof window !== "undefined" && window.XCUT_I18N) || {};
+let lang = "en";
+try {
+  lang = localStorage.getItem("xcut_lang") ||
+    ((navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en");
+} catch (_) { /* storage unavailable — stay with the default */ }
+if (lang !== "zh") lang = "en";
+
+const t = (s) => (I18N[lang] && I18N[lang][s]) || s;
+const tf = (s, params) =>
+  t(s).replace(/\{(\w+)\}/g, (m, k) => (params && k in params) ? String(params[k]) : m);
+
+function applyI18n() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = t(el.dataset.i18nPlaceholder);
+  $("lang").value = lang;
+}
+
+function setLang(l) {
+  lang = l === "zh" ? "zh" : "en";
+  try { localStorage.setItem("xcut_lang", lang); } catch (_) { /* private mode etc. */ }
+  applyI18n();
+  // Re-render every dynamic surface so in-flight text follows the switch;
+  // each of these guards itself when no project is open.
+  refreshHealth();
+  refreshTimeline();
+  refreshJobs();
+  refreshSubtitlesStatus();
+  refreshROIStatus();
+}
+
 async function api(path, opts) {
   const resp = await fetch(path, opts);
   let body = {};
@@ -44,10 +82,10 @@ async function refreshHealth() {
   const el = $("health");
   try {
     const h = await api("/api/v1/health");
-    el.textContent = `v${h.version} · online`;
+    el.textContent = `v${h.version} · ${t("online")}`;
     el.className = "health ok";
   } catch (_) {
-    el.textContent = "offline";
+    el.textContent = t("offline");
     el.className = "health bad";
   }
 }
@@ -87,7 +125,7 @@ $("new-project").addEventListener("submit", async (e) => {
     await post("/api/v1/projects", { name: $("np-name").value });
     $("np-name").value = "";
     await refreshProjects();
-  } catch (err) { banner(`Create failed: ${err.message}`); }
+  } catch (err) { banner(tf("Create failed: {msg}", { msg: err.message })); }
 });
 
 function selectProject(p) {
@@ -110,7 +148,7 @@ function selectProject(p) {
   // Disarm the regeneration confirm across project switches.
   const tl = $("btn-timeline");
   tl.dataset.armed = "";
-  tl.textContent = "2 · Timeline";
+  tl.textContent = t("2 · Timeline");
   refreshAssets();
   refreshJobs();
   refreshTimeline();
@@ -124,12 +162,12 @@ async function deleteProject() {
   const btn = $("delete-project");
   if (btn.dataset.armed !== "1") {
     btn.dataset.armed = "1";
-    btn.title = `really delete "${currentProject.name}"? click again`;
-    setTimeout(() => { btn.dataset.armed = ""; btn.title = "delete this project"; }, 4000);
+    btn.title = tf('really delete "{name}"? click again', { name: currentProject.name });
+    setTimeout(() => { btn.dataset.armed = ""; btn.title = t("delete this project"); }, 4000);
     return;
   }
   btn.dataset.armed = "";
-  btn.title = "delete this project";
+  btn.title = t("delete this project");
   try {
     await api(`/api/v1/projects/${currentProject.id}`, { method: "DELETE" });
     currentProject = null;
@@ -141,7 +179,7 @@ async function deleteProject() {
     $("player").removeAttribute("src");
     $("proj-current").hidden = true;
     await refreshProjects();
-  } catch (e) { banner(`Delete failed: ${e.message}`); }
+  } catch (e) { banner(tf("Delete failed: {msg}", { msg: e.message })); }
 }
 
 /* ---------- media pool ---------- */
@@ -255,7 +293,7 @@ async function refreshJobs() {
         running = true;
         const cancel = document.createElement("button");
         cancel.className = "cancel";
-        cancel.textContent = "Cancel";
+        cancel.textContent = t("Cancel");
         cancel.addEventListener("click", () => cancelJob(j.id));
         li.append(cancel);
       }
@@ -270,7 +308,7 @@ async function refreshJobs() {
     schedulePoll(running ? 800 : 2500);
   } catch (e) {
     pollFailures++;
-    if (pollFailures === 5) banner("Lost contact with the server — retrying…");
+    if (pollFailures === 5) banner(t("Lost contact with the server — retrying…"));
     schedulePoll(Math.min(2500 * pollFailures, 15000));
   }
 }
@@ -279,7 +317,7 @@ async function cancelJob(jobID) {
   try {
     await post(`/api/v1/jobs/${jobID}/cancel`, {});
   } catch (e) {
-    banner(`Cancel failed: ${e.message}`);
+    banner(tf("Cancel failed: {msg}", { msg: e.message }));
   }
   refreshJobs();
 }
@@ -413,7 +451,7 @@ function renderTimeline() {
   if (!has) {
     const empty = document.createElement("div");
     empty.className = "tl-empty";
-    empty.textContent = timelineDoc === null ? "generate a timeline (step 2) to start editing" : "every clip removed — save to empty it, or Reset";
+    empty.textContent = timelineDoc === null ? t("generate a timeline (step 2) to start editing") : t("every clip removed — save to empty it, or Reset");
     strip.appendChild(empty);
     renderInspector();
     return;
@@ -460,7 +498,7 @@ function renderTimeline() {
     const asset = (timelineDoc.tracks[0].clips.find((o) => o.asset_id === c.asset_id) || {});
     const nm = document.createElement("div");
     nm.className = "name";
-    nm.textContent = asset.source || "clip " + (i + 1);
+    nm.textContent = asset.source || tf("clip {n}", { n: i + 1 });
     const sub = document.createElement("div");
     sub.className = "sub";
     sub.textContent = `${fmtClock(c.source_start)}–${fmtClock(c.source_end)} @${c.speed}x`;
@@ -469,10 +507,10 @@ function renderTimeline() {
 
     const hL = document.createElement("div");
     hL.className = "trimL";
-    hL.title = "drag to trim the head";
+    hL.title = t("drag to trim the head");
     const hR = document.createElement("div");
     hR.className = "trimR";
-    hR.title = "drag to trim the tail";
+    hR.title = t("drag to trim the tail");
     block.append(hL, hR);
 
     block.addEventListener("click", (e) => {
@@ -513,8 +551,10 @@ function renderTimeline() {
   for (let i = 1; i < clipEdits.length; i++) {
     const prev = clipEdits[i - 1];
     if (prev._removed) continue;
-    const t = prev.transition;
-    const kind = t && t.type !== "cut" ? t.type : "cut";
+    // `tr` not `t`: the global translator is t(); this loop's transition
+    // must not shadow it (the old name collided when i18n landed).
+    const tr = prev.transition;
+    const kind = tr && tr.type !== "cut" ? tr.type : "cut";
     const badge = document.createElement("div");
     badge.className = "tl-join";
     badge.style.left = px(clipEdits[i].timeline_start) + "px";
@@ -522,9 +562,9 @@ function renderTimeline() {
     k.className = "k";
     k.textContent = { xfade: "⤬", fade: "◐" }[kind] || "|";
     const lbl = document.createElement("span");
-    lbl.textContent = kind === "xfade" ? `${(t.duration || 0).toFixed(1)}s` : kind;
+    lbl.textContent = kind === "xfade" ? `${(tr.duration || 0).toFixed(1)}s` : t(kind);
     badge.append(k, lbl);
-    badge.title = `${kind} join — select the previous clip to edit it`;
+    badge.title = tf("{kind} join — select the previous clip to edit it", { kind });
     badge.addEventListener("click", (e) => { e.stopPropagation(); selectClip(i - 1); });
     track.appendChild(badge);
   }
@@ -645,7 +685,7 @@ function renderInspector() {
   box.innerHTML = "";
 
   const name = document.createElement("h3");
-  name.textContent = `Clip ${selectedIndex + 1}`;
+  name.textContent = tf("Clip {n}", { n: selectedIndex + 1 });
   box.appendChild(name);
 
   const stat = (k, v) => {
@@ -658,11 +698,11 @@ function renderInspector() {
     row.append(key, val);
     return row;
   };
-  box.appendChild(stat("timeline in", fmtClock(c.timeline_start)));
-  box.appendChild(stat("duration", playDur(c).toFixed(1) + "s"));
+  box.appendChild(stat(t("timeline in"), fmtClock(c.timeline_start)));
+  box.appendChild(stat(t("duration"), playDur(c).toFixed(1) + "s"));
   if (c.metadata && c.metadata.score !== undefined) {
-    box.appendChild(stat("score", String(c.metadata.score)));
-    if (c.metadata.reason) box.appendChild(stat("why", String(c.metadata.reason)));
+    box.appendChild(stat(t("score"), String(c.metadata.score)));
+    if (c.metadata.reason) box.appendChild(stat(t("why"), String(c.metadata.reason)));
   }
 
   const grid = document.createElement("div");
@@ -679,40 +719,41 @@ function renderInspector() {
     grid.appendChild(l);
     return input;
   };
-  const inTrim = field("trim in (s)", "number", c.source_start.toFixed(2), { step: "0.1", min: "0" });
-  const outTrim = field("trim out (s)", "number", c.source_end.toFixed(2), { step: "0.1" });
-  const speed = field("speed (×)", "number", String(c.speed), { step: "0.05", min: "0.1", max: "4" });
-  const volume = field("volume (0–1)", "number", String(c.volume), { step: "0.05", min: "0", max: "1" });
+  const inTrim = field(t("trim in (s)"), "number", c.source_start.toFixed(2), { step: "0.1", min: "0" });
+  const outTrim = field(t("trim out (s)"), "number", c.source_end.toFixed(2), { step: "0.1" });
+  const speed = field(t("speed (×)"), "number", String(c.speed), { step: "0.05", min: "0.1", max: "4" });
+  const volume = field(t("volume (0–1)"), "number", String(c.volume), { step: "0.05", min: "0", max: "1" });
   box.appendChild(grid);
 
   // Transition editor: applies to the join AFTER this clip (server side the
   // transition rides the left clip). cut | fade | xfade + duration.
-  const t = c.transition || { type: "cut", duration: 0 };
+  // `tr` not `t` — the global translator owns the name t().
+  const tr = c.transition || { type: "cut", duration: 0 };
   const trow = document.createElement("label");
   trow.className = "field";
   const tspan = document.createElement("span");
-  tspan.textContent = "transition to next clip";
+  tspan.textContent = t("transition to next clip");
   const tsel = document.createElement("select");
-  for (const [v, label] of [["cut", "cut (hard join)"], ["fade", "fade (through black)"], ["xfade", "crossfade (xfade)"]]) {
+  for (const [v, label] of [["cut", t("cut (hard join)")], ["fade", t("fade (through black)")], ["xfade", t("crossfade (xfade)")]]) {
     const o = document.createElement("option");
     o.value = v; o.textContent = label;
-    if (t.type === v) o.selected = true;
+    if (tr.type === v) o.selected = true;
     tsel.appendChild(o);
   }
   trow.append(tspan, tsel);
-  const tdur = field("xfade duration (s)", "number", (t.duration || 0).toFixed(2), { step: "0.1", min: "0" });
+  const tdur = field(t("xfade duration (s)"), "number", (tr.duration || 0).toFixed(2), { step: "0.1", min: "0" });
   box.appendChild(trow);
   box.appendChild(tdur);
 
   const apply = document.createElement("div");
   apply.className = "insp-row";
   const btnApply = document.createElement("button");
-  btnApply.textContent = "Apply";
+  btnApply.textContent = t("Apply");
   btnApply.className = "primary";
   btnApply.addEventListener("click", () => {
     const ns = parseFloat(inTrim.value), ne = parseFloat(outTrim.value);
     if (!isFinite(ns) || !isFinite(ne) || ns < 0 || ne <= ns) {
-      banner("Trim rejected: out must be after in");
+      banner(t("Trim rejected: out must be after in"));
       return;
     }
     c.source_start = ns;
@@ -728,10 +769,10 @@ function renderInspector() {
     renderTimeline();
   });
   const btnPreview = document.createElement("button");
-  btnPreview.textContent = "▶ preview";
+  btnPreview.textContent = t("▶ preview");
   btnPreview.addEventListener("click", () => previewClip(c));
   const btnRemove = document.createElement("button");
-  btnRemove.textContent = c._removed ? "undo remove" : "remove";
+  btnRemove.textContent = c._removed ? t("undo remove") : t("remove");
   btnRemove.className = "danger";
   btnRemove.addEventListener("click", () => {
     c._removed = !c._removed;
@@ -743,7 +784,7 @@ function renderInspector() {
 
   const note = document.createElement("div");
   note.className = "insp-note";
-  note.textContent = "applies to the working copy — “Save changes” writes it to the server (revision-checked).";
+  note.textContent = t("applies to the working copy — “Save changes” writes it to the server (revision-checked).");
   box.appendChild(note);
 }
 
@@ -751,15 +792,15 @@ async function restoreBackup() {
   if (!currentProject) return;
   try {
     await api(`/api/v1/projects/${currentProject.id}/timeline/restore-backup`, { method: "POST" });
-    banner("Timeline backup restored (the regenerated version is now the backup)");
+    banner(t("Timeline backup restored (the regenerated version is now the backup)"));
     await refreshTimeline();
-  } catch (e) { banner(`Restore failed: ${e.message}`); }
+  } catch (e) { banner(tf("Restore failed: {msg}", { msg: e.message })); }
 }
 
 async function saveTimeline() {
   if (!currentProject || !timelineDoc) return;
   const kept = clipEdits.filter(c => !c._removed);
-  if (kept.length === 0) { banner("Cannot save: every clip is removed"); return; }
+  if (kept.length === 0) { banner(t("Cannot save: every clip is removed")); return; }
   const doc = JSON.parse(JSON.stringify(timelineDoc));
   // Optimistic concurrency: send the revision we read; a mismatch (another
   // tab saved, or the timeline was regenerated) is refused with 409.
@@ -814,14 +855,17 @@ async function saveTimeline() {
     const body = await resp.json();
     if (!resp.ok) {
       banner(resp.status === 409
-        ? "Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits"
-        : `Save rejected: ${body.message || resp.statusText}`);
+        ? t("Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits")
+        : tf("Save rejected: {msg}", { msg: body.message || resp.statusText }));
       return;
     }
     timelineDoc.revision = body.revision;
-    banner(`Timeline saved (${body.clips} clips${dropped ? `, ${dropped} transition(s) dropped — their joins no longer fit` : ""})`);
+    const droppedMsg = dropped
+      ? tf(" — {n} transition(s) dropped (their joins no longer fit)", { n: dropped })
+      : "";
+    banner(tf("Timeline saved ({n} clips)", { n: body.clips }) + droppedMsg);
     await refreshTimeline();
-  } catch (e) { banner(`Save failed: ${e.message}`); }
+  } catch (e) { banner(tf("Save failed: {msg}", { msg: e.message })); }
 }
 
 $("btn-tl-save").addEventListener("click", saveTimeline);
@@ -868,12 +912,12 @@ async function refreshSubtitlesStatus() {
     const st = await api(`/api/v1/projects/${pid}/subtitles`);
     if (projectChangedSince(pid)) return; // stale: panel belongs to the new project now
     if (!st.srt && !st.ass) {
-      status.textContent = "none yet — transcribe to create";
+      status.textContent = t("none yet — transcribe to create");
       links.innerHTML = "";
       previewBtn.hidden = true; hideTranscript();
       return;
     }
-    status.textContent = st.ass ? "srt + karaoke ass ready" : "srt ready";
+    status.textContent = st.ass ? t("srt + karaoke ass ready") : t("srt ready");
     const base = `/api/v1/projects/${currentProject.id}/subtitles/file?format=`;
     links.innerHTML = "";
     for (const [fmt, ok] of [["srt", st.srt], ["ass", st.ass]]) {
@@ -881,12 +925,12 @@ async function refreshSubtitlesStatus() {
       const a = document.createElement("a");
       a.href = base + fmt;
       a.download = "";
-      a.textContent = `download .${fmt}`;
+      a.textContent = tf("download .{fmt}", { fmt });
       links.appendChild(a);
     }
     previewBtn.hidden = !st.srt;
     if (!st.srt) hideTranscript();
-  } catch (_) { status.textContent = "status unavailable"; }
+  } catch (_) { status.textContent = t("status unavailable"); }
 }
 
 $("btn-subs-preview").addEventListener("click", async () => {
@@ -900,7 +944,7 @@ $("btn-subs-preview").addEventListener("click", async () => {
     if (!resp.ok) throw new Error(`${resp.status}: ${resp.statusText}`);
     transcript.textContent = srtToText(await resp.text()); // untrusted: textContent only
     transcript.hidden = false;
-  } catch (e) { banner(`Preview failed: ${e.message}`); }
+  } catch (e) { banner(tf("Preview failed: {msg}", { msg: e.message })); }
 });
 
 function srtToText(srt) {
@@ -916,8 +960,8 @@ function srtToText(srt) {
 $("btn-subtitles").addEventListener("click", async () => {
   try {
     await trigger("/subtitles", { asset: $("subs-asset").value || undefined });
-    banner("Transcription queued — status updates when the job finishes");
-  } catch (e) { banner(`Transcribe failed: ${e.message}`); busy(false); }
+    banner(t("Transcription queued — status updates when the job finishes"));
+  } catch (e) { banner(tf("Transcribe failed: {msg}", { msg: e.message })); busy(false); }
 });
 
 /* ---------- court ROI editor ---------- */
@@ -938,13 +982,14 @@ async function refreshROIStatus() {
     const { roi } = await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`);
     if (projectChangedSince(pid)) return;
     if (roi) {
-      status.textContent = `ROI x=${roi.x.toFixed(2)} y=${roi.y.toFixed(2)} w=${roi.w.toFixed(2)} h=${roi.h.toFixed(2)}`;
+      status.textContent = tf("ROI x={x} y={y} w={w} h={h}",
+        { x: roi.x.toFixed(2), y: roi.y.toFixed(2), w: roi.w.toFixed(2), h: roi.h.toFixed(2) });
       clearBtn.hidden = false;
     } else {
-      status.textContent = "full frame (no ROI)";
+      status.textContent = t("full frame (no ROI)");
       clearBtn.hidden = true;
     }
-  } catch (_) { status.textContent = "roi status unavailable"; }
+  } catch (_) { status.textContent = t("roi status unavailable"); }
 }
 
 function drawROIOverlay() {
@@ -965,7 +1010,7 @@ function drawROIOverlay() {
 async function openROIEditor() {
   if (!currentProject) return;
   const opt = $("subs-asset").selectedOptions[0];
-  if (!opt) { banner("Import an asset first — the ROI editor draws over its first frame"); return; }
+  if (!opt) { banner(t("Import an asset first — the ROI editor draws over its first frame")); return; }
   roiAssetId = opt.value;
   roiRect = null;
   $("btn-roi-save").disabled = true;
@@ -989,9 +1034,9 @@ $("btn-roi-cancel").addEventListener("click", closeROIEditor);
 $("btn-roi-clear").addEventListener("click", async () => {
   try {
     await api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`, { method: "DELETE" });
-    banner("Court ROI cleared — analysis uses the full frame again");
+    banner(t("Court ROI cleared — analysis uses the full frame again"));
     refreshROIStatus();
-  } catch (e) { banner(`Clear failed: ${e.message}`); }
+  } catch (e) { banner(tf("Clear failed: {msg}", { msg: e.message })); }
 });
 $("btn-roi-save").addEventListener("click", async () => {
   if (!roiRect) return;
@@ -1001,10 +1046,10 @@ $("btn-roi-save").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(roiRect),
     });
-    banner("Court ROI saved as a workspace override of this style");
+    banner(t("Court ROI saved as a workspace override of this style"));
     closeROIEditor();
     refreshROIStatus();
-  } catch (e) { banner(`Save failed: ${e.message}`); }
+  } catch (e) { banner(tf("Save failed: {msg}", { msg: e.message })); }
 });
 $("style").addEventListener("change", refreshROIStatus);
 
@@ -1043,7 +1088,7 @@ $("style").addEventListener("change", refreshROIStatus);
 /* ---------- pipeline steps ---------- */
 $("btn-analyze").addEventListener("click", async () => {
   try { await trigger("/analyze", {}); }
-  catch (e) { banner(`Analyze failed: ${e.message}`); }
+  catch (e) { banner(tf("Analyze failed: {msg}", { msg: e.message })); }
 });
 
 $("btn-timeline").addEventListener("click", async (e) => {
@@ -1052,19 +1097,19 @@ $("btn-timeline").addEventListener("click", async (e) => {
   // keeps one level of undo). The confirm disarms itself after 4s.
   if (timelineDoc && btn.dataset.armed !== "1") {
     btn.dataset.armed = "1";
-    btn.textContent = "overwrite edits?";
-    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "2 · Timeline"; }, 4000);
+    btn.textContent = t("overwrite edits?");
+    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = t("2 · Timeline"); }, 4000);
     return;
   }
   btn.dataset.armed = "";
-  btn.textContent = "2 · Timeline";
+  btn.textContent = t("2 · Timeline");
   try { await trigger("/timeline", { style: $("style").value }); }
-  catch (err) { banner(`Timeline failed: ${err.message}`); }
+  catch (err) { banner(tf("Timeline failed: {msg}", { msg: err.message })); }
 });
 
 $("btn-render").addEventListener("click", async () => {
   try { await trigger("/render", { subs: $("burn-subs").checked }); showPlayerSoon(); }
-  catch (e) { banner(`Render failed: ${e.message}`); }
+  catch (e) { banner(tf("Render failed: {msg}", { msg: e.message })); }
 });
 
 let playerTimer = null;
@@ -1089,6 +1134,8 @@ async function loadStyles() {
 
 refreshHealth();
 setInterval(refreshHealth, 15000);
+$("lang").addEventListener("change", (e) => setLang(e.target.value));
+applyI18n();
 refreshProjects();
 loadStyles();
 refreshJobs();

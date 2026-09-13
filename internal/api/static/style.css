@@ -104,6 +104,10 @@ a:hover { text-decoration: underline; }
 .health { font-size: 12px; color: var(--dim); white-space: nowrap; }
 .health.ok { color: var(--acc); }
 .health.bad { color: var(--err); }
+.lang {
+  margin-left: auto; padding: 4px 8px; font-size: 12px;
+  color: var(--dim); background: var(--bg); width: auto;
+}
 
 /* ---------- workspace grid ---------- */
 .workspace {

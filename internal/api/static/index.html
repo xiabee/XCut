@@ -11,73 +11,77 @@
   <div class="brand"><svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h9l-2.2 4H16v2H8.5L6 14H3l3.2-5.2L3 4zm10 6h4v2h-4z"/></svg><span>xcut</span></div>
 
   <div class="proj-picker">
-    <button id="proj-current" class="proj-current" hidden>no project <span class="caret">▾</span></button>
+    <button id="proj-current" class="proj-current" hidden><span data-i18n="no project">no project</span> <span class="caret">▾</span></button>
     <div class="proj-menu-wrap">
       <ul id="project-list" class="proj-menu" hidden></ul>
     </div>
     <form id="new-project" class="proj-new">
-      <input id="np-name" placeholder="new project name" autocomplete="off" required>
-      <button type="submit" title="create project">＋</button>
+      <input id="np-name" placeholder="new project name" data-i18n-placeholder="new project name" autocomplete="off" required>
+      <button type="submit" title="create project" data-i18n-title="create project">＋</button>
     </form>
-    <button id="delete-project" class="icon-danger" hidden title="delete this project">🗑</button>
+    <button id="delete-project" class="icon-danger" hidden title="delete this project" data-i18n-title="delete this project">🗑</button>
   </div>
 
   <span id="banner" class="banner" hidden></span>
-  <span id="health" class="health">connecting…</span>
+  <select id="lang" class="lang" title="language / 语言">
+    <option value="en">English</option>
+    <option value="zh">中文</option>
+  </select>
+  <span id="health" class="health" data-i18n="connecting…">connecting…</span>
 </header>
 
 <main class="workspace">
   <aside class="rail">
     <section class="panel" id="panel-media">
-      <h2>Media</h2>
+      <h2 data-i18n="Media">Media</h2>
       <form id="import-form" class="import-row">
-        <input id="import-path" placeholder="local video path, e.g. D:\videos\match.mp4" autocomplete="off" required>
-        <button type="submit">Import</button>
+        <input id="import-path" placeholder="local video path, e.g. D:\videos\match.mp4" data-i18n-placeholder="local video path, e.g. D:\videos\match.mp4" autocomplete="off" required>
+        <button type="submit" data-i18n="Import">Import</button>
       </form>
       <div id="asset-grid" class="asset-grid"></div>
     </section>
 
     <section class="panel" id="panel-pipeline">
-      <h2>Pipeline</h2>
+      <h2 data-i18n="Pipeline">Pipeline</h2>
       <div class="steps">
-        <label class="field">style
+        <label class="field"><span data-i18n="style">style</span>
           <select id="style"></select>
         </label>
         <div class="step-row">
-          <button id="btn-analyze" class="step">1 · Analyze</button>
-          <button id="btn-timeline" class="step">2 · Timeline</button>
-          <button id="btn-render" class="step primary">3 · Render</button>
+          <button id="btn-analyze" class="step" data-i18n="1 · Analyze">1 · Analyze</button>
+          <button id="btn-timeline" class="step" data-i18n="2 · Timeline">2 · Timeline</button>
+          <button id="btn-render" class="step primary" data-i18n="3 · Render">3 · Render</button>
         </div>
-        <label class="check"><input type="checkbox" id="burn-subs"> burn subtitles into the render</label>
-        <p class="hint">analyze → timeline → render; every step records a job.
+        <label class="check"><input type="checkbox" id="burn-subs"> <span data-i18n="burn subtitles into the render">burn subtitles into the render</span></label>
+        <p class="hint" data-i18n="analyze → timeline → render; every step records a job. Regenerating (step 2) overwrites manual edits saved in the timeline — that is by design.">analyze → timeline → render; every step records a job.
         Regenerating (step 2) overwrites manual edits saved in the timeline — that is by design.</p>
       </div>
     </section>
 
     <section class="panel" id="panel-subs">
-      <h2>Subtitles <span class="tag">AI sidecar</span></h2>
+      <h2><span data-i18n="Subtitles">Subtitles</span> <span class="tag" data-i18n="AI sidecar">AI sidecar</span></h2>
       <div class="row">
-        <label class="field">asset
+        <label class="field"><span data-i18n="asset">asset</span>
           <select id="subs-asset"></select>
         </label>
-        <button id="btn-subtitles">Transcribe</button>
+        <button id="btn-subtitles" data-i18n="Transcribe">Transcribe</button>
       </div>
       <div class="row">
-        <button id="btn-subs-preview" class="ghost" hidden>preview transcript</button>
-        <span id="subs-status" class="hint">checking…</span>
+        <button id="btn-subs-preview" class="ghost" hidden data-i18n="preview transcript">preview transcript</button>
+        <span id="subs-status" class="hint" data-i18n="checking…">checking…</span>
         <span id="subs-links"></span>
       </div>
       <pre id="subs-transcript" class="transcript" hidden></pre>
-      <p class="hint">speech-to-text needs a local Whisper backend; word-timed
+      <p class="hint" data-i18n="speech-to-text needs a local Whisper backend; word-timed results also produce a karaoke .ass for sing-along burning.">speech-to-text needs a local Whisper backend; word-timed
       results also produce a karaoke .ass for sing-along burning.</p>
     </section>
 
     <section class="panel" id="panel-roi">
-      <h2>Court ROI <span class="tag">motion region</span></h2>
+      <h2><span data-i18n="Court ROI">Court ROI</span> <span class="tag" data-i18n="motion region">motion region</span></h2>
       <div class="row">
-        <button id="btn-roi">draw court ROI…</button>
-        <button id="btn-roi-clear" class="ghost" hidden>clear</button>
-        <span id="roi-status" class="hint">checking…</span>
+        <button id="btn-roi" data-i18n="draw court ROI…">draw court ROI…</button>
+        <button id="btn-roi-clear" class="ghost" hidden data-i18n="clear">clear</button>
+        <span id="roi-status" class="hint" data-i18n="checking…">checking…</span>
       </div>
       <div id="roi-editor" hidden>
         <div id="roi-stage">
@@ -85,15 +89,15 @@
           <canvas id="roi-canvas"></canvas>
         </div>
         <div class="row">
-          <button id="btn-roi-save" disabled>save ROI</button>
-          <button id="btn-roi-cancel" class="ghost">cancel</button>
-          <span class="hint">drag a rectangle over the court area — saved as a workspace override of the selected style.</span>
+          <button id="btn-roi-save" disabled data-i18n="save ROI">save ROI</button>
+          <button id="btn-roi-cancel" class="ghost" data-i18n="cancel">cancel</button>
+          <span class="hint" data-i18n="drag a rectangle over the court area — saved as a workspace override of the selected style.">drag a rectangle over the court area — saved as a workspace override of the selected style.</span>
         </div>
       </div>
     </section>
 
     <section class="panel" id="panel-jobs">
-      <h2>Jobs</h2>
+      <h2 data-i18n="Jobs">Jobs</h2>
       <ul id="jobs" class="jobs"></ul>
     </section>
   </aside>
@@ -101,46 +105,47 @@
   <section id="detail" class="stage empty">
     <div class="placeholder">
       <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 10h22l-5 9h13v4H22l-5.5 10H10l7-12.5L8 10z" opacity=".5"/></svg>
-      <p>Select or create a project.</p>
+      <p data-i18n="Select or create a project.">Select or create a project.</p>
     </div>
 
     <div id="project-view" class="editor" hidden>
       <div class="preview-pane panel">
         <div class="video-frame"><video id="player" controls></video></div>
         <div class="transport">
-          <button id="btn-play" class="icon-btn" title="play / pause (space)">▶</button>
+          <button id="btn-play" class="icon-btn" title="play / pause (space)" data-i18n-title="play / pause (space)">▶</button>
           <span id="player-time" class="time">0:00 / 0:00</span>
-          <a id="download" href="#" download class="ghost">download mp4</a>
+          <a id="download" href="#" download class="ghost" data-i18n="download mp4">download mp4</a>
         </div>
       </div>
 
       <div class="timeline-pane panel">
         <div class="tl-head">
-          <h2>Timeline</h2>
-          <button id="btn-tl-save" disabled>Save changes</button>
-          <button id="btn-tl-reset" class="ghost" disabled>Reset</button>
-          <button id="btn-tl-restore" class="ghost" hidden title="swap the pre-regeneration document back in">Restore backup</button>
+          <h2 data-i18n="Timeline">Timeline</h2>
+          <button id="btn-tl-save" disabled data-i18n="Save changes">Save changes</button>
+          <button id="btn-tl-reset" class="ghost" disabled data-i18n="Reset">Reset</button>
+          <button id="btn-tl-restore" class="ghost" hidden title="swap the pre-regeneration document back in" data-i18n-title="swap the pre-regeneration document back in" data-i18n="Restore backup">Restore backup</button>
           <span class="hint" id="tl-status"></span>
         </div>
         <div id="tl-strip" class="tl-strip">
-          <div class="tl-empty">generate a timeline (step 2) to start editing</div>
+          <div class="tl-empty" data-i18n="generate a timeline (step 2) to start editing">generate a timeline (step 2) to start editing</div>
         </div>
         <video id="clip-preview" controls preload="metadata" hidden></video>
-        <p class="hint">click a clip to inspect · drag blocks to reorder · edits save via “Save changes”</p>
+        <p class="hint" data-i18n="click a clip to inspect · drag blocks to reorder · edits save via “Save changes”">click a clip to inspect · drag blocks to reorder · edits save via “Save changes”</p>
       </div>
     </div>
   </section>
 
   <aside class="inspector" id="inspector">
     <div id="insp-empty" class="insp-empty">
-      <h2>Inspector</h2>
-      <p class="hint">select a clip in the timeline to edit its trim, speed,
+      <h2 data-i18n="Inspector">Inspector</h2>
+      <p class="hint" data-i18n="select a clip in the timeline to edit its trim, speed, volume and transition.">select a clip in the timeline to edit its trim, speed,
       volume and transition.</p>
     </div>
     <div id="insp-clip" hidden></div>
   </aside>
 </main>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

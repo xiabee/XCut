@@ -1,0 +1,128 @@
+/* xcut UI translations. The table is plain JSON assigned to window so the
+ * Go drift gate (static_i18n_test.go) can parse it: keys are the English
+ * source strings, values are the translations. Keep it valid JSON — no
+ * trailing commas, double quotes only. Placeholder tokens ({name}) are
+ * substituted by tf() in app.js. */
+window.XCUT_I18N = {
+  "zh": {
+    "no project": "未选择工程",
+    "new project name": "新工程名称",
+    "create project": "创建工程",
+    "delete this project": "删除此工程",
+    "connecting…": "连接中…",
+    "online": "在线",
+    "offline": "离线",
+    "Lost contact with the server — retrying…": "与服务器失去联系 — 正在重试…",
+
+    "Media": "媒体",
+    "Import": "导入",
+    "local video path, e.g. D:\\videos\\match.mp4": "本地视频路径，如 D:\\videos\\match.mp4",
+
+    "Pipeline": "流水线",
+    "style": "风格",
+    "1 · Analyze": "1 · 分析",
+    "2 · Timeline": "2 · 时间线",
+    "3 · Render": "3 · 渲染",
+    "burn subtitles into the render": "将字幕烧录进成片",
+    "analyze → timeline → render; every step records a job. Regenerating (step 2) overwrites manual edits saved in the timeline — that is by design.": "分析 → 时间线 → 渲染；每一步都会记录任务。重新生成（第 2 步）会覆盖时间线中已保存的手动编辑——这是有意设计。",
+
+    "Subtitles": "字幕",
+    "AI sidecar": "AI 边车",
+    "asset": "素材",
+    "Transcribe": "转写",
+    "preview transcript": "预览文本",
+    "checking…": "检查中…",
+    "speech-to-text needs a local Whisper backend; word-timed results also produce a karaoke .ass for sing-along burning.": "语音转文字需要本地 Whisper 后端；带词级时间戳的结果还会生成卡拉 OK .ass，可用于跟唱烧录。",
+
+    "Court ROI": "球场 ROI",
+    "motion region": "运动区域",
+    "draw court ROI…": "框选球场 ROI…",
+    "clear": "清除",
+    "save ROI": "保存 ROI",
+    "cancel": "取消",
+    "drag a rectangle over the court area — saved as a workspace override of the selected style.": "在球场区域拖出一个矩形——将保存为所选风格的工作区覆盖。",
+
+    "Jobs": "任务",
+    "Cancel": "取消",
+
+    "Select or create a project.": "选择或创建一个工程。",
+
+    "play / pause (space)": "播放 / 暂停（空格）",
+    "download mp4": "下载 MP4",
+
+    "Timeline": "时间线",
+    "Save changes": "保存修改",
+    "Reset": "重置",
+    "Restore backup": "恢复备份",
+    "swap the pre-regeneration document back in": "换回重新生成之前的文档",
+    "generate a timeline (step 2) to start editing": "先生成时间线（第 2 步）即可开始编辑",
+    "every clip removed — save to empty it, or Reset": "所有片段已移除——保存以清空，或点击重置",
+    "click a clip to inspect · drag blocks to reorder · edits save via “Save changes”": "点击片段查看详情 · 拖动色块排序 · 编辑通过“保存修改”落盘",
+
+    "Inspector": "检查器",
+    "select a clip in the timeline to edit its trim, speed, volume and transition.": "在时间线中选择一个片段，编辑它的裁剪、速度、音量与转场。",
+
+    "Create failed: {msg}": "创建失败：{msg}",
+    "Delete failed: {msg}": "删除失败：{msg}",
+    "really delete \"{name}\"? click again": "真的删除“{name}”？再点一次确认",
+    "Cancel failed: {msg}": "取消失败：{msg}",
+    "Analyze failed: {msg}": "分析失败：{msg}",
+    "Timeline failed: {msg}": "时间线失败：{msg}",
+    "Render failed: {msg}": "渲染失败：{msg}",
+    "overwrite edits?": "覆盖已有编辑？",
+
+    "drag to trim the head": "拖动裁剪片头",
+    "drag to trim the tail": "拖动裁剪片尾",
+    "clip {n}": "片段 {n}",
+    "{kind} join — select the previous clip to edit it": "{kind} 接合 — 选择前一个片段以编辑",
+    "cut": "硬切",
+    "fade": "淡黑",
+
+    "Clip {n}": "片段 {n}",
+    "timeline in": "时间线入点",
+    "duration": "时长",
+    "score": "得分",
+    "why": "入选原因",
+    "trim in (s)": "入点裁剪（秒）",
+    "trim out (s)": "出点裁剪（秒）",
+    "speed (×)": "速度（×）",
+    "volume (0–1)": "音量（0–1）",
+    "transition to next clip": "与下一片段的转场",
+    "cut (hard join)": "硬切（直接相接）",
+    "fade (through black)": "淡黑（经过黑场）",
+    "crossfade (xfade)": "交叉淡化（xfade）",
+    "xfade duration (s)": "xfade 时长（秒）",
+    "Apply": "应用",
+    "▶ preview": "▶ 预览",
+    "remove": "移除",
+    "undo remove": "撤销移除",
+    "Trim rejected: out must be after in": "裁剪被拒绝：出点必须晚于入点",
+    "applies to the working copy — “Save changes” writes it to the server (revision-checked).": "修改仅作用于工作副本——“保存修改”才会写入服务器（带版本校验）。",
+
+    "Timeline backup restored (the regenerated version is now the backup)": "已恢复时间线备份（重新生成的版本转为备份）",
+    "Restore failed: {msg}": "恢复失败：{msg}",
+    "Cannot save: every clip is removed": "无法保存：所有片段都被移除了",
+    "Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits": "保存被拒绝：时间线已在别处变更——请点击重置载入当前版本后重新应用编辑",
+    "Save rejected: {msg}": "保存被拒绝：{msg}",
+    "Timeline saved ({n} clips)": "时间线已保存（{n} 个片段）",
+    " — {n} transition(s) dropped (their joins no longer fit)": " — {n} 个转场被丢弃（接合处已放不下）",
+    "Save failed: {msg}": "保存失败：{msg}",
+
+    "none yet — transcribe to create": "暂无 — 转写后生成",
+    "srt + karaoke ass ready": "srt + 卡拉 OK ass 已就绪",
+    "srt ready": "srt 已就绪",
+    "download .{fmt}": "下载 .{fmt}",
+    "status unavailable": "状态不可用",
+    "Transcription queued — status updates when the job finishes": "转写已排队 — 任务完成后状态会更新",
+    "Transcribe failed: {msg}": "转写失败：{msg}",
+    "Preview failed: {msg}": "预览失败：{msg}",
+    "Clear failed: {msg}": "清除失败：{msg}",
+
+    "ROI x={x} y={y} w={w} h={h}": "ROI x={x} y={y} w={w} h={h}",
+    "full frame (no ROI)": "全画面（无 ROI）",
+    "roi status unavailable": "ROI 状态不可用",
+    "Import an asset first — the ROI editor draws over its first frame": "请先导入素材 — ROI 编辑器在其首帧上框选",
+    "Court ROI cleared — analysis uses the full frame again": "球场 ROI 已清除 — 分析恢复使用全画面",
+    "Court ROI saved as a workspace override of this style": "球场 ROI 已保存为该风格的工作区覆盖"
+  }
+};

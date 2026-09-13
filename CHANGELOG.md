@@ -3,6 +3,18 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-13 night session #8
+
+### Added
+- UI language switch (English / 中文) in the web client topbar. The choice
+  persists in localStorage and first-time visitors get the browser
+  language's match automatically. Zero dependencies: the zh dictionary is
+  a plain-JSON table (`i18n.js`) keyed by the English source strings,
+  applied through `data-i18n` attributes and a `t()/tf()` lookup in
+  app.js; a Go drift gate (`static_i18n_test.go`) refuses any
+  HTML/JS key the dictionary does not cover — and any dictionary entry
+  nothing references — on every test run.
+
 ## [Unreleased] — 2026-09-13 desktop client (C1–C4)
 
 ### Added
