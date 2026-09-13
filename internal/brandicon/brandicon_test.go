@@ -1,18 +1,15 @@
-package cli
+package brandicon
 
 import (
-	"bytes"
-	"encoding/binary"
 	"image"
 	"testing"
 )
 
-// TestBrandIconShape: the bolt lands inside the tile on every brand size,
-// and the tile's rounded corners stay transparent.
-func TestBrandIconShape(t *testing.T) {
+// TestBrandShape: the bolt lands inside the tile on every brand size, and
+// the tile's rounded corners stay transparent.
+func TestBrandShape(t *testing.T) {
 	for _, size := range []int{16, 32, 48} {
-		img := brandIcon(size)
-		b := img.Bounds()
+		img := Brand(size)
 		cornerRadius := size / 5
 		if cornerRadius >= 2 {
 			if c := rgbaAt(img, 0, 0); c.A != 0 {
@@ -31,21 +28,20 @@ func TestBrandIconShape(t *testing.T) {
 		if !found {
 			t.Fatalf("size %d: no bolt pixel found", size)
 		}
-		_ = b
 	}
 }
 
-// TestIcoBytesStructure: ICONDIR, one ICONDIRENTRY per image with that
-// image's own size and offset, PNG payloads back to back.
-func TestIcoBytesStructure(t *testing.T) {
-	ico, err := icoBytes([]image.Image{brandIcon(16), brandIcon(32), brandIcon(48)})
+// TestICOStructure: ICONDIR, one ICONDIRENTRY per image with that image's
+// own size and offset, PNG payloads back to back.
+func TestICOStructure(t *testing.T) {
+	ico, err := ICO([]image.Image{Brand(16), Brand(32), Brand(48)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(ico[0:4]) != "\x00\x00\x01\x00" {
 		t.Fatalf("bad ICONDIR magic: % x", ico[0:4])
 	}
-	count := binary.LittleEndian.Uint16(ico[4:6])
+	count := binaryLE16(ico[4:6])
 	if count != 3 {
 		t.Fatalf("entry count = %d, want 3", count)
 	}
@@ -59,13 +55,13 @@ func TestIcoBytesStructure(t *testing.T) {
 		if h := int(entry[1]); h != wantSize {
 			t.Fatalf("entry %d height byte = %d, want %d", i, h, wantSize)
 		}
-		size := binary.LittleEndian.Uint32(entry[8:12])
-		start := binary.LittleEndian.Uint32(entry[12:16])
+		size := uint32(entry[8]) | uint32(entry[9])<<8 | uint32(entry[10])<<16 | uint32(entry[11])<<24
+		start := uint32(entry[12]) | uint32(entry[13])<<8 | uint32(entry[14])<<16 | uint32(entry[15])<<24
 		if int(start) != offset {
 			t.Fatalf("entry %d offset = %d, want %d", i, start, offset)
 		}
 		payload := ico[start : start+size]
-		if !bytes.HasPrefix(payload, []byte("\x89PNG")) {
+		if string(payload[0:4]) != "\x89PNG" {
 			t.Fatalf("entry %d payload is not a PNG: % x", i, payload[:4])
 		}
 		offset += int(size)
@@ -74,6 +70,8 @@ func TestIcoBytesStructure(t *testing.T) {
 		t.Fatalf("ico length %d, entries cover %d", len(ico), offset)
 	}
 }
+
+func binaryLE16(b []byte) uint16 { return uint16(b[0]) | uint16(b[1])<<8 }
 
 func rgbaAt(img image.Image, x, y int) (c struct{ R, G, B, A uint8 }) {
 	r, g, b, a := img.At(x, y).RGBA()

@@ -1,4 +1,4 @@
-package cli
+package brandicon
 
 import (
 	"bytes"
@@ -13,7 +13,14 @@ import (
 // client ships a real icon without committing any binary asset (and
 // without a bundling question). Sizes 16/32/48 cover title bar, taskbar
 // and Alt-Tab.
-func brandIcon(size int) draw.Image {
+// BrandICO renders the mark at every brand size (16/32/48) and wraps the
+// set into a single ICO container.
+func BrandICO() ([]byte, error) {
+	return ICO([]image.Image{Brand(16), Brand(32), Brand(48)})
+}
+
+// Brand draws the mark at one size.
+func Brand(size int) draw.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, size, size))
 	// Background tile with a subtle vertical two-tone (green→deep teal).
 	for y := 0; y < size; y++ {
@@ -94,7 +101,7 @@ func pointInPolygon(px, py float64, poly [][2]float64) bool {
 // icoBytes wraps PNG images into a single .ico container (PNG-compressed
 // entries, Vista+). Only the ICONDIR + ICONDIRENTRY framing is written
 // here; the entries are the PNG payloads verbatim.
-func icoBytes(imgs []image.Image) ([]byte, error) {
+func ICO(imgs []image.Image) ([]byte, error) {
 	var pngs [][]byte
 	for _, im := range imgs {
 		b := image.NewRGBA(im.Bounds())

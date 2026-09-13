@@ -14,6 +14,11 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   paths).
 
 ### Added
+- **Brand icon on the packaged exe**: the windows binary carries the
+  programmatic mark as an embedded resource (resource-manager .syso
+  generated from the same runtime drawing the window uses — one source
+  of truth, `scripts/genicon` + rsrc). Resource Explorer, taskbar pins
+  and shortcuts all show the mark.
 - **Brand icon on the desktop client**: the window (title bar, taskbar,
   Alt-Tab) now carries a programmatic xcut mark — drawn at runtime into
   an in-memory ICO (16/32/48), no binary asset in the repo, no resource

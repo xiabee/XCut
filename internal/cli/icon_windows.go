@@ -3,12 +3,13 @@
 package cli
 
 import (
-	"image"
 	"os"
 	"path/filepath"
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	"github.com/xiabee/XCut/internal/brandicon"
 )
 
 // Window icon plumbing: the WebView2 host window ships with the generic
@@ -40,7 +41,7 @@ func setWindowIcon(hwnd unsafe.Pointer) {
 	if hwnd == nil {
 		return
 	}
-	ico, err := icoBytes([]image.Image{brandIcon(16), brandIcon(32), brandIcon(48)})
+	ico, err := brandicon.BrandICO()
 	if err != nil || len(ico) == 0 {
 		return
 	}
