@@ -46,6 +46,7 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 	if err := cmd.Start(); err != nil {
 		return xcerr.E(xcerr.CodeFFmpegFailure, "cannot start "+bin, err)
 	}
+	attachJob(cmd.Process)
 
 	buf := make([]byte, streamChunkSize)
 	var total int64

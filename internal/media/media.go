@@ -54,7 +54,11 @@ func Version(ctx context.Context, bin string) (string, error) {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return "", xcerr.E(xcerr.CodeFFmpegFailure, "cannot execute "+bin, err)
+	}
+	attachJob(cmd.Process)
+	if err := cmd.Wait(); err != nil {
 		return "", xcerr.E(xcerr.CodeFFmpegFailure, "cannot execute "+bin, err)
 	}
 	m := versionRe.FindStringSubmatch(strings.TrimSpace(out.String()))
@@ -123,7 +127,13 @@ func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte
 	errBuf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = outBuf
 	cmd.Stderr = errBuf
-	if err := cmd.Run(); err != nil {
+	// Explicit Start/Wait (not Run) so the process is alive when it joins
+	// the kill-on-close job object — see attachJob.
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+	attachJob(cmd.Process)
+	if err := cmd.Wait(); err != nil {
 		return outBuf.b, errBuf.b, err
 	}
 	if outBuf.overflowed {

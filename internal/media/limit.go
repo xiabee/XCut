@@ -59,9 +59,15 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	buf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = buf
 	cmd.Stderr = buf
-	// Read the buffer AFTER Run(): the expression below was evaluated
+	// Explicit Start/Wait so the process joins the kill-on-close job while
+	// alive (attachJob).
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	attachJob(cmd.Process)
+	// Read the buffer AFTER Wait(): the expression below was evaluated
 	// left-to-right and handed back the pre-Run (empty) slice, stripping the
 	// stderr tail from every failure diagnostic.
-	err = cmd.Run()
+	err = cmd.Wait()
 	return buf.b, err
 }

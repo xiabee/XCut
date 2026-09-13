@@ -14,6 +14,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   paths).
 
 ### Added
+- **Orphan-process backstop (Windows)**: every ffmpeg/ffprobe joins a
+  job object created with KILL_ON_JOB_CLOSE, so a serve killed without
+  running its cleanup (task-manager kill, crash) can no longer leave
+  orphan encoders behind — the kernel reaps the tree. Best-effort
+  alongside the existing context-kill; a no-op stub keeps non-Windows
+  builds unchanged.
 - **Brand icon on the packaged exe**: the windows binary carries the
   programmatic mark as an embedded resource (resource-manager .syso
   generated from the same runtime drawing the window uses — one source
