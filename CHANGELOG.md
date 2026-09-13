@@ -5,6 +5,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 
 ## [Unreleased] — 2026-09-13 night session #8
 
+### Fixed
+- Analyzer failures are no longer misclassified as per-call-budget
+  timeouts: run.go read the call context after cancelling it, so EVERY
+  analyzer error (a missing ffmpeg, a corrupt file) reported "exceeded
+  its 30m0s time budget". The verdict is now taken before cancellation;
+  genuine hangs still report the budget (regression-tested for all three
+  paths).
+
 ### Added
 - **Double-click friendly**: running the exe with no subcommand on
   Windows now opens the desktop client instead of printing usage and

@@ -111,12 +111,17 @@ func Run(ctx context.Context, store *Store, opts Options, analyzers []Analyzer, 
 			callCtx, cancel = context.WithTimeout(ctx, opts.CallTimeout)
 		}
 		tracks, err := a.Analyze(callCtx, opts, path, hasAudio, log)
+		// The budget verdict must be read BEFORE cancel(): cancelling
+		// marks the context Canceled, which would brand EVERY analyzer
+		// failure a timeout (a missing ffmpeg used to report "exceeded
+		// its 30m0s time budget").
+		timedOut := ctx.Err() == nil && callCtx.Err() != nil
 		cancel()
 		if err != nil {
-			if ctx.Err() == nil && callCtx.Err() != nil {
-				// The job context is still live — this analyzer itself blew
-				// the per-call budget (a hung ffmpeg must not pin the
-				// worker slot forever).
+			if timedOut {
+				// The job context is still live — this analyzer itself
+				// blew the per-call budget (a hung ffmpeg must not pin
+				// the worker slot forever).
 				return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
 					fmt.Sprintf("analyzer %s exceeded its %s time budget", a.Name(), opts.CallTimeout), err)
 			}
