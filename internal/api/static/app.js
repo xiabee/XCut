@@ -250,6 +250,9 @@ async function refreshAssets() {
     grid.appendChild(v);
   }
   // The transcribe/ROI picker mirrors the asset list (first = default).
+  // Rebuilding it invalidates whatever the ROI status line was showing,
+  // so refresh that too — after a project switch the status would
+  // otherwise stay blank until the user touches the picker by hand.
   const sel = $("subs-asset");
   sel.innerHTML = "";
   for (const a of assets) {
@@ -258,6 +261,7 @@ async function refreshAssets() {
     o.textContent = a.filename;
     sel.appendChild(o);
   }
+  refreshROIStatus();
 }
 
 /* ---------- jobs ---------- */
