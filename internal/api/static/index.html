@@ -39,7 +39,13 @@
         <input id="import-path" placeholder="local video path, e.g. D:\videos\match.mp4" data-i18n-placeholder="local video path, e.g. D:\videos\match.mp4" autocomplete="off" required>
         <button type="submit" data-i18n="Import">Import</button>
       </form>
+      <div class="row">
+        <button id="btn-pick-files" data-i18n="pick files…">pick files…</button>
+        <span id="upload-status" class="hint"></span>
+      </div>
+      <input type="file" id="import-file" multiple hidden>
       <div id="asset-grid" class="asset-grid"></div>
+      <p class="hint" data-i18n="…or drop video files anywhere on this panel.">…or drop video files anywhere on this panel.</p>
     </section>
 
     <section class="panel" id="panel-pipeline">

@@ -96,6 +96,15 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 		fmt.Fprintf(a.Stdout, "reclaimed %d temp entries (%d bytes)\n", len(removed), bytes)
 	}
 
+	// Crash debris from interrupted uploads: a .upload-* staging file in
+	// imports/ was never renamed into place, so nothing references it. The
+	// writer lock proves the uploading serve is dead.
+	if staged, err := sweepUploadStaging(a.Workspace()); err != nil {
+		a.Log.Warn("startup upload sweep failed", "err", err)
+	} else if staged > 0 {
+		fmt.Fprintf(a.Stdout, "reclaimed %d staged upload(s)\n", staged)
+	}
+
 	httpServer := newHTTPServer(addr, srv.Handler())
 
 	ln, err := net.Listen("tcp", addr)

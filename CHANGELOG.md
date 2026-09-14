@@ -14,6 +14,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   paths).
 
 ### Added
+- **Drag-and-drop / file-picker import**: the web UI's media panel accepts
+  dropped video files and a "pick files…" button (multiple). Browsers
+  cannot reveal local paths, so the files go to the new content endpoint
+  `POST /api/v1/projects/{id}/assets/upload` — the server lands a copy
+  under `<workspace>/imports/<project>/` (name-sanitized, never
+  overwriting an existing copy, 8 GiB per-file bound, failed probes
+  cleaned up) and runs the standard import. The user's original file is
+  untouched.
 - **Orphan-process backstop (Windows)**: every ffmpeg/ffprobe joins a
   job object created with KILL_ON_JOB_CLOSE, so a serve killed without
   running its cleanup (task-manager kill, crash) can no longer leave

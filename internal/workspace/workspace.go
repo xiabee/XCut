@@ -39,6 +39,9 @@ const (
 	DirCache    = "cache"
 	DirTemp     = "temp"
 	DirLogs     = "logs"
+	// DirImports holds user media that arrived through the web upload
+	// endpoint (a copy of the user's file; the original is never touched).
+	DirImports = "imports"
 )
 
 // New returns a Workspace rooted at dir (already resolved/absolute).
@@ -47,15 +50,18 @@ func New(root string) *Workspace { return &Workspace{Root: root} }
 // DBPath is the SQLite database location.
 func (w *Workspace) DBPath() string { return filepath.Join(w.Root, "xcut.db") }
 
-// ProjectsDir / CacheDir / TempDir / LogsDir.
+// ProjectsDir / CacheDir / TempDir / LogsDir / ImportsDir.
 func (w *Workspace) ProjectsDir() string { return filepath.Join(w.Root, DirProjects) }
 func (w *Workspace) CacheDir() string    { return filepath.Join(w.Root, DirCache) }
 func (w *Workspace) TempDir() string     { return filepath.Join(w.Root, DirTemp) }
 func (w *Workspace) LogsDir() string     { return filepath.Join(w.Root, DirLogs) }
 
+// ImportsDir is where uploaded media lands, one subdirectory per project.
+func (w *Workspace) ImportsDir() string { return filepath.Join(w.Root, DirImports) }
+
 // Ensure creates the directory skeleton. Idempotent.
 func (w *Workspace) Ensure() error {
-	for _, d := range []string{w.Root, w.ProjectsDir(), w.CacheDir(), w.TempDir(), w.LogsDir()} {
+	for _, d := range []string{w.Root, w.ProjectsDir(), w.CacheDir(), w.TempDir(), w.LogsDir(), w.ImportsDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return xcerr.E(xcerr.CodeInternal, "cannot create workspace directory "+filepath.Base(d), err)
 		}

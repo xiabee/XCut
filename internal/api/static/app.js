@@ -197,6 +197,62 @@ function projectChangedSince(pid) {
   return !currentProject || currentProject.id !== pid;
 }
 
+/* ---------- file / drag-drop upload ---------- */
+/* Browsers cannot reveal a local path, so picked or dropped files go to
+ * the server as content: POST assets/upload lands a copy under the
+ * workspace imports/ dir and runs the standard probe+import there. The
+ * user's original file is never touched. */
+function uploadFile(pid, file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/v1/projects/${pid}/assets/upload?filename=` +
+      encodeURIComponent(file.name));
+    xhr.responseType = "json";
+    xhr.onload = () => {
+      if (xhr.status === 201) resolve(xhr.response.asset);
+      else reject(new Error(`${xhr.status}: ${(xhr.response && xhr.response.message) || xhr.statusText}`));
+    };
+    xhr.onerror = () => reject(new Error("network error"));
+    xhr.send(file);
+  });
+}
+
+async function uploadFiles(files) {
+  if (!currentProject || !files || !files.length) return;
+  const pid = currentProject.id;
+  const status = $("upload-status");
+  let ok = 0;
+  for (const f of files) {
+    status.textContent = tf("uploading {name}…", { name: f.name });
+    try {
+      await uploadFile(pid, f);
+      ok++;
+    } catch (e) {
+      banner(tf("Upload failed: {msg}", { msg: e.message }));
+    }
+  }
+  status.textContent = "";
+  if (ok) {
+    banner(tf("Imported {n} file(s) from upload", { n: ok }));
+    await refreshAssets();
+  }
+}
+
+$("btn-pick-files").addEventListener("click", () => $("import-file").click());
+$("import-file").addEventListener("change", (e) => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  uploadFiles(files);
+});
+{
+  const panel = $("panel-media");
+  panel.addEventListener("dragover", (e) => { e.preventDefault(); });
+  panel.addEventListener("drop", (e) => {
+    e.preventDefault();
+    uploadFiles([...e.dataTransfer.files]);
+  });
+}
+
 function fmtDur(s) {
   return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 }

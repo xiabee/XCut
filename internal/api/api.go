@@ -92,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Async job triggers (202 Accepted; poll /api/v1/jobs/{id}).
 	mux.HandleFunc("POST /api/v1/projects/{id}/assets", s.handleAssetImport)
+	mux.HandleFunc("POST /api/v1/projects/{id}/assets/upload", s.handleAssetUpload)
 	mux.HandleFunc("POST /api/v1/projects/{id}/analyze", s.handleAnalyze)
 	mux.HandleFunc("POST /api/v1/projects/{id}/timeline", s.handleTimeline)
 	mux.HandleFunc("POST /api/v1/projects/{id}/timeline/restore-backup", s.handleTimelineRestore)
