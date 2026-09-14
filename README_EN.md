@@ -177,6 +177,7 @@ curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip p
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
 curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # which subtitle artifacts exist
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # burn the subtitles into the render
+curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # per-source court ROI
 ```
 
 ## Subtitles (KTV/guitar sing-along)
