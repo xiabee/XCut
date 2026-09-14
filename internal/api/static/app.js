@@ -202,12 +202,17 @@ function projectChangedSince(pid) {
  * the server as content: POST assets/upload lands a copy under the
  * workspace imports/ dir and runs the standard probe+import there. The
  * user's original file is never touched. */
-function uploadFile(pid, file) {
+function uploadFile(pid, file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/v1/projects/${pid}/assets/upload?filename=` +
       encodeURIComponent(file.name));
     xhr.responseType = "json";
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
     xhr.onload = () => {
       if (xhr.status === 201) resolve(xhr.response.asset);
       else reject(new Error(`${xhr.status}: ${(xhr.response && xhr.response.message) || xhr.statusText}`));
@@ -223,9 +228,10 @@ async function uploadFiles(files) {
   const status = $("upload-status");
   let ok = 0;
   for (const f of files) {
-    status.textContent = tf("uploading {name}…", { name: f.name });
     try {
-      await uploadFile(pid, f);
+      await uploadFile(pid, f, (pct) => {
+        status.textContent = tf("uploading {name}… {pct}%", { name: f.name, pct });
+      });
       ok++;
     } catch (e) {
       banner(tf("Upload failed: {msg}", { msg: e.message }));

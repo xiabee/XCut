@@ -3,12 +3,14 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
+Updated: 2026-09-15 01:20 (+08:00) — nightly session #9 checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #7 work, all pushed (see git log; every milestone
+- HEAD: session #8 (desktop client, i18n, per-source ROI, double-click
+  packaging, job-object backstop) + session #9 (perf re-check, linux e2e,
+  drag-drop import), all pushed (see git log; every milestone
   fast-gated, pushed, and independently accepted on the remote-node node;
   the full gate — race, cross-compile, Rust, govulncheck, gosec — re-run
   green at the session's final HEAD)
@@ -39,7 +41,10 @@ Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
   Render outputs are guarded against overwriting source media, timeline-
   referenced clip sources, or the timeline document.
 - **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
-  limiter; `StreamStdout` for bounded streaming passes.
+  limiter; `StreamStdout` for bounded streaming passes. Every child joins a
+  KILL_ON_JOB_CLOSE Windows job object at Start (session #8): a serve killed
+  without its cleanup can no longer leave orphan encoders — the kernel reaps
+  the tree; any attach failure degrades to the context-kill path.
 - **Analysis** (`internal/analysis`): frame_diff (motion + cuts; chroma-
   aware since session #6 — max of YDIF/UDIF/VDIF normalized per channel
   span, catching chroma-only scene switches), audio RMS
@@ -113,7 +118,12 @@ Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
   via the topbar selector — localStorage-persisted, browser-language
   auto-detect on first visit, zero deps (plain-JSON dictionary in
   i18n.js + data-i18n attributes + t()/tf() in app.js), drift-gated by
-  static_i18n_test.go. **Modern editing workspace** (2026-09-13): three-pane editor —
+  static_i18n_test.go.
+  **Drag-drop / file-picker import** (session #9): the media panel accepts
+  dropped or picked files — content uploads to
+  `POST /projects/{id}/assets/upload`, landing a sanitized, non-overwriting
+  copy under `imports/<project>/` (8 GiB bound, failed probes cleaned,
+  staged debris swept at startup); the path-import form stays alongside. **Modern editing workspace** (2026-09-13): three-pane editor —
   media pool with client-captured thumbnails, visual timeline (clip
   blocks sized by duration, editable transition badges, drag reorder,
   edge-handle trimming, time ruler seeking the preview, playhead), and an
@@ -247,9 +257,12 @@ Updated: 2026-09-13 05:00 (+08:00) — nightly session #7, mid-night checkpoint
 2. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
-3. Per-source court ROI (the session #7 UI picker is per-preset) — needs a
-   preset schema extension or a project-level ROI store.
-4. Optional: re-enable push/PR CI when quota recovers (restore notes in
-   ci.yml; consider concurrency cancel + docs-only paths-ignore).
-5. Phase 4 (desktop packaging, model registry, FFmpeg sandbox) — needs
-   maintainer decisions; deliberately untouched by night work.
+3. (done, session #8) Per-source court ROI — per-asset override shipped
+   (assets.motion_roi, v4) with the UI picker saving per asset; measured
+   4x signal vs full-frame dilution (NIGHTLY_PROGRESS M100).
+4. Re-enable push/PR + tag CI when the GitHub account billing issue is
+   resolved (Actions jobs are refused at start; restore notes in
+   ci.yml/release.yml unchanged — the files are fine).
+5. Phase 4 leftovers: tray/auto-update and model registry — need
+   maintainer decisions; desktop packaging itself (zip, icons) shipped
+   in session #8.

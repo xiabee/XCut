@@ -19,7 +19,7 @@ window.XCUT_I18N = {
     "Import": "导入",
     "pick files…": "选择文件…",
     "…or drop video files anywhere on this panel.": "…也可以把视频文件直接拖到这个面板上。",
-    "uploading {name}…": "正在上传 {name}…",
+    "uploading {name}… {pct}%": "正在上传 {name}… {pct}%",
     "Upload failed: {msg}": "上传失败：{msg}",
     "Imported {n} file(s) from upload": "已从上传导入 {n} 个文件",
     "local video path, e.g. D:\\videos\\match.mp4": "本地视频路径，如 D:\\videos\\match.mp4",
