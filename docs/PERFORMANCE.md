@@ -57,6 +57,10 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-12 | session #6: render rally highlight on REAL footage | 8-clip 60s timeline from the same match (mixed trims+concat) | 9.3 s wall | **0.15x** output duration | badminton_highlight v2, cut transitions; output probed 60.02s / 15.8 MB |
 | 2026-09-10 | session #4 re-check: serve idle CPU | 10 s idle | Δ0.000 s (~0%) | — | **met** |
 | 2026-09-10 | session #4 audio bench A/B (same host, same command) | 60s aac | RMS 0.40 s, onset 0.56 s | ~0.007x | baseline binary (bf45b52) measures the same (0.56/0.46 s): the faster 2026-09-08 rows were a different machine/context (i7-10875H note), not a code regression — tonight's limiter/cap changes are free on these paths |
+| 2026-09-15 | **session #9 re-check: analyze (cold)** | 300s 1080p30 testsrc2 + sine | 26.9 s wall | **0.09x realtime** | after session #8 (per-asset analyzer assembly, job-object attach, streaming metadata from M76): faster than the 39.5 s row — fixture encoded ultrafast decodes easier than the previous preset; within-method comparison, no regression |
+| 2026-09-15 | session #9 re-check: analyze (cache hit) | same | 1.03 s wall incl. CLI process start | ~0x | — |
+| 2026-09-15 | session #9 re-check: render (concat path) | 10s 1-clip 1080p30 timeline | 2.5 s wall (probe: 10.02 s output) | **0.25x** output duration | vs 3.3 s / 0.33x session #4 row — no regression |
+| 2026-09-14 | session #8 re-check: serve idle RAM | — | 17.2 MB WS / 10 s CPU delta 0 | — | goals met (<100 MB, ~0%); +3 MB vs session #7 rows (health ffmpeg lookup + new endpoints) |
 
 Analysis proxies (session #3): the win is on **repeated** analysis (style
 changes, re-runs, multi-project sharing) — analyzer passes drop from
