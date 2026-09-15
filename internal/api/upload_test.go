@@ -121,3 +121,39 @@ func TestAssetUploadRefusesJunk(t *testing.T) {
 		t.Fatalf("failed probe left litter in imports/: %d entries", len(entries))
 	}
 }
+
+// TestProjectDeleteRemovesImports: deleting the project takes its
+// uploaded-copy directory with it — the artifacts must not accumulate on
+// disk forever.
+func TestProjectDeleteRemovesImports(t *testing.T) {
+	s := testServer(t)
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	pid := seedUploadProject(t, s, "delete-imports")
+
+	root := t.TempDir()
+	src, err := testmedia.Generate(root, "clip.mp4", testmedia.DefaultFixture(), 160, 120, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec, out := uploadReq(t, s, pid, "clip.mp4", string(body)); rec.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %v", rec.Code, out)
+	}
+	imports := filepath.Join(s.Pipe.WS.ImportsDir(), pid)
+	if entries, err := os.ReadDir(imports); err != nil || len(entries) == 0 {
+		t.Fatalf("uploaded copy missing pre-delete: %v", err)
+	}
+
+	rec, out := do(t, s, "DELETE", "/api/v1/projects/"+pid, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete: %d %v", rec.Code, out)
+	}
+	if _, err := os.Stat(imports); !os.IsNotExist(err) {
+		t.Fatalf("imports dir must die with the project, err=%v", err)
+	}
+}

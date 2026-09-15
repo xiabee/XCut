@@ -59,6 +59,30 @@ func (w *Workspace) LogsDir() string     { return filepath.Join(w.Root, DirLogs)
 // ImportsDir is where uploaded media lands, one subdirectory per project.
 func (w *Workspace) ImportsDir() string { return filepath.Join(w.Root, DirImports) }
 
+// RemoveProjectDirs deletes the on-disk artifacts of a deleted project:
+// its own directory (timeline, renders) and its uploaded-copy directory.
+// Path-imported source files live wherever the user put them and are
+// never touched. Idempotent; missing directories are fine.
+func (w *Workspace) RemoveProjectDirs(projectID string) error {
+	if projectID == "" || projectID == "." || projectID == ".." || filepath.Clean(projectID) != projectID ||
+		strings.ContainsAny(projectID, `\/`) {
+		return xcerr.E(xcerr.CodeValidation, "invalid project id", nil)
+	}
+	for _, rel := range []string{
+		filepath.Join(DirProjects, projectID),
+		filepath.Join(DirImports, projectID),
+	} {
+		dir, err := w.SafeJoin(rel)
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			return xcerr.E(xcerr.CodeInternal, "cannot remove project directory "+rel, err)
+		}
+	}
+	return nil
+}
+
 // Ensure creates the directory skeleton. Idempotent.
 func (w *Workspace) Ensure() error {
 	for _, d := range []string{w.Root, w.ProjectsDir(), w.CacheDir(), w.TempDir(), w.LogsDir(), w.ImportsDir()} {

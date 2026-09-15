@@ -95,6 +95,9 @@ func cmdProject(a *App, args []string) error {
 		if err := db.DeleteProject(ctx, p.ID); err != nil {
 			return err
 		}
+		if err := a.Workspace().RemoveProjectDirs(p.ID); err != nil {
+			fmt.Fprintf(a.Stderr, "xcut: warning: directory cleanup failed: %s\n", xcerr.UserMessage(err))
+		}
 		fmt.Fprintf(a.Stdout, "deleted project %s (%s)\n", p.Name, p.ID)
 		return nil
 
