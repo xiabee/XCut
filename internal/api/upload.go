@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -21,6 +22,48 @@ import (
 // transfer makes even large media cheap, but an unbounded read is exactly
 // the growth axis the resource policy forbids.
 const maxUploadBytes = 8 << 30 // 8 GiB
+
+// uploadIdleWindow re-arms the connection read deadline after every copied
+// chunk. The server-level ReadTimeout (cli/serve.go) bounds a request's
+// TOTAL read time, which a multi-GiB upload on a slow disk cannot fit —
+// the body only advances as fast as the disk accepts bytes. So for uploads
+// the total-time bound becomes an idle-time bound: progress re-arms the
+// window, a stalled client still hits it. Matches serve.go's ReadTimeout;
+// a var so the deadline test can shrink it.
+var uploadIdleWindow = 30 * time.Second
+
+// uploadChunkSize is the copy granularity for deadline re-arming.
+const uploadChunkSize = 1 << 20 // 1 MiB
+
+// copyUploadBody streams the request body into dst with the read-deadline
+// heartbeat, capped at max+1 bytes (one byte past the limit lets the caller
+// detect overflow). Setting the deadline is best-effort: transports without
+// deadline support (in-memory recorders) just keep the server's fixed
+// total-time bound.
+func copyUploadBody(w http.ResponseWriter, dst io.Writer, body io.Reader, max int64) (int64, error) {
+	rc := http.NewResponseController(w)
+	buf := make([]byte, uploadChunkSize)
+	var written int64
+	for {
+		_ = rc.SetReadDeadline(time.Now().Add(uploadIdleWindow))
+		n, rerr := body.Read(buf)
+		if n > 0 {
+			written += int64(n)
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return written, werr
+			}
+		}
+		if rerr == io.EOF {
+			return written, nil
+		}
+		if rerr != nil {
+			return written, rerr
+		}
+		if written > max {
+			return written, nil
+		}
+	}
+}
 
 // sanitizeImportName reduces a client-supplied filename to a bare name
 // that cannot escape the imports directory: no path components, no
@@ -118,8 +161,10 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path (os.CreateTemp), not user input
 	}
 
-	// Read one byte past the bound to detect overflow, then refuse.
-	written, err := io.Copy(tmp, io.LimitReader(r.Body, maxUploadBytes+1))
+	// Stream with the read-deadline heartbeat: progress keeps the
+	// connection alive no matter how long the whole transfer takes; one
+	// byte past the bound is still read to detect overflow.
+	written, err := copyUploadBody(w, tmp, io.LimitReader(r.Body, maxUploadBytes+1), maxUploadBytes)
 	if err != nil {
 		cleanup()
 		writeErr(w, xcerr.E(xcerr.CodeInternal, "upload transfer failed", err))
