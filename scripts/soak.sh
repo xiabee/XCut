@@ -9,8 +9,10 @@
 #
 # Each round: analyze (duplicate -> 409) -> two render triggers (one 409)
 # -> timeline regenerate -> stale-revision PUT (must 409) -> matching PUT
-# (must 200) -> subtitles status. Every request carries --max-time.
-# Exit 0 = all rounds green.
+# (must 200) -> subtitles status -> junk upload (must not import, must not
+# litter imports/). Every request carries --max-time. Exit 0 = all rounds
+# green. Setup additionally uploads the fixture content twice (201, same
+# name — the second must land beside it, never overwrite).
 set -u
 
 ROUNDS="${1:-30}"
@@ -58,6 +60,7 @@ ffmpeg -y -hide_banner -loglevel error \
 "$XCUT" import soak "$WS/fixture.mp4" >/dev/null 2>&1
 "$XCUT" timeline soak --style generic_highlight >/dev/null 2>&1
 
+
 "$XCUT" serve >"$WS/serve.log" 2>&1 &
 SERVE_PID=$!
 cleanup() {
@@ -78,7 +81,23 @@ done
 PROJ_ID=$(curl -s --max-time 5 "$BASE/projects" | python -c "import json,sys; d=json.load(sys.stdin); print([p['id'] for p in d['projects'] if p['name']=='soak'][0])")
 [ -n "$PROJ_ID" ] || { echo "project id missing" >&2; exit 2; }
 
-errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0
+# --- content-upload setup (session #9 surface) ---
+# The fixture lands under imports/<pid>/; re-uploading the same name must
+# land a NEW copy (soak-up-1.mp4), never overwrite. 2 assets, 2 files.
+upload_code() { # upload_code FILE NAME
+    curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST         --data-binary @"$1" "$BASE/projects/$PROJ_ID/assets/upload?filename=$2"
+}
+up1=$(upload_code "$WS/fixture.mp4" "soak-up.mp4")
+up2=$(upload_code "$WS/fixture.mp4" "soak-up.mp4")
+if [ "$up1" != "201" ] || [ "$up2" != "201" ]; then
+    echo "setup upload codes: $up1 $up2 (want 201 201)" >&2
+    exit 2
+fi
+IMPORTS_DIR="$WS/imports/$PROJ_ID"
+n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
+[ "$n_files" = "2" ] || { echo "imports/ has $n_files files after duplicate-name uploads (want 2)" >&2; exit 2; }
+
+errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
 
 wait_job() { # wait_job TYPE -> prints final status; bounded 90s
     local typ="$1" n=0 st=""
@@ -170,11 +189,20 @@ print(json.dumps(d['timeline']))" > "$WS/good.json"
     code=$(get_code "/projects/$PROJ_ID/subtitles")
     if [ "$code" = "200" ]; then subsOK=$((subsOK+1)); else err="$err subs-status $code"; fi
 
+    # 6. junk upload: the probe refuses the content and the copy is cleaned
+    #    up — imports/ must still hold exactly the 2 setup files.
+    code=$(post_code "/projects/$PROJ_ID/assets/upload?filename=junk.mp4" "definitely not video")
+    if [ "$code" = "201" ]; then
+        err="$err junk-upload imported (201)"
+    fi
+    n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
+    if [ "$n_files" = "2" ]; then upNoLitter=$((upNoLitter+1)); else err="$err upload-litter ($n_files files)"; fi
+
     if [ -n "$err" ]; then
         errors=$((errors+1))
         echo "round $round ERROR:$err"
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter"
 [ "$errors" -eq 0 ]
