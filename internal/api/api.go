@@ -210,9 +210,6 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	// Disk artifacts (renders, uploaded copies) die with the project. A
 	// cleanup failure must not resurrect the deletion in the response —
-	// log it loudly instead.
-	// Disk artifacts (renders, uploaded copies) die with the project. A
-	// cleanup failure must not resurrect the deletion in the response —
 	// the deletion is reported with a warning field instead.
 	resp := map[string]any{"deleted": p.ID}
 	if err := s.Pipe.WS.RemoveProjectDirs(p.ID); err != nil {

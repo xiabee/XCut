@@ -18,7 +18,9 @@ Living document. Near-term milestones are concrete; far-term is directional.
 
 ## Phase 2 — Service & UI
 
-- [x] `xcut serve`: localhost HTTP API (`/api/v1`: health, projects, assets, jobs) — web UI still pending
+- [x] `xcut serve`: localhost HTTP API (`/api/v1`: health, projects,
+      assets, jobs) — the embedded zero-dep web UI shipped alongside it
+      (project CRUD, import, analyze → timeline → render, subtitles).
 - [x] Proxy generation for analysis (configurable resolution/fps decision logic)
 - [x] Cache eviction (LRU, size-capped) + `xcut cache` tooling
 - [x] Cross-platform CI (Windows/Linux amd64+arm64), release packaging
@@ -47,14 +49,18 @@ web UI stays the same asset tree served to browsers).
       in-process loopback server, Windows build-tagged with a
       `--browser`/serve fallback elsewhere; WebView2 detection in
       doctor). Design: docs/CLIENT_DESIGN.md §2–3.
-- [ ] C2 — workspace redesign: three-pane editing layout (media pool /
+- [x] C2 — workspace redesign: three-pane editing layout (media pool /
       preview / timeline + inspector), modern design tokens, asset
-      thumbnails.
-- [ ] C3 — visual timeline: clip blocks sized by duration, editable
+      thumbnails. Shipped 2026-09-13 (client thumbnails, project-scoped
+      refresh guards) — session #8.
+- [x] C3 — visual timeline: clip blocks sized by duration, editable
       transition badges on joins, drag reorder, click-select, ruler +
-      playhead linked to the preview.
-- [ ] C4 — inspector & polish: clip property editing (trim/speed/
-      volume), keyboard shortcuts, empty states, docs.
-- [ ] Desktop packaging (icon, installer/zip, tray) — after C1–C4.
+      playhead linked to the preview. Shipped 2026-09-13 — session #8.
+- [x] C4 — inspector & polish: clip property editing (trim/speed/
+      volume), keyboard shortcuts, empty states, docs. Shipped
+      2026-09-13 (Delete/Space/Ctrl+S shortcuts; score + why per clip)
+      — session #8.
+- [ ] Desktop packaging (icon, installer/zip, tray) — zip + icon shipped
+      in session #8; tray/auto-update remain.
 - [ ] Model registry (explicit installs, no silent downloads)
 - [ ] Sandbox options for FFmpeg (job objects / containers)
