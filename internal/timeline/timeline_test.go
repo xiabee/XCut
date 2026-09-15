@@ -8,8 +8,6 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
-
-	"github.com/xiabee/XCut/internal/testmedia"
 )
 
 func fmtInt(n int) string { return fmt.Sprintf("%d", n) }
@@ -156,11 +154,9 @@ func TestPropertyValidTimelinesPass(t *testing.T) {
 // clips back-to-back, so a placement gap can never be honored and must be
 // rejected at validation time with a gap-naming error.
 func TestValidateRejectsGap(t *testing.T) {
-	dir := t.TempDir()
-	pathA, err := testmedia.Generate(dir, "a.mp4", testmedia.DefaultFixture()[:2], 320, 240, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Validate is pure IR checking — it never opens the source file, so a
+	// placeholder path keeps this test ffmpeg-free (the skip contract).
+	const pathA = "a.mp4"
 	clip := func(id string, timelineStart float64) Clip {
 		return Clip{
 			ID: id, AssetID: id, SourcePath: pathA,
@@ -175,7 +171,7 @@ func TestValidateRejectsGap(t *testing.T) {
 			clip("c1", 0), clip("c2", 5), // 3s gap
 		}}},
 	}
-	err = gapped.Validate(nil)
+	err := gapped.Validate(nil)
 	if err == nil {
 		t.Fatal("gap must be rejected")
 	}

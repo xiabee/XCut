@@ -87,11 +87,9 @@ func TestRenderXfade(t *testing.T) {
 // TestValidateXfadeRules: overlaps are allowed only when an xfade transition
 // with a matching duration sits on the outgoing clip.
 func TestValidateXfadeRules(t *testing.T) {
-	dir := t.TempDir()
-	pathA, err := testmedia.Generate(dir, "a.mp4", testmedia.DefaultFixture(), 320, 240, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Validate is pure IR checking — it never opens the source file, so a
+	// placeholder path keeps this test ffmpeg-free (the skip contract).
+	const pathA = "a.mp4"
 	clip := func(id string, timelineStart float64) timeline.Clip {
 		return timeline.Clip{
 			ID: id, AssetID: id, SourcePath: pathA,
