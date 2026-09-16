@@ -218,18 +218,19 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
-	// Deletion cascades queued/running job rows — refuse while work is in
-	// flight rather than killing a running encode mid-publish.
-	if active, err := s.DB.HasActiveJobs(r.Context(), p.ID); err != nil {
+	// The active-jobs gate is enforced ATOMICALLY inside DeleteProject
+	// (the gate and the delete are one statement): a trigger enqueueing a
+	// job while the old check-then-act handler was deleting would have its
+	// row cascade-deleted under a live runner. 0 rows here therefore means
+	// "busy or gone" — the project row was just read, so it is busy.
+	n, err := s.DB.DeleteProject(r.Context(), p.ID)
+	if err != nil {
 		s.writeErr(w, r, err)
-		return
-	} else if active {
-		s.writeErr(w, r, xcerr.E(xcerr.CodeConflict,
-			"project has queued or running jobs — wait for them to finish before deleting", nil))
 		return
 	}
-	if err := s.DB.DeleteProject(r.Context(), p.ID); err != nil {
-		s.writeErr(w, r, err)
+	if n == 0 {
+		s.writeErr(w, r, xcerr.E(xcerr.CodeConflict,
+			"project has queued or running jobs — wait for them to finish before deleting", nil))
 		return
 	}
 	// Disk artifacts (renders, uploaded copies) die with the project. A

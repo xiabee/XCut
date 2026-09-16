@@ -108,13 +108,26 @@ func (d *DB) TouchProject(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteProject removes the project row; assets/jobs cascade.
-func (d *DB) DeleteProject(ctx context.Context, id string) error {
-	_, err := d.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+// DeleteProject removes the project row (assets/jobs cascade) only when no
+// queued or running job references it. The gate and the delete are ONE
+// statement: a check-then-act pair here would let a trigger enqueue a job
+// between them and have that job's row cascade-deleted under a live runner
+// — the runner would then work against a deleted project. Returns the rows
+// deleted; 0 means the project is missing (caller distinguishes 404) or
+// still busy (caller reports 409).
+func (d *DB) DeleteProject(ctx context.Context, id string) (int64, error) {
+	res, err := d.ExecContext(ctx, `DELETE FROM projects WHERE id = ? AND NOT EXISTS (
+		SELECT 1 FROM jobs
+		WHERE jobs.project_id = projects.id AND jobs.status IN (?, ?))`,
+		id, StatusQueued, StatusRunning)
 	if err != nil {
-		return xcerr.E(xcerr.CodeStorageFailure, "cannot delete project", err)
+		return 0, xcerr.E(xcerr.CodeStorageFailure, "cannot delete project", err)
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, xcerr.E(xcerr.CodeStorageFailure, "cannot confirm project deletion", err)
+	}
+	return n, nil
 }
 
 func isUniqueViolation(err error) bool {

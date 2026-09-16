@@ -85,15 +85,16 @@ func cmdProject(a *App, args []string) error {
 		if err != nil {
 			return err
 		}
-		// Same guard as the API: deletion would cascade in-flight job rows.
-		if active, err := db.HasActiveJobs(ctx, p.ID); err != nil {
+		// The atomic gate lives in DeleteProject (gate + delete are one
+		// statement); here the project row was just read, so 0 rows means
+		// busy.
+		n, err := db.DeleteProject(ctx, p.ID)
+		if err != nil {
 			return err
-		} else if active {
+		}
+		if n == 0 {
 			return xcerr.E(xcerr.CodeConflict,
 				"project has queued or running jobs — wait for them to finish before deleting", nil)
-		}
-		if err := db.DeleteProject(ctx, p.ID); err != nil {
-			return err
 		}
 		if err := a.Workspace().RemoveProjectDirs(p.ID); err != nil {
 			fmt.Fprintf(a.Stderr, "xcut: warning: directory cleanup failed: %s\n", xcerr.UserMessage(err))

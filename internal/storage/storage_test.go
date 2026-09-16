@@ -55,8 +55,8 @@ func TestProjectLifecycle(t *testing.T) {
 	if err := db.UpsertAsset(ctx, &Asset{ProjectID: p.ID, Path: "x.mp4", Filename: "x.mp4", Fingerprint: "fp"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.DeleteProject(ctx, p.ID); err != nil {
-		t.Fatal(err)
+	if n, err := db.DeleteProject(ctx, p.ID); err != nil || n != 1 {
+		t.Fatalf("delete = %d rows, %v", n, err)
 	}
 	assets, err := db.ListAssets(ctx, p.ID)
 	if err != nil || len(assets) != 0 {
@@ -338,5 +338,42 @@ func TestHasActiveJobs(t *testing.T) {
 	}
 	if active, err := db.HasActiveJobs(ctx, p.ID); err != nil || active {
 		t.Fatalf("terminal render: active=%v err=%v", active, err)
+	}
+}
+
+// TestDeleteProjectGateIsAtomic: the active-job gate and the delete are one
+// statement. A check-then-act pair left a window where a trigger enqueueing
+// a job during the delete had its row cascade-deleted under a live runner.
+func TestDeleteProjectGateIsAtomic(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	p, err := db.CreateProject(ctx, "busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "{}"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A queued job blocks the delete (0 rows, no error).
+	if n, err := db.DeleteProject(ctx, p.ID); err != nil || n != 0 {
+		t.Fatalf("delete with queued job = %d rows, %v — must be refused", n, err)
+	}
+	if got, err := db.GetProject(ctx, p.ID); err != nil || got == nil {
+		t.Fatalf("project must survive a refused delete: %+v, %v", got, err)
+	}
+
+	// Finishing the job lifts the gate.
+	jobs, err := db.ListJobs(ctx, p.ID)
+	if err != nil || len(jobs) == 0 {
+		t.Fatalf("list jobs: %d, %v", len(jobs), err)
+	}
+	for _, j := range jobs {
+		if err := db.FinishJob(ctx, j.ID, StatusSucceeded, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := db.DeleteProject(ctx, p.ID); err != nil || n != 1 {
+		t.Fatalf("delete after terminal jobs = %d rows, %v — must succeed", n, err)
 	}
 }
