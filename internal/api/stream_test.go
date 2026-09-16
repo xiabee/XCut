@@ -124,44 +124,23 @@ func TestStreamRearmsWriteDeadline(t *testing.T) {
 		}
 	})
 
-	// Counterfactual (test has teeth): the identical transfer without the
-	// heartbeat — plain ServeContent under the same 400 ms WriteTimeout —
-	// must die partway, proving the assertion above detects the bug class.
-	t.Run("plain ServeContent dies under total-time bound", func(t *testing.T) {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /file", func(w http.ResponseWriter, r *http.Request) {
-			f, err := os.Open(small)
-			if err != nil {
-				t.Errorf("open fixture: %v", err)
-				return
-			}
-			defer f.Close()
-			fi, _ := f.Stat()
-			http.ServeContent(w, r, "slow.mp4", fi.ModTime(), f)
-		})
-		hs := &http.Server{Handler: mux, ReadHeaderTimeout: time.Second, WriteTimeout: 400 * time.Millisecond}
-		go func() { _ = hs.Serve(ln) }()
-		t.Cleanup(func() { _ = hs.Close() })
-
-		got, rerr := rawCountBody(t, ln.Addr().String(), 32<<10, 80*time.Millisecond)
-		if got == int64(len(body)) {
-			t.Fatalf("plain ServeContent unexpectedly survived the total-time bound — the heartbeat assertion has no teeth")
-		}
-		t.Logf("control transfer cut at %d/%d bytes (%v)", got, len(body), rerr)
-	})
+	// NOTE: no plain-ServeContent counterfactual here. Its cut point
+	// depends on how much of the body loopback kernel buffering swallows —
+	// on this host ~450 KiB, on remote-node the whole 1 MiB (never a block,
+	// never a deadline). Machine-dependent flakiness for zero coverage the
+	// two subtests don't already provide: "progressing survives" fails if
+	// re-arming is lost, "stalled is cut" fails if the deadline is gone.
 
 	// Stalled reader: the body must exceed what loopback kernel buffering
-	// can swallow so the server's write genuinely blocks; 256 KiB consumed,
-	// then a 1.5 s stall — well past the 400 ms idle window with no
-	// progress to re-arm it. The cut surfaces as EOF or a transport error
-	// partway through.
+	// can swallow so the server's write genuinely blocks (Windows autotune
+	// caps ~16 MB, Linux defaults ~6 MB — 64 MB clears both with headroom);
+	// 256 KiB consumed, then a 1.5 s stall — well past the 400 ms idle
+	// window with no progress to re-arm it. The cut surfaces as EOF or a
+	// transport error partway through.
 	t.Run("stalled reader is cut", func(t *testing.T) {
+		const total = 64 << 20
 		big := filepath.Join(dir, "big.mp4")
-		if err := os.WriteFile(big, make([]byte, 32<<20), 0o644); err != nil {
+		if err := os.WriteFile(big, make([]byte, total), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		addr := streamTestServer(t, big, 400*time.Millisecond)
@@ -203,9 +182,9 @@ func TestStreamRearmsWriteDeadline(t *testing.T) {
 				break
 			}
 		}
-		if got >= 32<<20 {
-			t.Fatalf("stalled reader received the full 32 MiB — idle window did not fire")
+		if got >= total {
+			t.Fatalf("stalled reader received the full %d MiB — idle window did not fire", total>>20)
 		}
-		t.Logf("stalled stream cut at %d/%d bytes", got, 32<<20)
+		t.Logf("stalled stream cut at %d/%d bytes", got, total)
 	})
 }
