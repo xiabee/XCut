@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xiabee/XCut/internal/config"
+	"github.com/xiabee/XCut/internal/pipeline"
+	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/testmedia"
+	"github.com/xiabee/XCut/internal/workspace"
 )
 
 // seedUploadProject creates a project and returns its id.
@@ -281,3 +288,54 @@ func TestUploadRearmsReadDeadline(t *testing.T) {
 		t.Logf("stalled upload cut with message %q", msg)
 	}
 }
+
+// TestRequestFailuresLeaveServerSideTraces: the HTTP response carries only
+// the user-safe message, so the technical cause must land in the server log
+// — otherwise a failed request is undiagnosable from serve.log.
+func TestRequestFailuresLeaveServerSideTraces(t *testing.T) {
+	var buf safeBuffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	root := t.TempDir()
+	db, err := storage.Open(root + "/t.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{
+		DB:   db,
+		Pipe: pipeline.NewDeps(context.Background(), db, ws, cfg, logger),
+		Log:  logger,
+	}
+	s.Pipe.TimelineWriteLock = &s.TimelineMu
+
+	// A failing request (invalid JSON): the response stays user-safe...
+	rec, out := do(t, s, "POST", "/api/v1/projects", `{broken`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid body: %d %v", rec.Code, out)
+	}
+	if msg, _ := out["message"].(string); strings.Contains(msg, "{broken") {
+		t.Fatalf("response leaked raw body: %q", msg)
+	}
+	// ...and the log carries code, method, path and the technical cause.
+	trace := buf.String()
+	for _, want := range []string{"request failed", "code=validation", "method=POST", "path=/api/v1/projects", "invalid character"} {
+		if !strings.Contains(trace, want) {
+			t.Fatalf("log trace missing %q in:\n%s", want, trace)
+		}
+	}
+}
+
+// safeBuffer is a bytes.Buffer safe for the slog handler's single-threaded
+// use in this test (kept named for clarity).
+type safeBuffer struct{ bytes.Buffer }
+
+func (b *safeBuffer) Write(p []byte) (int, error) { return b.Buffer.Write(p) }

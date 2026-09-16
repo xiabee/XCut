@@ -123,21 +123,21 @@ func ensureInsideImports(importsDir, finalPath string) error {
 func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	p, err := s.DB.GetProject(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if p == nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
 	name, ok := sanitizeImportName(r.URL.Query().Get("filename"))
 	if !ok {
-		writeErr(w, xcerr.E(xcerr.CodeValidation,
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation,
 			"filename query parameter is required (a bare file name)", nil))
 		return
 	}
 	if r.ContentLength > maxUploadBytes {
-		writeErr(w, xcerr.E(xcerr.CodeResourceLimit,
+		s.writeErr(w, r, xcerr.E(xcerr.CodeResourceLimit,
 			"upload exceeds the 8 GiB per-file bound", nil))
 		return
 	}
@@ -146,13 +146,13 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	// the GetProject existence check, not client text.
 	importsDir := filepath.Join(s.Pipe.WS.ImportsDir(), p.ID) // #nosec G703 -- see previous line
 	if err := os.MkdirAll(importsDir, 0o755); err != nil {    // #nosec G703 -- importsDir is workspace-root + server-generated project id
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot prepare the imports directory", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot prepare the imports directory", err))
 		return
 	}
 
 	tmp, err := os.CreateTemp(importsDir, ".upload-*")
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot stage the upload", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot stage the upload", err))
 		return
 	}
 	tmpName := tmp.Name()
@@ -167,30 +167,30 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	written, err := copyUploadBody(w, tmp, io.LimitReader(r.Body, maxUploadBytes+1), maxUploadBytes)
 	if err != nil {
 		cleanup()
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "upload transfer failed", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "upload transfer failed", err))
 		return
 	}
 	if written > maxUploadBytes {
 		cleanup()
-		writeErr(w, xcerr.E(xcerr.CodeResourceLimit,
+		s.writeErr(w, r, xcerr.E(xcerr.CodeResourceLimit,
 			"upload exceeds the 8 GiB per-file bound", nil))
 		return
 	}
 	if written == 0 {
 		cleanup()
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "empty upload", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "empty upload", nil))
 		return
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path, not user input
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot finalize the staged upload", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot finalize the staged upload", err))
 		return
 	}
 
 	finalPath := uniqueImportPath(importsDir, name)
 	if err := ensureInsideImports(importsDir, finalPath); err != nil {
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path, not user input
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	// #nosec G703 -- finalPath is Join(importsDir, sanitizeImportName(name));
@@ -198,7 +198,7 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	// re-checked the prefix at this sink.
 	if err := os.Rename(tmpName, finalPath); err != nil {
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path, not user input
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot land the upload", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot land the upload", err))
 		return
 	}
 
@@ -207,8 +207,12 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 		// Not user's original media — a failed probe means the copy is
 		// unusable; remove it rather than littering imports/.
 		_ = os.Remove(finalPath)
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
+	}
+	if s.Log != nil {
+		s.Log.Info("upload imported",
+			"project_id", p.ID, "name", name, "bytes", written, "asset_id", asset.ID)
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"asset": asset})
 }

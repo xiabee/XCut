@@ -67,7 +67,7 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 	defer closeLog()
 	a.Log = slogSvc
 
-	srv := &api.Server{DB: db, Pipe: a.Pipeline(db)}
+	srv := &api.Server{DB: db, Pipe: a.Pipeline(db), Log: a.Log}
 	// Serve owns every timeline document write in this process: PUTs,
 	// backup restores and regeneration writes must share one mutex or a
 	// PUT racing a regeneration could collide revisions with it.

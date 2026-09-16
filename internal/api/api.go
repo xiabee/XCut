@@ -8,6 +8,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -24,6 +25,12 @@ import (
 type Server struct {
 	DB   *storage.DB
 	Pipe pipeline.Deps
+
+	// Log receives server-side request failure traces. The HTTP responses
+	// carry only user-safe messages by design, so without this the cause of
+	// a failed upload/trigger is invisible in serve.log. nil (tests) keeps
+	// the old silent behavior.
+	Log *slog.Logger
 
 	// TimelineMu serializes timeline document writes (revision-guarded
 	// PUTs, backup restores, and regeneration via Pipe.TimelineWriteLock)
@@ -60,10 +67,19 @@ func statusFor(code xcerr.Code) int {
 	}
 }
 
-// writeErr renders an error safely (no internal causes leak to the client).
-func writeErr(w http.ResponseWriter, err error) {
-	writeJSON(w, statusFor(xcerr.CodeOf(err)), map[string]any{
-		"error":   string(xcerr.CodeOf(err)),
+// writeErr renders an error safely (no internal causes leak to the client)
+// and traces the failure server-side: the technical cause only exists in
+// the error chain, so without this log line a failed request is
+// undiagnosable from serve.log.
+func (s *Server) writeErr(w http.ResponseWriter, r *http.Request, err error) {
+	code := xcerr.CodeOf(err)
+	if s.Log != nil {
+		s.Log.Warn("request failed",
+			"method", r.Method, "path", r.URL.Path,
+			"code", string(code), "err", err)
+	}
+	writeJSON(w, statusFor(code), map[string]any{
+		"error":   string(code),
 		"message": xcerr.UserMessage(err),
 	})
 }
@@ -130,7 +146,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleProjectsList(w http.ResponseWriter, r *http.Request) {
 	ps, err := s.DB.ListProjects(r.Context())
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if ps == nil {
@@ -145,17 +161,17 @@ func (s *Server) handleProjectsCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(&body); err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
 		return
 	}
 	body.Name = strings.TrimSpace(body.Name)
 	if body.Name == "" || len(body.Name) > 128 {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "name must be 1..128 characters", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "name must be 1..128 characters", nil))
 		return
 	}
 	p, err := s.DB.CreateProject(r.Context(), body.Name)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"project": p})
@@ -165,16 +181,16 @@ func (s *Server) handleProjectGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	p, err := s.DB.GetProject(r.Context(), id)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if p == nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
 	assets, err := s.DB.ListAssets(r.Context(), p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if assets == nil {
@@ -187,25 +203,25 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	p, err := s.DB.GetProject(r.Context(), id)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if p == nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
 	// Deletion cascades queued/running job rows — refuse while work is in
 	// flight rather than killing a running encode mid-publish.
 	if active, err := s.DB.HasActiveJobs(r.Context(), p.ID); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	} else if active {
-		writeErr(w, xcerr.E(xcerr.CodeConflict,
+		s.writeErr(w, r, xcerr.E(xcerr.CodeConflict,
 			"project has queued or running jobs — wait for them to finish before deleting", nil))
 		return
 	}
 	if err := s.DB.DeleteProject(r.Context(), p.ID); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	// Disk artifacts (renders, uploaded copies) die with the project. A
@@ -222,16 +238,16 @@ func (s *Server) handleProjectJobs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	p, err := s.DB.GetProject(r.Context(), id)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if p == nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
 	jobs, err := s.DB.ListJobs(r.Context(), p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if jobs == nil {
@@ -243,7 +259,7 @@ func (s *Server) handleProjectJobs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleJobsList(w http.ResponseWriter, r *http.Request) {
 	jobs, err := s.DB.ListJobs(r.Context(), "")
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if jobs == nil {

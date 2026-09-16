@@ -21,7 +21,7 @@ import (
 func (s *Server) handleStyleROIGet(w http.ResponseWriter, r *http.Request) {
 	preset, err := style.Load(r.PathValue("name"), s.stylesDir()) // gates name validity + existence
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": preset.MotionROI})
@@ -31,7 +31,7 @@ func (s *Server) handleStyleROIPut(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	preset, err := style.Load(name, s.stylesDir()) // override file if present, else embedded
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	var body struct {
@@ -42,29 +42,29 @@ func (s *Server) handleStyleROIPut(w http.ResponseWriter, r *http.Request) {
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(&body); err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
 		return
 	}
 	if !finiteRect(body.X, body.Y, body.W, body.H) {
-		writeErr(w, xcerr.E(xcerr.CodeValidation,
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation,
 			"roi must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 (normalized to the frame)", nil))
 		return
 	}
 	preset.MotionROI = &style.MotionROI{X: body.X, Y: body.Y, W: body.W, H: body.H}
 	if err := preset.Validate(); err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "preset with roi invalid: "+xcerr.UserMessage(err), nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "preset with roi invalid: "+xcerr.UserMessage(err), nil))
 		return
 	}
 	b, err := json.MarshalIndent(preset, "", "  ")
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot serialize preset", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot serialize preset", err))
 		return
 	}
 	// name passed style.Load's validName gate ([a-z0-9_]), so the join below
 	// cannot traverse; stylesDir is the operator's own workspace.
 	path := filepath.Join(s.stylesDir(), name+".json")
 	if err := pipeline.WriteAtomic(path, b); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": preset.MotionROI})
@@ -75,26 +75,26 @@ func (s *Server) handleStyleROIDelete(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(s.stylesDir(), name+".json")
 	if _, err := os.Stat(path); err != nil { // #nosec G703 -- path is <workspace>/styles/<name>.json with name gated by style.Load below
 		if os.IsNotExist(err) {
-			writeErr(w, xcerr.E(xcerr.CodeNotFound,
+			s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound,
 				"no workspace override for this style (the embedded preset has no roi to clear)", nil))
 			return
 		}
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot inspect style override", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot inspect style override", err))
 		return
 	}
 	preset, err := style.Load(name, s.stylesDir()) // validName gate for the join above
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	preset.MotionROI = nil
 	b, err := json.MarshalIndent(preset, "", "  ")
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot serialize preset", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot serialize preset", err))
 		return
 	}
 	if err := pipeline.WriteAtomic(path, b); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": nil})
@@ -130,7 +130,7 @@ func (s *Server) assetROIHandlerScope(w http.ResponseWriter, r *http.Request) (*
 func (s *Server) handleAssetROIGet(w http.ResponseWriter, r *http.Request) {
 	asset, err := s.assetROIHandlerScope(w, r)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": asset.MotionROI})
@@ -139,7 +139,7 @@ func (s *Server) handleAssetROIGet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAssetROIPut(w http.ResponseWriter, r *http.Request) {
 	asset, err := s.assetROIHandlerScope(w, r)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	var body struct {
@@ -150,12 +150,12 @@ func (s *Server) handleAssetROIPut(w http.ResponseWriter, r *http.Request) {
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(&body); err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "invalid JSON body", err))
 		return
 	}
 	roi := &storage.MotionROI{X: body.X, Y: body.Y, W: body.W, H: body.H}
 	if err := s.DB.SetAssetROI(r.Context(), asset.ID, roi); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": roi})
@@ -164,15 +164,15 @@ func (s *Server) handleAssetROIPut(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAssetROIDelete(w http.ResponseWriter, r *http.Request) {
 	asset, err := s.assetROIHandlerScope(w, r)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if asset.MotionROI == nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "this asset has no per-source roi to clear", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "this asset has no per-source roi to clear", nil))
 		return
 	}
 	if err := s.DB.SetAssetROI(r.Context(), asset.ID, nil); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"roi": nil})

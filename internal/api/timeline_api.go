@@ -19,12 +19,12 @@ func (s *Server) handleTimelineGet(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := s.Pipe.TimelinePath(p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	tl, err := timeline.LoadFile(path)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	hasBackup := false
@@ -50,13 +50,13 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20))
 	tl := &timeline.Timeline{}
 	if err := dec.Decode(tl); err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "invalid timeline JSON", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "invalid timeline JSON", err))
 		return
 	}
 
 	assets, err := s.DB.ListAssets(r.Context(), p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	durations := make(map[string]float64, len(assets))
@@ -67,7 +67,7 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 		d, ok := durations[id]
 		return d, ok
 	}); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 
@@ -80,18 +80,18 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 
 	path, err := s.Pipe.TimelinePath(p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	current, err := timeline.LoadFile(path)
 	if err != nil && !xcerr.IsCode(err, xcerr.CodeNotFound) {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	var storedRev int64
 	if current != nil {
 		if tl.Revision != current.Revision {
-			writeErr(w, xcerr.E(xcerr.CodeConflict,
+			s.writeErr(w, r, xcerr.E(xcerr.CodeConflict,
 				"timeline changed since you loaded it (saved revision differs) — GET the current document and reapply your edits", nil))
 			return
 		}
@@ -101,11 +101,11 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.MarshalIndent(tl, "", "  ")
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot serialize timeline", err))
 		return
 	}
 	if err := pipeline.WriteAtomic(path, b); err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "clips": countClips(tl), "revision": tl.Revision})
@@ -132,11 +132,11 @@ func (s *Server) handleTimelineRestore(w http.ResponseWriter, r *http.Request) {
 	ok, err := s.Pipe.RestoreTimelineBackup(p)
 	s.TimelineMu.Unlock()
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if !ok {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no timeline backup for this project (nothing to restore)", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "no timeline backup for this project (nothing to restore)", nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"restored": true})

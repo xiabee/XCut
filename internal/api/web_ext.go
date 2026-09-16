@@ -52,17 +52,17 @@ func (s *Server) handleRenderDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.Pipe.DefaultRenderPath(p.ID)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	fi, err := os.Stat(out)
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no render output for project (render first)", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "no render output for project (render first)", nil))
 		return
 	}
 	f, err := workspace.OpenReadable(out) // share-all: a re-render may replace this file mid-playback
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open render output", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot open render output", err))
 		return
 	}
 	defer f.Close()
@@ -103,21 +103,21 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// A storage failure is not "unknown asset": the client must be able
 		// to tell a retryable backend problem from a genuinely missing row.
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	if a == nil || a.ProjectID != p.ID {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "unknown asset for this project", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "unknown asset for this project", nil))
 		return
 	}
 	fi, err := os.Stat(a.Path) // #nosec G703 -- a.Path is the DB asset row written only by the import API (loopback-only server by design); serving the operator's own imported media is the feature
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "asset media file is missing on disk", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "asset media file is missing on disk", err))
 		return
 	}
 	f, err := os.Open(a.Path) // #nosec G703 -- same DB-asset-row path as above; local-first product model (no auth needed for what the operator imported)
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open asset media file", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot open asset media file", err))
 		return
 	}
 	defer f.Close()
@@ -141,7 +141,7 @@ func (s *Server) handleSubtitlesStatus(w http.ResponseWriter, r *http.Request) {
 	for _, ext := range []string{"srt", "ass"} {
 		path, err := s.Pipe.SubtitlesPath(p.ID, ext)
 		if err != nil {
-			writeErr(w, err)
+			s.writeErr(w, r, err)
 			return
 		}
 		if _, err := os.Stat(path); err == nil {
@@ -163,22 +163,22 @@ func (s *Server) handleSubtitlesFile(w http.ResponseWriter, r *http.Request) {
 		format = "ass"
 	}
 	if format != "ass" && format != "srt" {
-		writeErr(w, xcerr.E(xcerr.CodeValidation, "format must be ass or srt", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeValidation, "format must be ass or srt", nil))
 		return
 	}
 	path, err := s.Pipe.SubtitlesPath(p.ID, format)
 	if err != nil {
-		writeErr(w, err)
+		s.writeErr(w, r, err)
 		return
 	}
 	fi, err := os.Stat(path) // #nosec G703 -- format is whitelist-validated to "ass"|"srt" above and path is built through WS.SafeJoin, so no client-controlled traversal is possible
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeNotFound, "no "+format+" subtitles for this project (transcribe first)", nil))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "no "+format+" subtitles for this project (transcribe first)", nil))
 		return
 	}
 	f, err := workspace.OpenReadable(path) // share-all: a re-transcribe may replace this file mid-download // #nosec G703 -- same whitelist + SafeJoin-constructed path as the Stat above
 	if err != nil {
-		writeErr(w, xcerr.E(xcerr.CodeInternal, "cannot open subtitle file", err))
+		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot open subtitle file", err))
 		return
 	}
 	defer f.Close()
