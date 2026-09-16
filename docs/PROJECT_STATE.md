@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-17 03:45 (+08:00) — nightly session #11 checkpoint
+Updated: 2026-09-17 02:37 (+08:00) — nightly session #11 checkpoint
 
 ## Version / HEAD
 
