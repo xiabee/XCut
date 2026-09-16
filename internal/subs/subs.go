@@ -50,7 +50,11 @@ func Parse(raw []byte) (*Transcript, error) {
 	}
 	out := t.Segments[:0]
 	for _, s := range t.Segments {
-		s.Text = strings.TrimSpace(s.Text)
+		// Collapse all whitespace runs (inner newlines included) to single
+		// spaces: SRT separates CUES with a blank line, so a segment text
+		// carrying "\n\n" would end its cue early and have the rest parsed
+		// as a phantom headerless cue. ASS already escapes newlines.
+		s.Text = strings.Join(strings.Fields(s.Text), " ")
 		if s.Text == "" {
 			continue
 		}

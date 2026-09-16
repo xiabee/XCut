@@ -176,3 +176,37 @@ func TestKaraokeEscapesControlChars(t *testing.T) {
 		t.Fatalf("escape replacements missing:\n%s", out)
 	}
 }
+
+// TestParseNeutralizesInnerNewlines: SRT separates cues with a blank line,
+// so a segment text carrying inner newlines would split the cue and have
+// the remainder parsed as a phantom headerless cue. Parse collapses all
+// whitespace runs to single spaces before rendering.
+func TestParseNeutralizesInnerNewlines(t *testing.T) {
+	raw := []byte(`{"language":"zh","segments":[
+		{"start":1.0,"end":2.0,"text":"第一行\n\n第二行\r\n第三行"},
+		{"start":3.0,"end":4.0,"text":"   "}
+	]}`)
+	tr, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Segments) != 1 {
+		t.Fatalf("segments = %d, want 1 (whitespace-only dropped)", len(tr.Segments))
+	}
+	got := tr.Segments[0].Text
+	if got != "第一行 第二行 第三行" {
+		t.Fatalf("text = %q, want single-space-joined", got)
+	}
+	var buf strings.Builder
+	if err := WriteSRT(tr, &buf); err != nil {
+		t.Fatal(err)
+	}
+	for i, line := range strings.Split(buf.String(), "\n") {
+		if i > 0 && line == "" && i < len(strings.Split(buf.String(), "\n"))-1 {
+			// A blank line mid-file is only legal between cues (after the
+			// text line, before the next index) — the single cue must not
+			// contain one.
+			t.Fatalf("blank line at %d corrupts the single cue:\n%s", i, buf.String())
+		}
+	}
+}
