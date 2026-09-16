@@ -84,8 +84,11 @@ PROJ_ID=$(curl -s --max-time 5 "$BASE/projects" | python -c "import json,sys; d=
 # --- content-upload setup (session #9 surface) ---
 # The fixture lands under imports/<pid>/; re-uploading the same name must
 # land a NEW copy (soak-up-1.mp4), never overwrite. 2 assets, 2 files.
-upload_code() { # upload_code FILE NAME
-    curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST         --data-binary @"$1" "$BASE/projects/$PROJ_ID/assets/upload?filename=$2"
+upload_code() { # upload_code FILE NAME  (main soak project)
+    upload_code_pid "$PROJ_ID" "$1" "$2"
+}
+upload_code_pid() { # upload_code_pid PROJECT FILE NAME
+    curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST         --data-binary @"$2" "$BASE/projects/$1/assets/upload?filename=$3"
 }
 up1=$(upload_code "$WS/fixture.mp4" "soak-up.mp4")
 up2=$(upload_code "$WS/fixture.mp4" "soak-up.mp4")
@@ -98,14 +101,18 @@ n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
 [ "$n_files" = "2" ] || { echo "imports/ has $n_files files after duplicate-name uploads (want 2)" >&2; exit 2; }
 
 errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
+dlOK=0; rangeOK=0; busy409=0; idleDelOK=0
 
 wait_job() { # wait_job TYPE -> prints final status; bounded 90s
-    local typ="$1" n=0 st=""
+    wait_job_pid "$PROJ_ID" "$1"
+}
+wait_job_pid() { # wait_job_pid PROJECT TYPE -> prints final status; bounded 90s
+    local pid="$1" typ="$2" n=0 st=""
     while [ $n -lt 180 ]; do
         st=$(curl -s --max-time 5 "$BASE/jobs" | python -c "
 import json,sys
 d=json.load(sys.stdin)
-js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$PROJ_ID' and j.get('type')=='$typ']
+js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$pid' and j.get('type')=='$typ']
 js.sort(key=lambda j: (j.get('created_at',0), j.get('id','')))
 print(js[-1]['status'] if js else '')" 2>/dev/null)
         case "$st" in succeeded|failed|cancelled) echo "$st"; return 0;; esac
@@ -198,11 +205,45 @@ print(json.dumps(d['timeline']))" > "$WS/good.json"
     n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
     if [ "$n_files" = "2" ]; then upNoLitter=$((upNoLitter+1)); else err="$err upload-litter ($n_files files)"; fi
 
+    # 7. render download streams (write-idle heartbeat surface, M120):
+    #    full GET is 200 + real bytes; a 1 KiB range GET is 206 + exactly
+    #    1024 bytes (range handling intact under the streaming wrapper).
+    code=$(get_code "/projects/$PROJ_ID/render")
+    if [ "$code" = "200" ]; then dlOK=$((dlOK+1)); else err="$err render-dl $code"; fi
+    range_code=$(curl -s -o "$WS/range.bin" -w "%{http_code}" --max-time 15         -r 0-1023 "$BASE/projects/$PROJ_ID/render")
+    range_bytes=$(wc -c < "$WS/range.bin" 2>/dev/null | tr -d ' ')
+    if [ "$range_code" = "206" ] && [ "$range_bytes" = "1024" ]; then
+        rangeOK=$((rangeOK+1))
+    else
+        err="$err render-range $range_code/${range_bytes}B"
+    fi
+
+    # 8. delete gate (M-A): a busy project refuses deletion (409), the same
+    #    project deletes once idle (200). Throwaway project per round.
+    busy=$(post_code "/projects" "{\"name\":\"soak-busy-$round\"}")
+    if [ "$busy" = "201" ]; then
+        BUSY_ID=$(curl -s --max-time 5 "$BASE/projects" | python -c "
+import json,sys
+d=json.load(sys.stdin)
+print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/dev/null)
+        bup=$(upload_code_pid "$BUSY_ID" "$WS/fixture.mp4" "busy.mp4")
+        bat=$(post_code "/projects/$BUSY_ID/analyze" '{}')
+        if [ "$bup" = "201" ] && [ "$bat" = "202" ]; then
+            del1=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15                 -X DELETE "$BASE/projects/$BUSY_ID")
+            if [ "$del1" = "409" ]; then busy409=$((busy409+1)); else err="$err busy-delete $del1 (want 409)"; fi
+            wait_job_pid "$BUSY_ID" analyze >/dev/null
+        fi
+        del2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15             -X DELETE "$BASE/projects/$BUSY_ID")
+        if [ "$del2" = "200" ]; then idleDelOK=$((idleDelOK+1)); else err="$err idle-delete $del2 (want 200)"; fi
+    else
+        err="$err busy-project $busy"
+    fi
+
     if [ -n "$err" ]; then
         errors=$((errors+1))
         echo "round $round ERROR:$err"
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 idleDelOK=$idleDelOK"
 [ "$errors" -eq 0 ]
