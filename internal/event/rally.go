@@ -132,7 +132,8 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		if end > duration {
 			end = duration
 		}
-		for _, ch := range chunkBounds(start, end, defaultMaxRally) {
+		chunks := snapChunkBounds(chunkBounds(start, end, defaultMaxRally), spanHits)
+		for _, ch := range chunks {
 			loC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[0] })
 			hiC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[1] })
 			cands = append(cands, rallyChunk{
@@ -253,6 +254,47 @@ func chunkBounds(start, end, max float64) [][2]float64 {
 		out = append(out, [2]float64{lo, hi})
 	}
 	return out
+}
+
+// Chunk snapping: equal division cuts wherever the arithmetic lands —
+// mid-rally, mid-exchange. Each interior boundary instead slides to the
+// quietest onset window within snapRange seconds, so a piece edge lands in
+// a natural break (the space between rallies) rather than on the ball.
+// PROVISIONAL constants (±6 s search, 2 s window, 5 s minimum piece)
+// pending annotated-footage evaluation.
+const (
+	chunkSnapRange  = 6.0 // s a boundary may slide either way
+	chunkSnapWindow = 2.0 // s onset window scored per candidate position
+	chunkSnapMinLen = 5.0 // s smallest piece a slide may leave behind
+)
+
+// snapChunkBounds moves interior boundaries to their quietest neighborhood.
+// Hits must be the containing span's onsets (sorted). Boundaries stay
+// monotonic and pieces stay non-degenerate; the max-piece size may grow by
+// up to chunkSnapRange, which the style's own clip-length trim absorbs.
+func snapChunkBounds(chunks [][2]float64, hits []analysis.Sample) [][2]float64 {
+	if len(chunks) < 2 {
+		return chunks
+	}
+	count := func(lo, hi float64) int {
+		loI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= lo })
+		hiI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= hi })
+		return hiI - loI
+	}
+	for b := 1; b < len(chunks); b++ {
+		orig := chunks[b-1][1]
+		best, bestCount := orig, count(orig, orig+chunkSnapWindow)
+		lo := math.Max(chunks[b-1][0]+chunkSnapMinLen, orig-chunkSnapRange)
+		hi := math.Min(chunks[b][1]-chunkSnapMinLen, orig+chunkSnapRange)
+		for t := lo; t <= hi; t += 0.5 {
+			if n := count(t, t+chunkSnapWindow); n < bestCount {
+				best, bestCount = t, n
+			}
+		}
+		chunks[b-1][1] = best
+		chunks[b][0] = best
+	}
+	return chunks
 }
 
 // scoreRally applies the watchability gates (duration floor, adaptive

@@ -426,3 +426,38 @@ func TestAdaptiveMotionFloorSurvivesGlobalDrift(t *testing.T) {
 		t.Fatalf("dead chunks not attributed to the motion gate (stats %+v)", st3)
 	}
 }
+
+// TestSnapChunkBoundsFindsTheValley: equal division cuts wherever the
+// arithmetic lands (mid-rally); the snapper must slide each interior
+// boundary into the quietest onset window nearby — the natural break
+// between rallies — while keeping pieces non-degenerate and monotonic.
+func TestSnapChunkBoundsFindsTheValley(t *testing.T) {
+	// Uniform play every 0.4s over [0,60], one silent valley at
+	// [30.8, 32.8): a 30s split cuts at 30.0, mid-play; the quietest 2s
+	// window sits inside the valley.
+	var onsets []analysis.Sample
+	for n := 0; n <= 149; n++ {
+		t0 := float64(n) * 0.4
+		if t0 >= 30.8 && t0 < 32.8 {
+			continue
+		}
+		onsets = append(onsets, analysis.Sample{T: t0, V: 0.8})
+	}
+	sortSamples(onsets)
+
+	chunks := snapChunkBounds([][2]float64{{0, 30}, {30, 60}}, onsets)
+	if len(chunks) != 2 {
+		t.Fatalf("chunks = %v, want 2", chunks)
+	}
+	b := chunks[0][1]
+	if b != chunks[1][0] {
+		t.Fatalf("boundary split apart: %v", chunks)
+	}
+	if b <= 30.4 || b >= 31.0 {
+		t.Fatalf("boundary %v not inside the quiet valley (30.8..31.0)", b)
+	}
+	// Pieces stay sane: each covers its side, no overlap, no degenerate.
+	if chunks[0][0] != 0 || chunks[1][1] != 60 || chunks[0][1]-chunks[0][0] < chunkSnapMinLen {
+		t.Fatalf("degenerate snapped pieces: %v", chunks)
+	}
+}
