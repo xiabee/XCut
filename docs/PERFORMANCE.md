@@ -46,6 +46,7 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-09 | analyze, proxy OFF (cold) | 300s 1080p30 testsrc2 | 42.8 s wall | **0.14x realtime** | default 2-thread cap; frame_diff dominates (1080p decode × 9000 frames) |
 | 2026-09-09 | analyze, proxy ON (cold, incl. proxy encode) | same | 43.4 s wall | **0.14x realtime** | one-time proxy encode ≈ 35 s under the 2-thread cap (1080p decode-bound); analyzer passes collapse to ~2 s |
 | 2026-09-09 | analyze, proxy ON (proxy warm, analysis cold) | same | **40.0 → breakdown: encode 35 s, analyzers 1.9 s** | **~0.01x for the analysis passes** | frame_diff 0.76 s + RMS 0.74 s + onset 0.35 s (debug-log timing); 10–20× less per repeated analysis |
+| 2026-09-16 | **serve idle RAM (re-check)** | 30 s idle | **15.7 MB WS / 47.3 MB private, CPU 0.000 s / 10 s** | session #10 HEAD (81cee42) | upload heartbeat (M112) adds no steady-state cost: **met** |
 | 2026-09-10 | **session #4 re-check: analyze (cold)** | 300s 1080p30 testsrc2 | 35.9 s wall | **0.12x realtime** | after M20 (limiter on every exec) + M28 (capped output capture): no regression, within run variance of the 42.8 s row |
 | 2026-09-10 | session #4 re-check: analyze (cache hit) | same | 0.25 s wall (CLI incl. process start) | ~0x | — |
 | 2026-09-13 | **session #7 re-check: analyze (cold)** | 300s 1080p30 testsrc2 + sine | 39.5 s wall | **0.13x realtime** | first run through the streaming metadata transport (M76): within run variance of the 35.9 s row — no regression |
