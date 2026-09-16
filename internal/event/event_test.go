@@ -43,7 +43,7 @@ func TestBuildActiveSegments(t *testing.T) {
 		0.01, 0.01, // 3–4s inactive
 		0.30, 0.30, 0.30, 0.30, // 4–6s active (would be a cut too: 0.30 > 0.28)
 	})
-	segs, err := Build([]analysis.FeatureTrack{motion}, 6.0, DefaultConfig())
+	segs, _, err := Build([]analysis.FeatureTrack{motion}, 6.0, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestBuildMergesSmallGaps(t *testing.T) {
 	motion.Samples = grid([]float64{
 		0.20, 0.20, 0.01, 0.20, 0.20,
 	})
-	segs, err := Build([]analysis.FeatureTrack{motion}, 2.5, DefaultConfig())
+	segs, _, err := Build([]analysis.FeatureTrack{motion}, 2.5, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestBuildDropsShortSegments(t *testing.T) {
 	motion.Samples = grid([]float64{
 		0.01, 0.01, 0.5, 0.01, 0.01, // single active sample → 0.5s < MinDuration
 	})
-	segs, err := Build([]analysis.FeatureTrack{motion}, 2.5, DefaultConfig())
+	segs, _, err := Build([]analysis.FeatureTrack{motion}, 2.5, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestBuildAudioDrivesActivity(t *testing.T) {
 	motion.Samples = grid([]float64{0.0, 0.0, 0.0, 0.0})
 	audio := audioTrack()
 	audio.Samples = grid([]float64{-12, -12, -12, -12})
-	segs, err := Build([]analysis.FeatureTrack{motion, audio}, 2.0, DefaultConfig())
+	segs, _, err := Build([]analysis.FeatureTrack{motion, audio}, 2.0, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestBuildDigitalSilence(t *testing.T) {
 	motion := motionTrack()
 	motion.Samples = grid([]float64{0.0, 0.0})
 	audio := audioTrack([2]float64{0, math.Inf(-1)}, [2]float64{0.5, math.Inf(-1)})
-	segs, err := Build([]analysis.FeatureTrack{motion, audio}, 1.0, DefaultConfig())
+	segs, _, err := Build([]analysis.FeatureTrack{motion, audio}, 1.0, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +141,11 @@ func TestBuildDeterministic(t *testing.T) {
 			analysis.Sample{T: float64(i) * 0.5, V: -60 + 50*rng.Float64()})
 	}
 	tracks := []analysis.FeatureTrack{motion, audio}
-	a, err := Build(tracks, 100, DefaultConfig())
+	a, _, err := Build(tracks, 100, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Build(tracks, 100, DefaultConfig())
+	b, _, err := Build(tracks, 100, DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,17 +155,17 @@ func TestBuildDeterministic(t *testing.T) {
 }
 
 func TestBuildErrors(t *testing.T) {
-	if _, err := Build(nil, 10, DefaultConfig()); err == nil {
+	if _, _, err := Build(nil, 10, DefaultConfig()); err == nil {
 		t.Fatal("expected error for missing tracks")
 	}
 	motion := motionTrack()
 	motion.Samples = grid([]float64{0.1})
-	if _, err := Build([]analysis.FeatureTrack{motion}, -1, DefaultConfig()); err == nil {
+	if _, _, err := Build([]analysis.FeatureTrack{motion}, -1, DefaultConfig()); err == nil {
 		t.Fatal("expected error for bad duration")
 	}
 	bad := DefaultConfig()
 	bad.MergeGap = -5
-	if _, err := Build([]analysis.FeatureTrack{motion}, 10, bad); err == nil {
+	if _, _, err := Build([]analysis.FeatureTrack{motion}, 10, bad); err == nil {
 		t.Fatal("expected error for bad config")
 	}
 }

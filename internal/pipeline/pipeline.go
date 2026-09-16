@@ -304,11 +304,12 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 					errCh <- err
 					return
 				}
-				segs, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
+				segs, estat, err := event.Build(result.Tracks, asset.DurationSec, event.DefaultConfig())
 				if err != nil {
 					errCh <- err
 					return
 				}
+				logSegmentation(d.Log, asset.ID, "default", estat, len(segs))
 				if onAsset != nil {
 					onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
 				}
@@ -435,10 +436,11 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 			// A per-source ROI produced a frame_diff_roi track; when the
 			// preset leaves the motion source on its default, segment THIS
 			// asset from its own region instead of the full-frame signal.
-			segs, err := event.Build(res.Tracks, asset.DurationSec, eventConfigFor(preset, &asset))
+			segs, estat, err := event.Build(res.Tracks, asset.DurationSec, eventConfigFor(preset, &asset))
 			if err != nil {
 				return err
 			}
+			logSegmentation(d.Log, asset.ID, preset.Name, estat, len(segs))
 			items = append(items, style.AssetEvents{
 				Asset: style.AssetInfo{
 					ID:          asset.ID,
@@ -464,7 +466,7 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 
 // eventConfigFor returns the event config for ONE asset: an asset-scoped
 // ROI upgrades the default motion source to the ROI track, so the cut is
-// driven by what happened on the court instead of the whole frame; a
+// driven by what happened on the court instead of the full-frame signal; a
 // preset-set motion_track keeps precedence.
 func eventConfigFor(preset *style.Preset, a *storage.Asset) event.Config {
 	cfg := preset.EventConfig
@@ -472,6 +474,25 @@ func eventConfigFor(preset *style.Preset, a *storage.Asset) event.Config {
 		cfg.MotionTrack = "frame_diff_roi"
 	}
 	return cfg
+}
+
+// logSegmentation makes gate rejections visible: "no events satisfy the
+// style's clip constraints" is unactionable without knowing WHICH gate
+// refused how much (a too-strict motion floor vs. footage with no onsets
+// have different fixes). nil logger (tests) stays silent.
+func logSegmentation(log *slog.Logger, assetID, source string, st event.BuildStats, segments int) {
+	if log == nil {
+		return
+	}
+	log.Info("event segmentation",
+		"asset_id", assetID, "config", source,
+		"onsets", st.Onsets,
+		"spans_opened", st.SpansOpened, "spans_dropped_min_hits", st.SpansDroppedMinHits,
+		"chunks_considered", st.ChunksConsidered,
+		"dropped_min_hits", st.ChunksDroppedMinHits,
+		"dropped_min_duration", st.ChunksDroppedMinDuration,
+		"dropped_motion_floor", st.ChunksDroppedMotionFloor,
+		"segments", segments)
 }
 
 // WriteRegeneratedTimeline publishes a style-regenerated document as the

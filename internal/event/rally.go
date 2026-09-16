@@ -35,11 +35,15 @@ const (
 	rateStep   = 0.5 // s window advance per step
 )
 
-// buildRallies clusters onsets into rally segments.
-func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64, cfg Config) ([]Segment, error) {
+// buildRallies clusters onsets into rally segments. The stats pointer (nil
+// in tests that don't care) collects gate disposition counts.
+func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64, cfg Config, stats *BuildStats) ([]Segment, error) {
 	hits := onsetSamples(onsets)
 	if len(hits) == 0 {
 		return nil, nil
+	}
+	if stats != nil {
+		stats.Onsets = len(hits)
 	}
 
 	gap := firstNonZero(cfg.RallyGap, defaultRallyGap)
@@ -81,6 +85,9 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		if !inside {
 			if r >= enterCount {
 				inside, openT, belowSince, lastInsideT = true, t, -1, t
+				if stats != nil {
+					stats.SpansOpened++
+				}
 			}
 			continue
 		}
@@ -112,6 +119,9 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		hiI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= sp.end })
 		spanHits := hits[loI:hiI]
 		if len(spanHits) < minHits {
+			if stats != nil {
+				stats.SpansDroppedMinHits++
+			}
 			continue
 		}
 		start := spanHits[0].T - pad
@@ -124,18 +134,34 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		}
 		chunks := chunkBounds(start, end, defaultMaxRally)
 		for _, ch := range chunks {
+			if stats != nil {
+				stats.ChunksConsidered++
+			}
 			loC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[0] })
 			hiC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[1] })
 			chunkHits := spanHits[loC:hiC]
 			if len(chunkHits) < minHits {
+				if stats != nil {
+					stats.ChunksDroppedMinHits++
+				}
 				continue
 			}
-			if seg, ok := scoreRally(motion, audio, cfg, ch[0], ch[1], chunkHits); ok {
+			if seg, gate, ok := scoreRally(motion, audio, cfg, ch[0], ch[1], chunkHits); ok {
 				segments = append(segments, seg)
+			} else if stats != nil {
+				switch gate {
+				case "min_duration":
+					stats.ChunksDroppedMinDuration++
+				case "motion_floor":
+					stats.ChunksDroppedMotionFloor++
+				}
 			}
 		}
 	}
 	sort.Slice(segments, func(i, j int) bool { return segments[i].Start < segments[j].Start })
+	if stats != nil {
+		stats.Segments = len(segments)
+	}
 	return segments, nil
 }
 
@@ -165,15 +191,17 @@ func chunkBounds(start, end, max float64) [][2]float64 {
 }
 
 // scoreRally applies the watchability gates (duration floor, motion floor)
-// and builds the explainable rally segment for one hit window.
-func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample) (Segment, bool) {
+// and builds the explainable rally segment for one hit window. On refusal
+// it names the gate that fired so the caller's rejection counters are
+// derived from the decision itself, not from a re-derivation of it.
+func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample) (Segment, string, bool) {
 	if end-start < cfg.MinDuration {
-		return Segment{}, false
+		return Segment{}, "min_duration", false
 	}
 	// Motion support: a rally with no on-screen motion is not watchable.
 	meanMotion := intervalMean(motion, start, end)
 	if meanMotion < cfg.MotionFloor || math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
-		return Segment{}, false
+		return Segment{}, "motion_floor", false
 	}
 	meanDB := silentDB
 	if audio != nil {
@@ -199,7 +227,7 @@ func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end flo
 		Kind:        ModeRally,
 		HitCount:    count,
 		HitDensity:  round4(density),
-	}, true
+	}, "", true
 }
 
 // onsetSamples extracts sorted, deduplicated onset samples.

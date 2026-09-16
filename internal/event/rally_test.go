@@ -50,7 +50,7 @@ func TestBuildRallyClustersHitsAndSplitsOnGaps(t *testing.T) {
 		*flatMotion(40, 0.15),
 		*onsets,
 	}
-	segs, err := Build(tracks, 40, cfg)
+	segs, _, err := Build(tracks, 40, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestBuildRallyDropsThinAndQuiet(t *testing.T) {
 	motion := track("frame_diff", [][2]float64{{0, 0.01}, {5, 0.01}, {10, 0.01},
 		{15, 0.01}, {20, 0.01}, {25, 0.01}, {30, 0.01}})
 	tracks := []analysis.FeatureTrack{*motion, *onsets}
-	segs, err := Build(tracks, 35, cfg)
+	segs, _, err := Build(tracks, 35, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestBuildRallyDropsThinAndQuiet(t *testing.T) {
 func TestBuildRallyWithoutOnsetsYieldsNothing(t *testing.T) {
 	cfg := rallyConfig()
 	tracks := []analysis.FeatureTrack{*flatMotion(20, 0.2)}
-	segs, err := Build(tracks, 20, cfg)
+	segs, _, err := Build(tracks, 20, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestBuildRallyRespectsMotionTrackPreference(t *testing.T) {
 	full := track("frame_diff", [][2]float64{{0, 0.2}, {5, 0.2}, {10, 0.2}})
 	roi := track("frame_diff_roi", [][2]float64{{0, 0.01}, {5, 0.01}, {10, 0.01}})
 	tracks := []analysis.FeatureTrack{*full, *roi, *onsets}
-	segs, err := Build(tracks, 15, cfg)
+	segs, _, err := Build(tracks, 15, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestBuildRallyRespectsMotionTrackPreference(t *testing.T) {
 	}
 
 	cfg.MotionTrack = ""
-	segs, err = Build(tracks, 15, cfg)
+	segs, _, err = Build(tracks, 15, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestBuildActivityModeAnnotatesOnsetDensity(t *testing.T) {
 		MergeGap: 1.2, MinDuration: 2.0}
 	onsets := hitsAt(5, 5.5, 6, 6.5, 7)
 	tracks := []analysis.FeatureTrack{*flatMotion(15, 0.2), *onsets}
-	segs, err := Build(tracks, 15, cfg)
+	segs, _, err := Build(tracks, 15, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestBuildRallyChunksContinuousPlay(t *testing.T) {
 		times = append(times, t)
 	}
 	tracks := []analysis.FeatureTrack{*flatMotion(130, 0.15), *hitsAt(times...)}
-	segs, err := Build(tracks, 130, cfg)
+	segs, _, err := Build(tracks, 130, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestBuildRallySplitsOnLowDensityBreaks(t *testing.T) {
 		times = append(times, t)
 	}
 	tracks := []analysis.FeatureTrack{*flatMotion(45, 0.15), *hitsAt(times...)}
-	segs, err := Build(tracks, 45, cfg)
+	segs, _, err := Build(tracks, 45, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,5 +283,48 @@ func TestChunkBoundsExactMultiple(t *testing.T) {
 		if ch[1]-ch[0] > 30+1e-9 {
 			t.Fatalf("chunk %v exceeds max 30", ch)
 		}
+	}
+}
+
+// TestBuildStatsNamesTheGate: the stats must say WHICH gate refused how
+// much — "no events satisfy the style's clip constraints" is unactionable
+// when motion-floor and min-hits rejections look identical.
+func TestBuildStatsNamesTheGate(t *testing.T) {
+	// Motion everywhere below the floor: every chunk reaches the scorer and
+	// is refused by the motion gate, not by hit counting.
+	cfg := rallyConfig()
+	cfg.Mode = ModeRally
+	quiet := []analysis.FeatureTrack{*flatMotion(40, 0.01), *hitsAt(5, 5.5, 6, 6.5, 7, 7.5, 8)}
+	_, st, err := Build(quiet, 40, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Segments != 0 {
+		t.Fatalf("segments = %d, want 0 (all below the motion floor)", st.Segments)
+	}
+	if st.Onsets != 7 || st.SpansOpened != 1 {
+		t.Fatalf("onsets/spans = %d/%d, want 7/1", st.Onsets, st.SpansOpened)
+	}
+	if st.ChunksConsidered == 0 || st.ChunksConsidered != st.ChunksDroppedMotionFloor {
+		t.Fatalf("chunks %d considered, %d dropped by motion floor — counters disagree",
+			st.ChunksConsidered, st.ChunksDroppedMotionFloor)
+	}
+	if st.ChunksDroppedMinHits != 0 || st.ChunksDroppedMinDuration != 0 {
+		t.Fatalf("min_hits/min_duration drops = %d/%d, want 0/0",
+			st.ChunksDroppedMinHits, st.ChunksDroppedMinDuration)
+	}
+
+	// Two hits only: the window opens (2 hits in one 2s window) but the span
+	// holds fewer than minHits hits, so the span gate is what refused.
+	sparse := []analysis.FeatureTrack{*flatMotion(40, 0.15), *hitsAt(5, 5.5)}
+	_, st, err = Build(sparse, 40, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Segments != 0 {
+		t.Fatalf("segments = %d, want 0 (span below min hits)", st.Segments)
+	}
+	if st.SpansDroppedMinHits == 0 {
+		t.Fatalf("spans_dropped_min_hits = 0, want >= 1")
 	}
 }

@@ -131,13 +131,34 @@ type span struct {
 	audioN     int
 }
 
+// BuildStats explains how the gates disposed of candidate material. A
+// style that rejects every candidate must be distinguishable from a video
+// with nothing in it — "nothing found" and "found but refused" have
+// different fixes (lower the floor vs. check the footage), and without
+// counters the segmentation looks identical in both cases.
+type BuildStats struct {
+	// Rally mode: onset samples seen and density-walk spans opened.
+	Onsets              int
+	SpansOpened         int
+	SpansDroppedMinHits int
+	// Both modes: chunks/runs that reached the scoring gates.
+	ChunksConsidered         int
+	ChunksDroppedMinHits     int
+	ChunksDroppedMinDuration int
+	ChunksDroppedMotionFloor int
+	// Segments that survived every gate.
+	Segments int
+}
+
 // Build extracts segments from feature tracks over media of given duration.
-func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segment, error) {
+// The returned stats explain any empty result (see BuildStats).
+func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segment, BuildStats, error) {
+	var stats BuildStats
 	if err := cfg.Validate(); err != nil {
-		return nil, err
+		return nil, stats, err
 	}
 	if duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
-		return nil, xcerr.E(xcerr.CodeValidation, "media duration must be positive", nil)
+		return nil, stats, xcerr.E(xcerr.CodeValidation, "media duration must be positive", nil)
 	}
 
 	var motion, audio, onsets *analysis.FeatureTrack
@@ -160,7 +181,7 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 		}
 	}
 	if motion == nil || len(motion.Samples) == 0 {
-		return nil, xcerr.E(xcerr.CodeValidation, "frame_diff feature track missing", nil)
+		return nil, stats, xcerr.E(xcerr.CodeValidation, "frame_diff feature track missing", nil)
 	}
 	sortSamples(motion.Samples)
 	if audio != nil {
@@ -171,7 +192,9 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 	}
 
 	if cfg.Mode == ModeRally {
-		return buildRallies(motion, audio, onsets, duration, cfg)
+		ssegs, serr := buildRallies(motion, audio, onsets, duration, cfg, &stats)
+		stats.Segments = len(ssegs)
+		return ssegs, stats, serr
 	}
 	window := estimateWindow(motion.Samples)
 
@@ -204,7 +227,8 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 			segments = append(segments, seg)
 		}
 	}
-	return segments, nil
+	stats.Segments = len(segments)
+	return segments, stats, nil
 }
 
 // countOnsetsIn counts onset samples within [start, end].
