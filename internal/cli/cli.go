@@ -214,6 +214,10 @@ func writesWorkspace(name string, args []string) bool {
 	case "init", "import", "analyze", "timeline", "render", "auto",
 		"cleanup", "serve", "client":
 		return true
+	case "roi":
+		// listing reads; --set/--clear write. Cheap and rare: treat as a
+		// writer unconditionally.
+		return true
 	case "project":
 		// list/show read; create/delete write.
 		return len(args) > 0 && (args[0] == "create" || args[0] == "delete")
