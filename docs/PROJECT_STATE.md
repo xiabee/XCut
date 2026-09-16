@@ -3,17 +3,16 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-15 01:20 (+08:00) — nightly session #9 checkpoint
+Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #8 (desktop client, i18n, per-source ROI, double-click
-  packaging, job-object backstop) + session #9 (perf re-check, linux e2e,
-  drag-drop import), all pushed (see git log; every milestone
-  fast-gated, pushed, and independently accepted on the remote-node node;
-  the full gate — race, cross-compile, Rust, govulncheck, gosec — re-run
-  green at the session's final HEAD)
+- HEAD: session #10 (upload read-deadline heartbeat, API failure
+  traces in serve.log, soak upload coverage, pure-IR test de-ffmpeg'ing,
+  README truth sync) on top of session #9 (drag-drop import, upload
+  progress, per-source ROI, desktop client), all pushed; the full gate
+  re-ran green at 9c1c8b3 tonight
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
   entry; remote-node remote runs after every milestone
@@ -40,6 +39,12 @@ Updated: 2026-09-15 01:20 (+08:00) — nightly session #9 checkpoint
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
   Render outputs are guarded against overwriting source media, timeline-
   referenced clip sources, or the timeline document.
+- **Media/API**: uploads stream with a read-deadline heartbeat —
+  the server's total-time ReadTimeout no longer caps transfer duration;
+  progress re-arms a 30 s idle window, so a multi-GiB drag-drop upload
+  survives a slow disk and a stalled client is still cut. Request
+  failures land in serve.log (method/path/code + cause) while responses
+  stay user-safe.
 - **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
   limiter; `StreamStdout` for bounded streaming passes. Every child joins a
   KILL_ON_JOB_CLOSE Windows job object at Start (session #8): a serve killed

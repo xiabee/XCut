@@ -3,6 +3,31 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-16 night session #10
+
+### Fixed
+- **Large uploads no longer die on slow disks**: the server's ReadTimeout
+  bounded a request's TOTAL body-read time, so the advertised 8 GiB
+  upload needed >280 MB/s to land — a multi-GiB drag-drop import on an
+  HDD died mid-transfer. Uploads now stream in 1 MiB chunks and re-arm
+  the connection read deadline before each read: total-time bound becomes
+  an idle-time bound (progress keeps the transfer alive; a stalled client
+  is still cut one window after its last byte).
+- Two pure-IR validation tests generated real ffmpeg fixtures they never
+  read, making bare `go test ./...` fail on machines without ffmpeg —
+  against the documented skip contract. Fixed (fixtures were dead weight);
+  the standard build command is green again in a clean environment.
+
+### Added
+- **Request failures leave server-side traces**: the api package never
+  logged, so a failed upload or job trigger was undiagnosable from
+  serve.log (responses carry only user-safe messages by design). Failures
+  now log method/path/code plus the full error cause; successful uploads
+  log project, name, bytes and asset id.
+- The formal soak covers the content-upload surface: duplicate-name
+  uploads must land distinct copies (never overwrite) and junk uploads
+  must be refused without littering imports/ (30 rounds green).
+
 ## [Unreleased] — 2026-09-13 night session #8
 
 ### Fixed
