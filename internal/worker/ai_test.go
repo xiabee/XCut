@@ -2,6 +2,10 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,5 +107,86 @@ func TestResolveAIBin(t *testing.T) {
 	fake := filepath.Join(t.TempDir(), "no-such-dir", "sidecar.py")
 	if got := ResolveAIBin(fake); got != fake {
 		t.Fatalf("explicit config must win: %q", got)
+	}
+}
+
+// TestAISidecarHTTPBackends: the env-configured OpenAI-compatible backends
+// (XCUT_SIDECAR_STT_URL for transcription, XCUT_SIDECAR_VISION_URL for
+// frame description) must round-trip through the reference sidecar against
+// a stub gateway — the reservation stays honest (tested seam, not a doc
+// wish). No external network: httptest serves both endpoints.
+func TestAISidecarHTTPBackends(t *testing.T) {
+	bin := sidecarCmd(t)
+
+	media := filepath.Join(t.TempDir(), "a.mp4")
+	if err := os.WriteFile(media, []byte("fake audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	image := filepath.Join(t.TempDir(), "f.jpg")
+	if err := os.WriteFile(image, []byte("fake jpeg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/audio/transcriptions", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("multipart: %v", err)
+		}
+		if r.FormValue("model") == "" {
+			t.Error("transcription request missing model field")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"language":"zh","segments":[{"start":0.5,"end":1.5,"text":"测试","words":[{"start":0.5,"end":1.5,"word":"测试"}]}]}`)
+	})
+	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content []map[string]any `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Model != "vision-test" {
+			t.Errorf("vision model = %q, want vision-test", body.Model)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"choices":[{"message":{"content":"a badminton court"}}]}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	t.Setenv("XCUT_SIDECAR_STT_URL", srv.URL)
+	t.Setenv("XCUT_SIDECAR_VISION_URL", srv.URL)
+	t.Setenv("XCUT_SIDECAR_VISION_MODEL", "vision-test")
+
+	ctx := context.Background()
+	raw, err := AIAnalyze(ctx, bin, "analyze", media,
+		map[string]any{"analyzer": "transcript", "model": "whisper-1"}, 30*time.Second)
+	if err != nil {
+		t.Fatalf("http transcript: %v", err)
+	}
+	var tr struct {
+		Language string `json:"language"`
+	}
+	if err := json.Unmarshal(raw, &tr); err != nil {
+		t.Fatalf("transcript result shape: %v (%s)", err, raw)
+	}
+	if tr.Language != "zh" {
+		t.Errorf("transcript language = %q, want zh", tr.Language)
+	}
+
+	raw, err = AIAnalyze(ctx, bin, "analyze", image,
+		map[string]any{"analyzer": "frame_describe"}, 30*time.Second)
+	if err != nil {
+		t.Fatalf("frame_describe: %v", err)
+	}
+	var fd struct {
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(raw, &fd); err != nil {
+		t.Fatalf("frame_describe result shape: %v (%s)", err, raw)
+	}
+	if fd.Description != "a badminton court" {
+		t.Errorf("description = %q", fd.Description)
 	}
 }

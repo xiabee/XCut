@@ -180,6 +180,25 @@ whisper.cpp 的 `whisper-cli`——没有安装时如实报告不可用；装好
 sidecar 文本会被转义，杂散花括号或换行无法破坏 ASS 事件）；没有词级
 时间戳时只产出普通 SRT。SRT 生成后，"预览文本"开关可以内联显示字幕内容。
 
+### 语义 / 视觉 AI（预留接口）
+
+参考 sidecar 另外支持两个 env 配置的 OpenAI 兼容 HTTP 后端——不捆绑
+模型、不静默下载，配置即点亮：
+
+```sh
+# 语音转写走远程 Whisper 服务器（POST /v1/audio/transcriptions）
+export XCUT_SIDECAR_STT_URL="http://127.0.0.1:9000"
+
+# 单帧语义描述（POST /v1/chat/completions，多模态模型）——
+# 比赛阶段感知、内容打标等语义信号的接入面
+export XCUT_SIDECAR_VISION_URL="https://gateway-host:8443"
+export XCUT_SIDECAR_VISION_MODEL="vision"
+export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
+```
+
+配置后 `frame_describe` 能力在 sidecar capabilities 里点亮（核心消费
+它的流水线属后续工作）；`XCUT_SIDECAR_TIMEOUT`（秒）限制单次 HTTP 调用。
+
 异步任务端点返回 `202` 与 `job_id`；轮询 `GET /api/v1/jobs/{id}`。
 每个工程同时只允许一个 analyze/timeline/render 任务排队或运行——重复
 触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
