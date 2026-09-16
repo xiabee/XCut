@@ -37,6 +37,14 @@ type Server struct {
 	// across concurrent request and job goroutines in this process; the
 	// process itself owns the workspace writer lock.
 	TimelineMu sync.Mutex
+
+	// uploadLandMu serializes the unique-name-pick + rename critical
+	// section of upload landing. Without it, two concurrent uploads with
+	// the same filename can both Stat the same free slot and both Rename
+	// onto it — one silently overwriting the other, breaking the
+	// never-overwrite contract. The serve process is the only writer of
+	// imports/, so an in-process mutex is the whole story.
+	uploadLandMu sync.Mutex
 }
 
 // Shutdown waits for in-flight async jobs, bounded by ctx: the serve caller

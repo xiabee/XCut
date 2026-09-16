@@ -187,8 +187,14 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Landing is serialized so the never-overwrite contract holds under
+	// concurrency: two uploads with the same name must land as distinct
+	// files, and pick-free-slot + rename is only atomic inside the mutex
+	// (this process is imports/' only writer).
+	s.uploadLandMu.Lock()
 	finalPath := uniqueImportPath(importsDir, name)
 	if err := ensureInsideImports(importsDir, finalPath); err != nil {
+		s.uploadLandMu.Unlock()
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path, not user input
 		s.writeErr(w, r, err)
 		return
@@ -197,10 +203,12 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	// the sanitized name contains no separators and ensureInsideImports just
 	// re-checked the prefix at this sink.
 	if err := os.Rename(tmpName, finalPath); err != nil {
+		s.uploadLandMu.Unlock()
 		_ = os.Remove(tmpName) // #nosec G703 -- server-generated staging path, not user input
 		s.writeErr(w, r, xcerr.E(xcerr.CodeInternal, "cannot land the upload", err))
 		return
 	}
+	s.uploadLandMu.Unlock()
 
 	asset, err := s.Pipe.ImportAsset(p, finalPath)
 	if err != nil {

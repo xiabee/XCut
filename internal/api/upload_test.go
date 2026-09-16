@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -339,3 +340,76 @@ func TestRequestFailuresLeaveServerSideTraces(t *testing.T) {
 type safeBuffer struct{ bytes.Buffer }
 
 func (b *safeBuffer) Write(p []byte) (int, error) { return b.Buffer.Write(p) }
+
+// TestConcurrentSameNameUploadsNeverOverwrite: N concurrent uploads with
+// the same filename must all land as distinct files (never-overwrite is a
+// contract, not a best effort). The probe in each request is the slow part
+// and runs concurrently; without landing serialization the fast
+// pick-slot+rename sections then collide — this test pins the mutex.
+func TestConcurrentSameNameUploadsNeverOverwrite(t *testing.T) {
+	s := testServer(t)
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	pid := seedUploadProject(t, s, "upload-race")
+
+	root := t.TempDir()
+	src, err := testmedia.Generate(root, "clip.mp4", testmedia.DefaultFixture(), 160, 120, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 8
+	type result struct {
+		code int
+	}
+	results := make([]result, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest("POST",
+				"/api/v1/projects/"+pid+"/assets/upload?filename=race.mp4",
+				bytes.NewReader(body))
+			s.Handler().ServeHTTP(rec, req)
+			results[i] = result{code: rec.Code}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, r := range results {
+		if r.code != http.StatusCreated {
+			t.Fatalf("upload %d answered %d, want 201", i, r.code)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join(s.Pipe.WS.Root, "imports", pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != n {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("imports/ holds %d files (%v), want %d — an upload overwrote another",
+			len(entries), names, n)
+	}
+
+	assets, err := s.DB.ListAssets(context.Background(), pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assets) != n {
+		t.Fatalf("%d asset rows, want %d", len(assets), n)
+	}
+}
