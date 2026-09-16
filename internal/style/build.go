@@ -132,23 +132,32 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		f     factors
 	}
 	var cands []candidate
+	var raws []rawFactors
 	for _, it := range items {
 		durations[it.Asset.ID] = it.Asset.DurationSec
 		for _, s := range it.Segments {
 			if s.Duration() < preset.MinClipDuration {
 				continue
 			}
-			f := segmentFactors(preset, s)
+			raws = append(raws, rawSegmentFactors(s))
 			cands = append(cands, candidate{
 				asset: it.Asset,
 				seg:   s,
-				score: f.weighted(preset),
-				f:     f,
 			})
 		}
 	}
 	if len(cands) == 0 {
 		return nil, xcerr.E(xcerr.CodeValidation, "no events satisfy the style's clip constraints", nil)
+	}
+	// Factors are normalized WITHIN the candidate set: absolute caps (12
+	// hits, 1.5 hits/s, ...) saturate on real sports footage where every
+	// chunk far exceeds them, flattening the scores until ranking degrades
+	// to "earliest first". Relative normalization restores the spread the
+	// weights are meant to act on.
+	rels := relativize(raws)
+	for i := range cands {
+		cands[i].f = rels[i]
+		cands[i].score = cands[i].f.weighted(preset)
 	}
 
 	// Deterministic rank: score desc, then start asc, end asc, asset id.
@@ -308,23 +317,71 @@ func diverse(p *Preset, chosen []selInterval, cand selInterval) bool {
 	return true
 }
 
-// segmentFactors normalizes a segment into 0..1 score components. The
-// motion/audio/duration constants match event scoring (0.30 full-scale
-// motion, 36 dB dynamic range, 15 s "long" segment) and are intentionally
-// shared; hits use 12-per-segment and 1.5 hits/s as full scale.
-func segmentFactors(p *Preset, s event.Segment) factors {
-	return factors{
-		motion:   clamp(s.MeanMotion/0.30, 0, 1),
-		audio:    clamp((s.MeanAudioDB-p.EventConfig.SilenceDB)/36.0, 0, 1),
-		duration: clamp(s.Duration()/15.0, 0, 1),
-		hits:     clamp(float64(s.HitCount)/12.0, 0, 1),
-		density:  clamp(s.HitDensity/1.5, 0, 1),
+// rawFactors is one segment's un-normalized score component values (they
+// live on incomparable scales: motion ratios, dB, seconds, counts).
+type rawFactors struct {
+	motion, audio, duration, hits, density float64
+}
+
+func rawSegmentFactors(s event.Segment) rawFactors {
+	return rawFactors{
+		motion:   s.MeanMotion,
+		audio:    s.MeanAudioDB,
+		duration: s.Duration(),
+		hits:     float64(s.HitCount),
+		density:  s.HitDensity,
 	}
 }
 
-// scoreSegment applies preset weights to normalized segment factors.
-func scoreSegment(p *Preset, s event.Segment) float64 {
-	return segmentFactors(p, s).weighted(p)
+// component is one accessor of rawFactors plus its observed min and span
+// across the candidate set.
+type component struct {
+	get       func(rawFactors) float64
+	set       func(f *factors, v float64)
+	min, span float64
+}
+
+// components lists the scored components. Higher is better for every one
+// of them (louder, more motion, longer, denser).
+func components() []component {
+	return []component{
+		{func(r rawFactors) float64 { return r.motion }, func(f *factors, v float64) { f.motion = v }, 0, 0},
+		{func(r rawFactors) float64 { return r.audio }, func(f *factors, v float64) { f.audio = v }, 0, 0},
+		{func(r rawFactors) float64 { return r.duration }, func(f *factors, v float64) { f.duration = v }, 0, 0},
+		{func(r rawFactors) float64 { return r.hits }, func(f *factors, v float64) { f.hits = v }, 0, 0},
+		{func(r rawFactors) float64 { return r.density }, func(f *factors, v float64) { f.density = v }, 0, 0},
+	}
+}
+
+// relativize maps each component to (v-min)/(max-min) across the candidate
+// set. A component identical across all candidates maps to 1.0 everywhere
+// (0/0): it carries no discriminating information, and neutrality keeps
+// the weights' relative meaning.
+func relativize(all []rawFactors) []factors {
+	comps := components()
+	out := make([]factors, len(all))
+	for _, c := range comps {
+		minv, maxv := c.get(all[0]), c.get(all[0])
+		for _, r := range all {
+			v := c.get(r)
+			if v < minv {
+				minv = v
+			}
+			if v > maxv {
+				maxv = v
+			}
+		}
+		c.span = maxv - minv
+		c.min = minv
+		for i, r := range all {
+			v := 1.0
+			if c.span != 0 {
+				v = clamp((c.get(r)-c.min)/c.span, 0, 1)
+			}
+			c.set(&out[i], v)
+		}
+	}
+	return out
 }
 
 // trimSegment cuts a segment to the desired clip length: the full segment

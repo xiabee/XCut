@@ -246,11 +246,24 @@ func TestBuildRejectsAllFiltered(t *testing.T) {
 }
 
 func TestScoreSegmentWeights(t *testing.T) {
+	// Factors are relative within the candidate set (absolute caps saturate
+	// on real footage — every chunk exceeds 12 hits — flattening the rank to
+	// "earliest first"). With motion-dominant weights the higher-motion
+	// candidate must outscore the other regardless of the absolute values,
+	// and a component identical across candidates stays neutral (1.0).
 	p := testPreset()
-	p.Scoring = Scoring{Motion: 1, Audio: 0, Duration: 0}
-	got := scoreSegment(p, seg(0, 1, 0.30, -12))
-	if math.Abs(got-1) > 1e-9 {
-		t.Fatalf("motion-dominant score = %v, want 1", got)
+	p.Scoring = Scoring{Motion: 1, Audio: 1, Duration: 0}
+	rels := relativize([]rawFactors{
+		{motion: 0.30, audio: -12, duration: 10, hits: 60, density: 2.5},
+		{motion: 0.15, audio: -12, duration: 10, hits: 60, density: 2.5},
+	})
+	got := rels[0].weighted(p)
+	want := p.Scoring.Motion*1.0 + p.Scoring.Audio*1.0 // motion spread 1.0, audio identical -> 1.0
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("top candidate score = %v, want %v", got, want)
+	}
+	if !(rels[0].weighted(p) > rels[1].weighted(p)) {
+		t.Fatalf("higher motion must outrank: %v vs %v", rels[0].weighted(p), rels[1].weighted(p))
 	}
 }
 
