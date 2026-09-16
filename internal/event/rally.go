@@ -113,7 +113,7 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 	// one rally chunks into consecutive pieces instead of being truncated
 	// (the old cap silently discarded everything past 30s of continuous
 	// play).
-	var segments []Segment
+	var cands []rallyChunk
 	for _, sp := range spans {
 		loI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= sp.start })
 		hiI := sort.Search(len(hits), func(i int) bool { return hits[i].T >= sp.end })
@@ -132,29 +132,58 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		if end > duration {
 			end = duration
 		}
-		chunks := chunkBounds(start, end, defaultMaxRally)
-		for _, ch := range chunks {
-			if stats != nil {
-				stats.ChunksConsidered++
-			}
+		for _, ch := range chunkBounds(start, end, defaultMaxRally) {
 			loC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[0] })
 			hiC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[1] })
-			chunkHits := spanHits[loC:hiC]
-			if len(chunkHits) < minHits {
-				if stats != nil {
-					stats.ChunksDroppedMinHits++
-				}
-				continue
+			cands = append(cands, rallyChunk{
+				bounds: ch,
+				hits:   spanHits[loC:hiC],
+				motion: intervalMean(motion, ch[0], ch[1]),
+			})
+		}
+	}
+
+	// The motion floor in cfg is absolute, but the signal's SCALE is not
+	// stable within one video: auto-exposure/shutter drift can halve the
+	// whole track several-fold late in a clip (measured on real fixed-camera
+	// match footage: ~0.055 early vs ~0.017 late with the play unchanged —
+	// the match point itself fell below a floor calibrated on the bright
+	// first half; per-frame normalization does NOT remove this, the loss is
+	// in the decoded content). The floor therefore clamps to the video's own
+	// active level (P75 of chunk means), at most 4x of relief and never
+	// below it: a globally weaker section cannot be pushed under a gate
+	// calibrated on the strong one, while a uniformly static video (where
+	// P75 collapses) keeps most of the configured floor. PROVISIONAL
+	// constants (0.4 ratio, P75, 4x cap) pending annotated-footage
+	// evaluation (docs/EVAL.md path).
+	effectiveFloor := cfg.MotionFloor
+	if means := chunkMotionMeans(cands); len(means) > 0 {
+		relaxed := 0.4 * percentile(means, 0.75)
+		limit := 0.25 * cfg.MotionFloor
+		if relaxed < effectiveFloor {
+			effectiveFloor = max(relaxed, limit)
+		}
+	}
+
+	var segments []Segment
+	for _, c := range cands {
+		if stats != nil {
+			stats.ChunksConsidered++
+		}
+		if len(c.hits) < minHits {
+			if stats != nil {
+				stats.ChunksDroppedMinHits++
 			}
-			if seg, gate, ok := scoreRally(motion, audio, cfg, ch[0], ch[1], chunkHits); ok {
-				segments = append(segments, seg)
-			} else if stats != nil {
-				switch gate {
-				case "min_duration":
-					stats.ChunksDroppedMinDuration++
-				case "motion_floor":
-					stats.ChunksDroppedMotionFloor++
-				}
+			continue
+		}
+		if seg, gate, ok := scoreRallyWithFloor(motion, audio, cfg, c.bounds[0], c.bounds[1], c.hits, effectiveFloor); ok {
+			segments = append(segments, seg)
+		} else if stats != nil {
+			switch gate {
+			case "min_duration":
+				stats.ChunksDroppedMinDuration++
+			case "motion_floor":
+				stats.ChunksDroppedMotionFloor++
 			}
 		}
 	}
@@ -163,6 +192,42 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		stats.Segments = len(segments)
 	}
 	return segments, nil
+}
+
+// rallyChunk is one chunk candidate: its bounds, the onsets inside, and
+// the chunk's mean motion (measured before gating so the adaptive floor
+// baseline can use all chunks).
+type rallyChunk struct {
+	bounds [2]float64
+	hits   []analysis.Sample
+	motion float64
+}
+
+// chunkMotionMeans collects the per-chunk motion means for the adaptive
+// floor baseline.
+func chunkMotionMeans(cands []rallyChunk) []float64 {
+	means := make([]float64, 0, len(cands))
+	for _, c := range cands {
+		if !math.IsNaN(c.motion) && !math.IsInf(c.motion, 0) {
+			means = append(means, c.motion)
+		}
+	}
+	return means
+}
+
+// percentile returns the q-quantile (0..1) of vs by linear interpolation.
+// vs must be non-empty.
+func percentile(vs []float64, q float64) float64 {
+	sorted := make([]float64, len(vs))
+	copy(sorted, vs)
+	sort.Float64s(sorted)
+	pos := q * float64(len(sorted)-1)
+	lo := int(math.Floor(pos))
+	hi := int(math.Ceil(pos))
+	if lo == hi {
+		return sorted[lo]
+	}
+	return sorted[lo] + (sorted[hi]-sorted[lo])*(pos-float64(lo))
 }
 
 // chunkBounds splits [start, end] into ceil(dur/max) consecutive pieces of
@@ -190,17 +255,24 @@ func chunkBounds(start, end, max float64) [][2]float64 {
 	return out
 }
 
-// scoreRally applies the watchability gates (duration floor, motion floor)
-// and builds the explainable rally segment for one hit window. On refusal
-// it names the gate that fired so the caller's rejection counters are
-// derived from the decision itself, not from a re-derivation of it.
+// scoreRally applies the watchability gates (duration floor, adaptive
+// motion floor) and builds the explainable rally segment for one hit
+// window. On refusal it names the gate that fired so the caller's
+// rejection counters are derived from the decision itself, not from a
+// re-derivation of it.
 func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample) (Segment, string, bool) {
+	return scoreRallyWithFloor(motion, audio, cfg, start, end, chunkHits, cfg.MotionFloor)
+}
+
+// scoreRallyWithFloor is scoreRally with an explicit motion floor (the
+// adaptive baseline clamps cfg.MotionFloor before gating).
+func scoreRallyWithFloor(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample, motionFloor float64) (Segment, string, bool) {
 	if end-start < cfg.MinDuration {
 		return Segment{}, "min_duration", false
 	}
 	// Motion support: a rally with no on-screen motion is not watchable.
 	meanMotion := intervalMean(motion, start, end)
-	if meanMotion < cfg.MotionFloor || math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
+	if meanMotion < motionFloor || math.IsNaN(meanMotion) || math.IsInf(meanMotion, 0) {
 		return Segment{}, "motion_floor", false
 	}
 	meanDB := silentDB

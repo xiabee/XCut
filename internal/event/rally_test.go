@@ -328,3 +328,101 @@ func TestBuildStatsNamesTheGate(t *testing.T) {
 		t.Fatalf("spans_dropped_min_hits = 0, want >= 1")
 	}
 }
+
+// TestAdaptiveMotionFloorSurvivesGlobalDrift: encode/exposure changes can
+// cut a clip's whole motion level several-fold in its later sections while
+// the play is unchanged (measured on real fixed-camera match footage —
+// the match point fell below an absolute floor calibrated on the bright
+// first half). The gate must scale with the video's own active level:
+// a late section at half the active level survives, a genuinely dead
+// section does not, and the whole decision is invariant to scaling the
+// track (until the 4x relief cap starts to bind).
+func TestAdaptiveMotionFloorSurvivesGlobalDrift(t *testing.T) {
+	cfg := rallyConfig() // motion_floor 0.05, min_hits 3
+
+	// One long dense span: onsets every ~0.6s from 5s to 590s keep the
+	// hysteresis walk open across the whole video; chunking splits it.
+	var times []float64
+	for t := 5.0; t <= 590.0; t += 0.6 {
+		times = append(times, t)
+	}
+	onsets := hitsAt(times...)
+
+	motion := func(early, late float64) *analysis.FeatureTrack {
+		var xs [][2]float64
+		for t := 0.0; t <= 600.0; t += 0.5 {
+			v := early
+			if t >= 300 {
+				v = late
+			}
+			xs = append(xs, [2]float64{t, v})
+		}
+		return track("frame_diff", xs)
+	}
+
+	// Drifted video: first half at 0.06, second half at half of that. The
+	// absolute floor (0.03) sits exactly at the late level and the margin
+	// is one encode away from death; the adaptive floor must admit both
+	// halves.
+	segs, st, err := Build([]analysis.FeatureTrack{*motion(0.06, 0.03), *onsets}, 600, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var late int
+	for _, s := range segs {
+		if s.Start >= 300 {
+			late++
+		}
+	}
+	if late == 0 {
+		t.Fatalf("drifted late half fully rejected (%d segments, stats %+v)", len(segs), st)
+	}
+
+	// The same video at half the level decides identically: the late half
+	// survives, the gate tracked the video, not the constant. (A video whose
+	// whole active level sits under cfg.MotionFloor/4 is intentionally NOT
+	// covered here — the 4x relief cap is the anchor that keeps a uniformly
+	// static video from passing everything.)
+	segs2, _, err := Build([]analysis.FeatureTrack{*motion(0.12, 0.06), *onsets}, 600, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs2) == 0 {
+		t.Fatal("scaled-down video produced no segments at all")
+	}
+	var late2 int
+	for _, s := range segs2 {
+		if s.Start >= 300 {
+			late2++
+		}
+	}
+	if late2 == 0 {
+		t.Fatalf("scaled-down late half rejected — floor did not track the video")
+	}
+
+	// A genuinely dead section (motion at the noise floor) is still refused:
+	// first half active, second half static.
+	dead := track("frame_diff", func() [][2]float64 {
+		var xs [][2]float64
+		for t := 0.0; t <= 600.0; t += 0.5 {
+			v := 0.06
+			if t >= 300 {
+				v = 0.004
+			}
+			xs = append(xs, [2]float64{t, v})
+		}
+		return xs
+	}())
+	segs3, st3, err := Build([]analysis.FeatureTrack{*dead, *onsets}, 600, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range segs3 {
+		if s.Start >= 300 {
+			t.Fatalf("dead late half produced a segment %+v (stats %+v)", s, st3)
+		}
+	}
+	if st3.ChunksDroppedMotionFloor == 0 {
+		t.Fatalf("dead chunks not attributed to the motion gate (stats %+v)", st3)
+	}
+}
