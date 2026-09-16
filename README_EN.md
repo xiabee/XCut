@@ -147,8 +147,9 @@ Two ways in:
 ./xcut serve      # same UI in your browser at http://127.0.0.1:8619
 ```
 
-Create a project, import a local video path, and run analyze → timeline →
-render with live job progress — the rendered MP4 plays right in the page.
+Create a project, drag video files onto the page (or use the file picker)
+or import a local path, and run analyze → timeline → render with live job
+progress — the rendered MP4 plays right in the page.
 The editing workspace is a real timeline: clips render as blocks sized by
 duration with client-captured thumbnails, joins show editable transition
 badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
@@ -171,6 +172,7 @@ curl http://127.0.0.1:8619/api/v1/health
 curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
+curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # content upload (where drag-drop lands; 8 GiB per file)
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
 curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
 curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
@@ -209,7 +211,7 @@ show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
 cancelled with Ctrl+C.
 Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
 authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
-measured 12 MB RAM, ~0% CPU (docs/PERFORMANCE.md).
+measured ~15 MB RAM, ~0% CPU (docs/PERFORMANCE.md).
 
 ## Optional Rust worker
 

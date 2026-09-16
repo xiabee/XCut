@@ -130,8 +130,9 @@ Web UI 支持中英文：顶栏选择器即时切换，偏好持久化，首次�
 ./xcut serve      # 同一套 UI 跑在浏览器 http://127.0.0.1:8619
 ```
 
-创建工程、导入本地视频路径，然后带着实时任务进度跑 分析 → 时间线 →
-渲染——渲染出的 MP4 直接在页面里播放。编辑工作区是一条真正的时间线：
+创建工程，把视频文件拖进页面（或用"选择文件…"按钮）或填本地路径导入，
+然后带着实时任务进度跑 分析 → 时间线 → 渲染——渲染出的 MP4 直接在
+页面里播放。编辑工作区是一条真正的时间线：
 片段按时长比例渲染成色块并带客户端截取的缩略图，接缝显示可编辑的转场
 徽标（cut / fade / xfade），色块可拖动排序，边缘手柄可裁剪，检查器
 编辑所选片段的裁剪、速度、音量与转场（Delete 移除、Space 播放、
@@ -151,6 +152,7 @@ curl http://127.0.0.1:8619/api/v1/health
 curl http://127.0.0.1:8619/api/v1/projects
 curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
+curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # 内容上传（拖放导入的落点；8 GiB/文件）
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
 curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # 取消排队/运行中的任务（202；终态 409）
 curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # 片段预览（支持 range）
@@ -183,7 +185,7 @@ sidecar 文本会被转义，杂散花括号或换行无法破坏 ASS 事件）�
 触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
 CLI 运行（在你自己的终端里同步执行）用 Ctrl+C 取消。
 仅监听本机回环是设计决定：在认证机制出现之前，`xcut serve` **拒绝**
-非回环地址（见 `docs/SECURITY.md`）。空闲占用极小——实测 12 MB 内存、
+非回环地址（见 `docs/SECURITY.md`）。空闲占用极小——实测约 15 MB 内存、
 约 0% CPU（docs/PERFORMANCE.md）。
 
 ## 可选的 Rust worker
