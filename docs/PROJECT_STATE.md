@@ -3,16 +3,18 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
+Updated: 2026-09-17 03:45 (+08:00) — nightly session #11 checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #10 (upload read-deadline heartbeat, API failure
-  traces in serve.log, soak upload coverage, pure-IR test de-ffmpeg'ing,
-  README truth sync) on top of session #9 (drag-drop import, upload
-  progress, per-source ROI, desktop client), all pushed; the full gate
-  re-ran green at 9c1c8b3 tonight
+- HEAD: session #11 (real-footage review fixes: streaming download
+  write-idle heartbeat, adaptive rally motion floor, within-set
+  relative scoring, chunk-boundary snapping; segmentation gate stats;
+  atomic delete gate; upload landing mutex; SRT newline fix; semantic
+  AI seam in the sidecar; soak covers the new surfaces) on top of
+  session #10 (upload read-deadline heartbeat, API failure traces),
+  all pushed; the FULL gate ran green at the session #11 HEAD
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
   entry; remote-node remote runs after every milestone
@@ -39,12 +41,16 @@ Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
   Render outputs are guarded against overwriting source media, timeline-
   referenced clip sources, or the timeline document.
-- **Media/API**: uploads stream with a read-deadline heartbeat —
-  the server's total-time ReadTimeout no longer caps transfer duration;
-  progress re-arms a 30 s idle window, so a multi-GiB drag-drop upload
-  survives a slow disk and a stalled client is still cut. Request
-  failures land in serve.log (method/path/code + cause) while responses
-  stay user-safe.
+- **Media/API**: uploads stream with a read-deadline heartbeat and the
+  three streaming routes (render download, asset preview, subtitle
+  download) with a write-idle heartbeat — neither the server's total-time
+  ReadTimeout nor WriteTimeout caps a progressing transfer any more; both
+  are idle windows (a stalled peer is still cut one span after its last
+  byte). Same-name upload landing is serialized (never-overwrite holds
+  under concurrency); project deletion's active-jobs gate is one atomic
+  statement. Request failures land in serve.log (method/path/code +
+  cause) while responses stay user-safe, and segmentation logs per-gate
+  rejection counts.
 - **Media**: ffprobe/ffmpeg arg-vector exec, timeouts, global process
   limiter; `StreamStdout` for bounded streaming passes. Every child joins a
   KILL_ON_JOB_CLOSE Windows job object at Start (session #8): a serve killed
@@ -73,12 +79,19 @@ Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
   The renderer refuses unsupported timeline shapes (audio/multi-track,
   effects) loudly; clip speed is fully honored (setpts + atempo).
 - **Events** (`internal/event`): activity segmentation (default) and rally
-  mode (`mode: "rally"`: transient clustering → gap split → padding →
-  min-hits + motion gating). Segments carry hit_count/hit_density (activity
-  segments too, as onset density).
+  mode (`mode: "rally"`: onset-density hysteresis walk → chunking with
+  quiet-valley boundary snapping → pad → min-hits + adaptive motion
+  gating). Segments carry hit_count/hit_density (activity segments too,
+  as onset density). Build returns per-gate rejection stats so an empty
+  result is diagnosable (logged per asset). The rally motion floor is
+  ADAPTIVE (clamped to the video's own active level) — real footage
+  drifts several-fold within one clip; chunk boundaries snap to the
+  quietest onset window nearby instead of the arithmetic grid.
 - **Style** (`internal/style`): presets are data (embedded + workspace
   overrides); explainable selection — every clip carries score,
-  score_breakdown and reason in its metadata; diversity block
+  score_breakdown and reason in its metadata; scoring factors are
+  min-max normalized WITHIN the candidate set (absolute caps saturate on
+  real footage and flatten the rank to "earliest first"); diversity block
   (min_gap / max_overlap_iou) suppresses near-duplicates; hits/density
   scoring weights (zero = legacy).
 - **Presets**: generic_highlight, badminton_highlight v2 (rally mode),
@@ -216,17 +229,20 @@ Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
   two strictly separated. Proxy decision is width-based only — a
   high-resolution low-fps source still benefits, a tiny-fps source
   already decodes cheaply.
-- Badminton v2's rally detection got its first real-footage validation in
-  session #6 (owner's 10-min fixed-camera men's-singles recording): the
-  original gap-clustering collapsed on real court audio — ambience keeps
-  firing onsets through every break, so the whole video clustered as ONE
-  rally and every constraint killed it. Rally mode now clusters by onset
-  density with hysteresis (enter/exit rates + sustained-low close) and
-  chunks over-dense spans instead of truncating. The fix produced a
-  60s/8-clip highlight from that match end-to-end; annotated multi-source
-  evaluation (xcut eval) is still the missing ingredient for tuning. The
-  court ROI is drawn in the UI (session #7) but is per-preset — a
-  per-source rect needs a schema extension.
+- Badminton v2 on real footage (session #11 review, owner's 10-min
+  match REDACTED): the pipeline now covers the whole match (21/21
+  chunks candidates; the match point included), selection is driven by
+  genuine score differences, and piece boundaries snap to natural
+  breaks. STILL OPEN: (a) the reel's 60s budget fills from the
+  highest-scoring chunks, which are the early bright ones — the
+  match-point section is a candidate but not guaranteed selection;
+  guaranteeing climax presence is match-phase semantics (needs the
+  vision-AI seam, whose gateway model was 503 during the session);
+  (b) every PROVISIONAL constant (0.4 floor ratio, P75 baseline, 4x cap,
+  ±6s snap) awaits annotated eval — docs/EVAL.md now carries the
+  worked-example recipe (scoreboard = ground truth). The court ROI is
+  per-asset (UI picker, assets.motion_roi) and validated on this
+  footage.
 - Render publish vs holds: a client streaming the previous output no
   longer blocks a re-render (share-all downloads + POSIX delete + rename,
   session #7). An EXTERNAL program that opens without the Windows
@@ -246,7 +262,7 @@ Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
 
 ## Performance (measured — docs/PERFORMANCE.md)
 
-- serve idle: 14.2 MB WS / ~0% CPU (session #5 re-check; goals met)
+- serve idle: 16.6 MB WS / 0 ms CPU per 10 s (session #11 re-check; goals met)
 - analyze 30-min 1080p30: 35.9 s wall / **0.12x realtime** (session #4
   re-check after limiter + capped output capture; no regression)
 - render (concat): 3.3 s wall for a 10 s 720p30 clip (session #4 A/B
@@ -255,10 +271,12 @@ Updated: 2026-09-16 09:20 (+08:00) — nightly session #10 checkpoint
 
 ## Next Priorities
 
-1. Real-footage evaluation: annotate a few real badminton/KTV clips, run
-   `xcut eval`, tune badminton v2 (rally_enter/exit rates, ROI rect) on
-   measurements — the harness exists and the pipeline now works on real
-   footage (session #6 proved it); tuning needs annotated data.
+1. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
+   has the badminton worked example — the burned-in scoreboard makes
+   rally annotation mechanical (~41 rallies), a manifest template sits in
+   the gitignored /eval/, and every provisional rally constant
+   (floor ratio, P75, snap range) plus the climax-guarantee question is
+   waiting on exactly these numbers.
 2. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).

@@ -3,6 +3,57 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-17 night session #11
+
+### Fixed
+- **Streaming downloads no longer die at 60s**: the server's WriteTimeout
+  bounded a response's TOTAL write time (the mirror of the session-10
+  upload bug) — a multi-GiB render played in the browser is a slow reader
+  by design, so playback/downloads were cut mid-transfer. The three
+  streaming routes (render download, asset preview, subtitle download)
+  now re-arm the connection write deadline per chunk: progressing
+  transfers are never cut, stalled readers still trip the idle window.
+- **The rally motion floor tracks the video's own active level**: an
+  absolute floor assumed a stable signal scale, but real footage drops
+  several-fold within one clip (encode/shutter drift; per-frame
+  normalization does not remove it) — on the owner's 10-minute match the
+  match point itself was silently refused. The floor now clamps to the
+  video's active level (P75 of chunk means, 0.4x, capped at 4x relief);
+  on that match, candidate coverage went from 14 to 21 of 21 chunks.
+- **Highlight selection is no longer "earliest first"**: scoring factors
+  normalized against absolute caps (12 hits, 1.5 hits/s) that every real
+  sports chunk saturates, flattening the rank. Factors are now min-max
+  normalized within the candidate set; on the real match the selected
+  scores spread 0.54-0.88 (was a flat ~0.78).
+- **Chunk boundaries snap to the quietest onset window** (±6s): equal
+  division cut pieces mid-rally; edges now land in the natural break
+  between rallies, and piece coverage reached the full match.
+- Project deletion's active-jobs gate is atomic (one conditional
+  statement): a trigger enqueueing inside the old check-then-act window
+  had its job row cascade-deleted under a live runner.
+- Concurrent same-name uploads can no longer overwrite one another:
+  pick-free-slot + rename is serialized per server (the TOCTOU window was
+  realistic — probes synchronize requests right before the landing
+  section).
+- SRT cues no longer corrupt on sidecar texts with embedded newlines
+  (a blank line inside a cue makes players parse phantom cues).
+
+### Added
+- **Segmentation stats name the refusing gate**: "no events satisfy the
+  style's clip constraints" now comes with per-gate rejection counters in
+  the log (chunks_considered / dropped_motion_floor / dropped_min_hits /
+  ...), so a too-strict floor is distinguishable from footage with
+  nothing in it.
+- **Semantic AI seam (OpenAI-compatible HTTP backends in the reference
+  sidecar)**: XCUT_SIDECAR_STT_URL routes transcription through any
+  /v1/audio/transcriptions server; XCUT_SIDECAR_VISION_URL drives the new
+  frame_describe analyzer (image in, description out) — the seam for
+  match-phase awareness and content tagging. Env-configured, no bundled
+  models (D3); contract-tested against a stub gateway.
+- The soak covers tonight's surfaces: render download (200), 1 KiB range
+  request (206 + exactly 1024 bytes), busy-project DELETE (409) then
+  idle DELETE (200) — 30 rounds green.
+
 ## [Unreleased] — 2026-09-16 night session #10
 
 ### Fixed
