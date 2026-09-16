@@ -70,7 +70,7 @@ func (s *Server) handleRenderDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Content-Disposition",
 		"inline; filename=\""+sanitizeHeaderFilename(p.Name)+".mp4\"")
-	http.ServeContent(w, r, "render.mp4", fi.ModTime(), f)
+	serveMediaFile(w, r, "render.mp4", fi.ModTime(), f)
 }
 
 func sanitizeHeaderFilename(name string) string {
@@ -126,7 +126,7 @@ func (s *Server) handleAssetFile(w http.ResponseWriter, r *http.Request) {
 	// (imports may be .mov/.webm/... — hardcoding video/mp4 mislabels them).
 	w.Header().Set("Content-Disposition",
 		"inline; filename=\""+sanitizeHeaderFilename(a.Filename)+"\"")
-	http.ServeContent(w, r, a.Filename, fi.ModTime(), f)
+	serveMediaFile(w, r, a.Filename, fi.ModTime(), f)
 }
 
 // handleSubtitlesStatus reports which subtitle artifacts exist for the
@@ -185,5 +185,5 @@ func (s *Server) handleSubtitlesFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition",
 		"attachment; filename=\""+sanitizeHeaderFilename(p.Name)+"."+format+"\"")
-	http.ServeContent(w, r, "subtitles."+format, fi.ModTime(), f)
+	serveMediaFile(w, r, "subtitles."+format, fi.ModTime(), f)
 }
