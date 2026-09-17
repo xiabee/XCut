@@ -3,6 +3,47 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-17 night session #12
+
+### Fixed
+- **Upload staging debris was swept from the wrong place**: the startup
+  sweep still only scanned the imports root, but staging files live at
+  `imports/<project>/.upload-*` — a serve killed mid-upload stranded its
+  staged copy (up to the 8 GiB per-file bound) forever. The sweep now
+  descends one bounded level into the per-project directories; landed
+  files and project dirs stay untouched.
+- **`eval --check` resolves styles like a real eval run**: check mode
+  honored workspace style overrides that a real run (throwaway workspace)
+  would reject — a manifest could pass check and fail the run. Check is
+  embedded-presets-only now, pinned by a test.
+- **soak.sh re-runs tonight's code, not last night's**: the cached soak
+  binary was reused regardless of age; sources newer than the binary now
+  force a rebuild. The busy-delete scenario also asserts the gate
+  invariant instead of the timing (an analyze that finishes between the
+  202 and the DELETE makes a 200 the correct answer — recorded as an
+  honest skip; a gate regression still collapses busy409 toward 0).
+- Proxy generation finalizes with the retrying rename: cross-project
+  analyses of identical content share one proxy path, and the finalize
+  could collide with a reader of the previous proxy (Windows). Failure
+  was only a lost optimization; the retry keeps the fast path.
+
+### Added
+- **`xcut eval <manifest> --check`**: seconds-fast manifest validation
+  without running the pipeline — media existence, ffprobe durations vs
+  every annotated range (0.05s rounding slack), style resolution; no
+  workspace is created. All problems report in one pass; without ffprobe
+  the duration check skips loudly.
+- **eval results are self-diagnosing**: `results.json` selected clips now
+  carry the style engine's `score`, `reason`, `score_breakdown` and hit
+  count/density — WHY each moment was picked lands next to the metrics.
+- **eval prints a liveness line per started case** (`[n/total] name
+  (style)`): a real-media case runs minutes of ffmpeg; the run no longer
+  looks hung until the case finishes.
+
+### Removed
+- An accidentally committed shell-glue file (`internal/cli/
+  icon_windows.go.tmp`) is gone from the repo; `*.tmp` is gitignored.
+
 ## [Unreleased] — 2026-09-17 night session #11
 
 ### Fixed
