@@ -34,9 +34,11 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap 'rm -rf "$LOCK"' EXIT
 
-# --- build (reuse an existing binary unless absent) ---
+# --- build (reuse the binary unless sources moved past it) ---
+# A stale soak binary silently tests old code against tonight's claims —
+# rebuild whenever any source file is newer than the cached binary.
 XCUT="$REPO/.tools/xcut-soak.exe"
-if [ ! -x "$XCUT" ]; then
+if [ ! -x "$XCUT" ] || [ -n "$(find "$REPO/cmd" "$REPO/internal" "$REPO/go.mod" -newer "$XCUT" -print -quit 2>/dev/null)" ]; then
     go build -o "$XCUT" ./cmd/xcut || exit 2
 fi
 command -v ffmpeg >/dev/null || { PATH="$REPO/.tools/ffmpeg/bin:$PATH"; export PATH; }
