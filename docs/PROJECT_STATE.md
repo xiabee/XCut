@@ -3,18 +3,23 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-17 02:37 (+08:00) — nightly session #11 checkpoint
+Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #11 (real-footage review fixes: streaming download
-  write-idle heartbeat, adaptive rally motion floor, within-set
-  relative scoring, chunk-boundary snapping; segmentation gate stats;
-  atomic delete gate; upload landing mutex; SRT newline fix; semantic
-  AI seam in the sidecar; soak covers the new surfaces) on top of
-  session #10 (upload read-deadline heartbeat, API failure traces),
-  all pushed; the FULL gate ran green at the session #11 HEAD
+- HEAD: session #12 (eval workflow tooling: `--check` fast manifest
+  validation, self-diagnosing results with per-clip score/reason,
+  per-case liveness lines, faithful style resolution; the startup
+  sweep now reclaims upload staging inside per-project imports dirs —
+  it previously never did; soak.sh rebuilds its binary when sources
+  move past it and its busy-delete asserts the gate invariant, not the
+  timing; proxy finalize uses the retrying rename; stray .tmp debris
+  removed) on top of session #11 (streaming download write-idle
+  heartbeat, adaptive rally motion floor, within-set relative scoring,
+  chunk-boundary snapping; segmentation gate stats; atomic delete gate;
+  upload landing mutex; SRT newline fix; semantic AI seam in the
+  sidecar), all pushed
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
   entry; remote-node remote runs after every milestone
@@ -120,7 +125,12 @@ Updated: 2026-09-17 02:37 (+08:00) — nightly session #11 checkpoint
   name and renames; the old reader keeps its bytes until EOF (session #7).
 - **Eval** (`internal/eval` + `xcut eval`): annotated manifests → temporal
   IoU / precision / recall / F1 / range hits / duplicate rate; JSON
-  results; isolated throwaway workspace per run. docs/EVAL.md.
+  results (selected clips carry the style engine's score/reason/breakdown
+  so runs are self-diagnosing); isolated throwaway workspace per run —
+  which also means style resolution is embedded-presets-only there.
+  `xcut eval <manifest> --check` validates media existence, ffprobe
+  durations against every annotated range and style resolution in
+  seconds, no workspace created (session #12). docs/EVAL.md.
 - **Subtitles** (`internal/subs` + `xcut subtitles` + AI sidecar, session
   #6): speech-to-text through the AI sidecar protocol v1 (reference sidecar
   probes openai-whisper / faster-whisper / whisper-cli; honest "unavailable"
@@ -140,8 +150,10 @@ Updated: 2026-09-17 02:37 (+08:00) — nightly session #11 checkpoint
   **Drag-drop / file-picker import** (session #9): the media panel accepts
   dropped or picked files — content uploads to
   `POST /projects/{id}/assets/upload`, landing a sanitized, non-overwriting
-  copy under `imports/<project>/` (8 GiB bound, failed probes cleaned,
-  staged debris swept at startup); the path-import form stays alongside. **Modern editing workspace** (2026-09-13): three-pane editor —
+  copy under `imports/<project>/` (8 GiB bound, failed probes cleaned;
+  the startup sweep reclaims `.upload-*` staging debris **inside the
+  per-project directories too** — session #12 fixed the sweep that only
+  covered the imports root); the path-import form stays alongside. **Modern editing workspace** (2026-09-13): three-pane editor —
   media pool with client-captured thumbnails, visual timeline (clip
   blocks sized by duration, editable transition badges, drag reorder,
   edge-handle trimming, time ruler seeking the preview, playhead), and an
