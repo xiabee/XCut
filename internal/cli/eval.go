@@ -152,6 +152,9 @@ func cmdEval(a *App, args []string) error {
 		if styleName == "" {
 			styleName = "generic_highlight"
 		}
+		// Liveness: a real-media case runs minutes of ffmpeg; without a
+		// line per started case the run looks hung until the case finishes.
+		fmt.Fprintf(a.Stdout, "  [%d/%d] %s  (%s)\n", i+1, len(manifest.Cases), c.Name, styleName)
 		res := evalCaseResult{Name: c.Name, Style: styleName, Media: c.Media}
 
 		clips, terr := evalRunCase(&ea, db, c, styleName)
