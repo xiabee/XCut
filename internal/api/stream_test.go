@@ -95,15 +95,19 @@ func rawCountBody(t *testing.T, addr string, chunk int, nap time.Duration) (int6
 // heartbeat (M112) on the response direction.
 func TestStreamRearmsWriteDeadline(t *testing.T) {
 	// The idle window a test can afford; restore before anything else so a
-	// fatal below cannot leak the short window into other tests. 400 ms
-	// window vs 80 ms read pace leaves 5x margin for scheduler noise.
+	// fatal below cannot leak the short window into other tests. The read
+	// pace keeps a 10x margin under the window: `go test` runs packages in
+	// parallel, and this test coexists with heavy ones — a 5x margin was
+	// observed to false-fail once when a scheduling hiccup stretched one
+	// read gap past the window while render/cli tests loaded the box.
 	prev := streamIdleWindow
 	streamIdleWindow = 400 * time.Millisecond
 	t.Cleanup(func() { streamIdleWindow = prev })
 
 	dir := t.TempDir()
-	// 1 MiB fixture: at 32 KiB per ~80 ms the full transfer needs ~2.6 s,
-	// 6.5x the 400 ms total-time bound.
+	// 1 MiB fixture: at 32 KiB per ~40 ms the full transfer needs ~1.3 s,
+	// 3.2x the 400 ms total-time bound, while the margin against any single
+	// read gap is 10x.
 	small := filepath.Join(dir, "small.mp4")
 	body := make([]byte, 1<<20)
 	for i := range body {
@@ -115,7 +119,7 @@ func TestStreamRearmsWriteDeadline(t *testing.T) {
 
 	t.Run("progressing transfer survives", func(t *testing.T) {
 		addr := streamTestServer(t, small, 400*time.Millisecond)
-		got, rerr := rawCountBody(t, addr, 32<<10, 80*time.Millisecond)
+		got, rerr := rawCountBody(t, addr, 32<<10, 40*time.Millisecond)
 		if got != int64(len(body)) {
 			t.Fatalf("progressing stream delivered %d/%d bytes (err %v) — write-deadline heartbeat did not hold", got, len(body), rerr)
 		}
