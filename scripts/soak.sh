@@ -68,7 +68,17 @@ SERVE_PID=$!
 cleanup() {
     kill "$SERVE_PID" >/dev/null 2>&1
     wait "$SERVE_PID" 2>/dev/null
-    rm -rf "$WS" "$LOCK"
+    # Keep the crime scene on failure: the workspace holds serve.log and the
+    # jobs DB — the only evidence of WHY a job failed. Destroying it on a red
+    # run makes every failure undissectable (the "keep logs first" lesson).
+    # ${errors:-1}: an early exit before the counters exist is an unknown
+    # state — keep the evidence rather than assume green.
+    if [ "${errors:-1}" -gt 0 ]; then
+        echo "soak: errors>0 — workspace kept for triage: $WS"
+    else
+        rm -rf "$WS"
+    fi
+    rm -rf "$LOCK"
 }
 trap cleanup EXIT
 
