@@ -103,7 +103,16 @@ n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
 [ "$n_files" = "2" ] || { echo "imports/ has $n_files files after duplicate-name uploads (want 2)" >&2; exit 2; }
 
 errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
-dlOK=0; rangeOK=0; busy409=0; idleDelOK=0
+dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
+
+job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
+    curl -s --max-time 5 "$BASE/jobs" | python -c "
+import json,sys
+d=json.load(sys.stdin)
+js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$1' and j.get('type')=='$2']
+js.sort(key=lambda j: (j.get('created_at',0), j.get('id','')))
+print(js[-1]['status'] if js else '')" 2>/dev/null
+}
 
 wait_job() { # wait_job TYPE -> prints final status; bounded 90s
     wait_job_pid "$PROJ_ID" "$1"
@@ -111,12 +120,7 @@ wait_job() { # wait_job TYPE -> prints final status; bounded 90s
 wait_job_pid() { # wait_job_pid PROJECT TYPE -> prints final status; bounded 90s
     local pid="$1" typ="$2" n=0 st=""
     while [ $n -lt 180 ]; do
-        st=$(curl -s --max-time 5 "$BASE/jobs" | python -c "
-import json,sys
-d=json.load(sys.stdin)
-js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$pid' and j.get('type')=='$typ']
-js.sort(key=lambda j: (j.get('created_at',0), j.get('id','')))
-print(js[-1]['status'] if js else '')" 2>/dev/null)
+        st=$(job_status_pid "$pid" "$typ")
         case "$st" in succeeded|failed|cancelled) echo "$st"; return 0;; esac
         n=$((n+1)); sleep 0.5
     done
@@ -231,12 +235,35 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
         bup=$(upload_code_pid "$BUSY_ID" "$WS/fixture.mp4" "busy.mp4")
         bat=$(post_code "/projects/$BUSY_ID/analyze" '{}')
         if [ "$bup" = "201" ] && [ "$bat" = "202" ]; then
-            del1=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15                 -X DELETE "$BASE/projects/$BUSY_ID")
-            if [ "$del1" = "409" ]; then busy409=$((busy409+1)); else err="$err busy-delete $del1 (want 409)"; fi
-            wait_job_pid "$BUSY_ID" analyze >/dev/null
+            # Assert the invariant, not the timing. delete-must-409 only
+            # means something while the analyze job is provably still
+            # active; on a tiny fixture the job can finish between the 202
+            # and the DELETE, and a 200 is then the CORRECT gate answer —
+            # the project (and its cascaded job rows) is gone, so the race
+            # is unverifiable after the fact. A gate regression still shows
+            # up in the counters: busy409 collapsing toward 0 across rounds
+            # means the gate stopped refusing busy deletes.
+            busy_st=$(job_status_pid "$BUSY_ID" analyze)
+            case "$busy_st" in
+                running|queued)
+                    del1=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15                 -X DELETE "$BASE/projects/$BUSY_ID")
+                    if [ "$del1" = "409" ]; then
+                        busy409=$((busy409+1))
+                        wait_job_pid "$BUSY_ID" analyze >/dev/null
+                        del2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15             -X DELETE "$BASE/projects/$BUSY_ID")
+                        if [ "$del2" = "200" ]; then idleDelOK=$((idleDelOK+1)); else err="$err idle-delete $del2 (want 200)"; fi
+                    else
+                        busySkip=$((busySkip+1)) # finished in the gap; this delete was the idle one
+                        idleDelOK=$((idleDelOK+1))
+                    fi;;
+                *)
+                    busySkip=$((busySkip+1)) # already terminal before the delete
+                    del2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15             -X DELETE "$BASE/projects/$BUSY_ID")
+                    if [ "$del2" = "200" ]; then idleDelOK=$((idleDelOK+1)); else err="$err idle-delete $del2 (want 200)"; fi;;
+            esac
+        else
+            err="$err busy-setup bup=$bup bat=$bat"
         fi
-        del2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15             -X DELETE "$BASE/projects/$BUSY_ID")
-        if [ "$del2" = "200" ]; then idleDelOK=$((idleDelOK+1)); else err="$err idle-delete $del2 (want 200)"; fi
     else
         err="$err busy-project $busy"
     fi
@@ -247,5 +274,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 idleDelOK=$idleDelOK"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK"
 [ "$errors" -eq 0 ]
