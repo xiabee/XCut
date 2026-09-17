@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -132,7 +133,12 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 		return "", false, xcerr.E(xcerr.CodeInternal, "proxy generation failed",
 			fmt.Errorf("%v: %s", runErr, tailStr(stderr, 300)))
 	}
-	if err := os.Rename(tmpName, p); err != nil {
+	// RetryableRename, not a bare rename: two projects can reference the
+	// same content (same fingerprint → same proxy path), and on Windows the
+	// finalize can then collide with a reader still consuming the previous
+	// proxy. A failed proxy falls back to the original downstream, so this
+	// only preserves the fast path — retry it like every other finalize.
+	if err := workspace.RetryableRename(tmpName, p); err != nil {
 		_ = os.Remove(tmpName)
 		return "", false, xcerr.E(xcerr.CodeInternal, "cannot finalize proxy file", err)
 	}
