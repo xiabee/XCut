@@ -6,20 +6,23 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/xiabee/XCut/internal/eval"
+	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/style"
 	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func init() {
 	register("eval", "score pipeline selection quality against an annotated manifest",
-		usageSyntax("xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]"), cmdEval)
+		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3]"), cmdEval)
 }
 
 // evalCaseResult is one case's outcome in the results document.
@@ -45,7 +48,18 @@ func cmdEval(a *App, args []string) error {
 	styleFlag := "" // "" = per-case style, else "generic_highlight"
 	outPath := ""
 	iouFlag := "0.3"
-	pos, err := parseCommandArgs(args, map[string]*string{
+	// --check is a boolean-style flag; pull it out before parseCommandArgs
+	// (which requires values for its flags).
+	check := false
+	rest := args[:0]
+	for _, arg := range args {
+		if arg == "--check" {
+			check = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	pos, err := parseCommandArgs(rest, map[string]*string{
 		"style": &styleFlag,
 		"out":   &outPath,
 		"iou":   &iouFlag,
@@ -55,7 +69,16 @@ func cmdEval(a *App, args []string) error {
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]", nil)
+			"usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3]", nil)
+	}
+	if check {
+		if outPath != "" {
+			return xcerr.E(xcerr.CodeValidation, "--out has no effect with --check", nil)
+		}
+		if iouFlag != "0.3" {
+			return xcerr.E(xcerr.CodeValidation, "--iou has no effect with --check", nil)
+		}
+		return evalCheck(a, pos[0], styleFlag)
 	}
 	hitIoU, err := strconv.ParseFloat(iouFlag, 64)
 	if err != nil || math.IsNaN(hitIoU) || hitIoU <= 0 || hitIoU > 1 {
@@ -256,4 +279,111 @@ func sanitizeProjectName(name string) string {
 		return "case"
 	}
 	return string(out)
+}
+
+// durationSlack tolerates annotation rounding (a range noted as 603.0s
+// against a 602.98s file is a rounding artifact, not an annotation error).
+const durationSlack = 0.05
+
+// evalCheck validates a manifest and its referenced media WITHOUT running
+// the pipeline: no workspace, no imports, no encodes — seconds instead of
+// minutes. The /eval/ annotation workflow iterates on hand-written
+// manifests; a full eval run only to learn that a range overshoots the
+// media (or a style name is mistyped) wastes both time and compute.
+func evalCheck(a *App, manifestPath, styleFlag string) error {
+	manifest, err := eval.LoadManifest(manifestPath)
+	if err != nil {
+		return err
+	}
+
+	// Duration checks need ffprobe. Without it, existence and style checks
+	// still run — skipped loudly, never silently.
+	tools := media.ResolveTools(a.Cfg)
+	if _, lerr := exec.LookPath(tools.FFprobe); lerr != nil {
+		tools.FFprobe = ""
+		fmt.Fprintf(a.Stdout, "check: ffprobe not found — media existence checked, durations NOT\n")
+	}
+	// Workspace style overrides are honored when the directory already
+	// exists; check mode never creates workspace state.
+	var styleDirs []string
+	if dir := filepath.Join(a.Workspace().Root, "styles"); dirExists(dir) {
+		styleDirs = append(styleDirs, dir)
+	}
+
+	problems := 0
+	fmt.Fprintf(a.Stdout, "check: %d case(s) (%s)\n", len(manifest.Cases), manifestPath)
+	for _, c := range manifest.Cases {
+		issues, dur, probed := checkCase(a, tools, c, styleFlag, styleDirs)
+		if len(issues) == 0 {
+			durNote := ""
+			if probed {
+				durNote = "  " + media.HumanDuration(dur)
+			}
+			fmt.Fprintf(a.Stdout, "  %-24s ok%s  ranges %d\n", c.Name, durNote, len(c.Expected))
+			continue
+		}
+		problems++
+		fmt.Fprintf(a.Stdout, "  %-24s FAIL %s\n", c.Name, issues[0])
+		for _, extra := range issues[1:] {
+			fmt.Fprintf(a.Stdout, "  %-24s      %s\n", "", extra)
+		}
+	}
+	if problems > 0 {
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("manifest check found problems in %d case(s)", problems), nil)
+	}
+	fmt.Fprintf(a.Stdout, "check: OK — media present, annotations within duration, styles resolve\n")
+	return nil
+}
+
+// checkCase validates one case: media existence, ffprobe duration against
+// the annotated ranges, and style resolution. Returns the human-readable
+// issues (empty = pass) plus the probed duration.
+func checkCase(a *App, tools media.Tools, c eval.Case, styleFlag string, styleDirs []string) ([]string, float64, bool) {
+	var issues []string
+	var dur float64
+	probed := false
+	if _, err := os.Stat(c.Media); err != nil {
+		issues = append(issues, "media missing: "+filepath.Base(c.Media))
+	} else if tools.FFprobe != "" {
+		p, perr := media.ProbeFile(a.Ctx, tools, c.Media)
+		if perr != nil {
+			issues = append(issues, "media unreadable: "+userSafeMessage(perr))
+		} else {
+			dur = p.DurationSec
+			probed = true
+			for j, r := range c.Expected {
+				if r.End > dur+durationSlack {
+					issues = append(issues, fmt.Sprintf(
+						"range %d (%g..%gs) exceeds media duration %s",
+						j, r.Start, r.End, media.HumanDuration(dur)))
+				}
+			}
+		}
+	}
+	styleName := c.Style
+	if styleFlag != "" {
+		styleName = styleFlag
+	}
+	if styleName == "" {
+		styleName = "generic_highlight"
+	}
+	if _, serr := style.Load(styleName, styleDirs...); serr != nil {
+		issues = append(issues, "style: "+userSafeMessage(serr))
+	}
+	return issues, dur, probed
+}
+
+// userSafeMessage extracts the display message from an xcerr error without
+// the wrapped cause (causes carry internal paths; output stays user-safe).
+func userSafeMessage(err error) string {
+	if xe, ok := err.(*xcerr.Error); ok {
+		return xe.Message
+	}
+	return err.Error()
+}
+
+func dirExists(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }

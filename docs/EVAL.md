@@ -53,6 +53,19 @@ run the manifest with different rects and diff `results.json`.
 xcut eval eval/manifest.json --out eval/results.json
 ```
 
+Before a full run, `--check` validates the manifest in seconds — media
+existence, ffprobe durations vs the annotated ranges (an annotation that
+overshoots the media is a typo, caught before any encode), and style
+resolution. No workspace is created; nothing is analyzed:
+
+```sh
+xcut eval eval/manifest.json --check
+```
+
+With ffprobe absent, existence and style checks still run and the duration
+check is skipped loudly. `--check` fails (nonzero exit) when any case has a
+problem; all problems are reported in one pass.
+
 ```
 eval: 1 case(s), hit_iou 0.30 (workspace C:\…\xcut-eval-…)
   match_day_1             P 0.812  R 0.734  F1 0.771  ranges 4/6  dup 0.25  clips 8

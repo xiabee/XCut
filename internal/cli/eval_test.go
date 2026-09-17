@@ -217,3 +217,104 @@ func TestEvalCaseNameCollision(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalCheckMode: --check validates manifest, media presence, annotation
+// ranges against real durations, and style resolution in seconds — without
+// running the pipeline or creating any workspace state. Skipped when
+// ffmpeg is absent (duration checks need ffprobe).
+func TestEvalCheckMode(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+
+	scenes := []testmedia.Scene{
+		{Seconds: 3, Color: "red", Frequency: 440},
+		{Seconds: 3, Color: "green", Frequency: 880},
+	}
+	if _, err := testmedia.Generate(root, "ok.mp4", scenes, 320, 240, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) int {
+		stdout.Reset()
+		stderr.Reset()
+		return Run(args, &stdout, &stderr)
+	}
+
+	good := filepath.Join(root, "good.json")
+	manifest := `{
+		"version": 1,
+		"cases": [
+			{"name": "ok", "media": "ok.mp4", "expected": [{"start": 0, "end": 6}]},
+			{"name": "roi", "media": "ok.mp4", "style": "badminton_highlight",
+			 "asset_roi": {"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.5},
+			 "expected": [{"start": 0, "end": 3}]}
+		]
+	}`
+	if err := os.WriteFile(good, []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := run("eval", good, "--check"); code != 0 {
+		t.Fatalf("--check must pass a clean manifest (code %d)\nstdout:\n%s\nstderr:\n%s",
+			code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "check: OK") {
+		t.Fatalf("clean manifest must end with check: OK:\n%s", out)
+	}
+	for _, name := range []string{"ok", "roi"} {
+		if !strings.Contains(out, name) {
+			t.Fatalf("check output must list case %q:\n%s", name, out)
+		}
+	}
+	// Check mode is read-only: only the fixture and the manifest exist.
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, e := range entries {
+		names[e.Name()] = true
+	}
+	if len(names) != 2 || !names["ok.mp4"] || !names["good.json"] {
+		t.Fatalf("--check must not create workspace state, found: %v", names)
+	}
+
+	bad := filepath.Join(root, "bad.json")
+	badManifest := `{
+		"version": 1,
+		"cases": [
+			{"name": "overrun", "media": "ok.mp4", "expected": [{"start": 0, "end": 999}]},
+			{"name": "gone", "media": "nope.mp4", "expected": [{"start": 0, "end": 3}]},
+			{"name": "badstyle", "media": "ok.mp4", "style": "no_such_style",
+			 "expected": [{"start": 0, "end": 3}]}
+		]
+	}`
+	if err := os.WriteFile(bad, []byte(badManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := run("eval", bad, "--check"); code == 0 {
+		t.Fatal("--check must fail a manifest with problems")
+	}
+	out = stdout.String()
+	for _, want := range []string{
+		"overrun", "exceeds media duration",
+		"gone", "media missing: nope.mp4",
+		"badstyle", "unknown style: no_such_style",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("check output missing %q:\n%s", want, out)
+		}
+	}
+
+	// Inert flags are rejected loudly instead of silently ignored.
+	if code := run("eval", good, "--check", "--out", filepath.Join(root, "r.json")); code == 0 {
+		t.Fatal("--out with --check must be rejected")
+	}
+	if code := run("eval", good, "--check", "--iou", "0.5"); code == 0 {
+		t.Fatal("--iou with --check must be rejected")
+	}
+}
