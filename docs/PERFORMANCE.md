@@ -102,3 +102,4 @@ timeline duration (render). Wall time includes process startup.
 | 2026-09-11 | **session #5 re-check: serve idle CPU** | 8 s idle | 0.078 s total since start, ~0% while idle | — | **met** |
 | 2026-09-12 | session #6: serve idle re-check (after subtitles endpoints + new routes) | — | 13.0 MB WS / cpu delta 0.000s over 5s | — | **goals met** (<100 MB RAM, ~0% CPU) |
 | 2026-09-17 | session #11: serve idle re-check (after M120 write-idle wrapper, M-B upload mutex, M-A atomic gate) | — | 16.6 MB WS / 48.1 MB private / cpu delta 0 ms over 10 s | — | **goals met** (<100 MB RAM, ~0% CPU); streaming/mutex additions carry no standing cost |
+| 2026-09-18 | session #12: serve idle re-check (after eval tooling, sweep descent, retrying proxy rename) | — | 17.5 MB WS / 48.1 MB private / cpu delta 0 ms over 10 s | — | **goals met** (<100 MB RAM, ~0% CPU); flat vs session #11 |
