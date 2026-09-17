@@ -27,12 +27,29 @@ func init() {
 
 // evalCaseResult is one case's outcome in the results document.
 type evalCaseResult struct {
-	Name     string              `json:"name"`
-	Style    string              `json:"style"`
-	Media    string              `json:"media"`
-	Error    string              `json:"error,omitempty"`
-	Selected []eval.IntervalJSON `json:"selected,omitempty"`
-	Metrics  *eval.CaseMetrics   `json:"metrics,omitempty"`
+	Name  string `json:"name"`
+	Style string `json:"style"`
+	Media string `json:"media"`
+	Error string `json:"error,omitempty"`
+	// Selected carries each clip's source interval plus the style engine's
+	// explanation (score, dominant factors) — an eval run is self-diagnosing:
+	// WHY each moment was picked matters for tuning as much as the metrics.
+	Selected []selectedClipJSON `json:"selected,omitempty"`
+	Metrics  *eval.CaseMetrics  `json:"metrics,omitempty"`
+}
+
+// selectedClipJSON is one selected source interval in the results document.
+// Score/hit fields mirror the clip Metadata the style engine writes; they
+// are pointers so a missing/parse-failing metadata key is omitted rather
+// than reported as a false zero.
+type selectedClipJSON struct {
+	Start      float64  `json:"start"`
+	End        float64  `json:"end"`
+	Score      *float64 `json:"score,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Breakdown  string   `json:"score_breakdown,omitempty"`
+	HitCount   *int     `json:"hit_count,omitempty"`
+	HitDensity *float64 `json:"hit_density,omitempty"`
 }
 
 type evalResults struct {
@@ -137,14 +154,14 @@ func cmdEval(a *App, args []string) error {
 		}
 		res := evalCaseResult{Name: c.Name, Style: styleName, Media: c.Media}
 
-		selected, terr := evalRunCase(&ea, db, c, styleName)
+		clips, terr := evalRunCase(&ea, db, c, styleName)
 		var cm *eval.CaseMetrics
 		if terr != nil {
 			res.Error = terr.Error()
 			ea.Log.Debug("eval case failed", "case", c.Name, "err", terr)
 		} else {
-			res.Selected = toJsonIntervals(selected)
-			m := eval.Score(selected, c.Expected, eval.Config{HitIoU: hitIoU})
+			res.Selected = toJsonSelectedClips(clips)
+			m := eval.Score(clipsToIntervals(clips), c.Expected, eval.Config{HitIoU: hitIoU})
 			res.Metrics = &m
 			cm = &m
 		}
@@ -190,8 +207,10 @@ func cmdEval(a *App, args []string) error {
 }
 
 // evalRunCase executes import → timeline for one manifest case in the shared
-// eval workspace and returns the selected source intervals.
-func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]eval.Interval, error) {
+// eval workspace and returns the style-selected clips (source intervals plus
+// the per-clip score metadata). All clips reference the single imported asset,
+// so source times are comparable.
+func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]timeline.Clip, error) {
 	if _, err := os.Stat(c.Media); err != nil {
 		return nil, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
 	}
@@ -239,27 +258,49 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]eval
 	if err != nil {
 		return nil, err
 	}
-	return selectedIntervals(tl), nil
+	var clips []timeline.Clip
+	for _, tr := range tl.Tracks {
+		clips = append(clips, tr.Clips...)
+	}
+	return clips, nil
 }
 
-// selectedIntervals maps timeline clips to source-time intervals. All clips
-// reference the single imported asset, so source times are comparable.
-func selectedIntervals(tl *timeline.Timeline) []eval.Interval {
+// clipsToIntervals maps clips to source-time intervals for scoring. A valid
+// timeline never carries empty clips, but the filter keeps the contract
+// explicit.
+func clipsToIntervals(clips []timeline.Clip) []eval.Interval {
 	var out []eval.Interval
-	for _, tr := range tl.Tracks {
-		for _, c := range tr.Clips {
-			if c.SourceEnd > c.SourceStart {
-				out = append(out, eval.Interval{Start: c.SourceStart, End: c.SourceEnd})
-			}
+	for _, c := range clips {
+		if c.SourceEnd > c.SourceStart {
+			out = append(out, eval.Interval{Start: c.SourceStart, End: c.SourceEnd})
 		}
 	}
 	return out
 }
 
-func toJsonIntervals(ivs []eval.Interval) []eval.IntervalJSON {
-	out := make([]eval.IntervalJSON, 0, len(ivs))
-	for _, iv := range ivs {
-		out = append(out, eval.IntervalJSON{Start: iv.Start, End: iv.End})
+// toJsonSelectedClips maps selected clips to their results-document form,
+// lifting the style engine's explanation out of the clip metadata. Metadata
+// values are strings (the timeline IR stores metadata as map[string]string);
+// unparseable values are omitted rather than reported as false zeros.
+func toJsonSelectedClips(clips []timeline.Clip) []selectedClipJSON {
+	out := make([]selectedClipJSON, 0, len(clips))
+	for _, c := range clips {
+		if c.SourceEnd <= c.SourceStart {
+			continue
+		}
+		sel := selectedClipJSON{Start: c.SourceStart, End: c.SourceEnd}
+		if v, err := strconv.ParseFloat(c.Metadata["score"], 64); err == nil {
+			sel.Score = &v
+		}
+		sel.Reason = c.Metadata["reason"]
+		sel.Breakdown = c.Metadata["score_breakdown"]
+		if v, err := strconv.Atoi(c.Metadata["hit_count"]); err == nil {
+			sel.HitCount = &v
+		}
+		if v, err := strconv.ParseFloat(c.Metadata["hit_density"], 64); err == nil {
+			sel.HitDensity = &v
+		}
+		out = append(out, sel)
 	}
 	return out
 }

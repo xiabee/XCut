@@ -79,8 +79,9 @@ results: eval/results.json
 - Exit code is nonzero when any case fails (e.g. missing media), so eval can
   gate automation.
 - `results.json` contains per-case metrics, per-range best IoU/coverage, the
-  selected intervals, and duplicate pairs — enough to see *where* and *why*
-  the algorithm lost points.
+  selected intervals (each carrying the style engine's `score`, `reason` and
+  `score_breakdown` — why each moment was picked), and duplicate pairs —
+  enough to see *where*, *why*, and *how* the algorithm lost points.
 
 ## Worked example: the badminton match (REDACTED)
 

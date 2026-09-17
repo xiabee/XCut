@@ -78,8 +78,14 @@ func TestEvalHarness(t *testing.T) {
 	var results struct {
 		Version int `json:"version"`
 		Cases   []struct {
-			Name    string `json:"name"`
-			Error   string `json:"error"`
+			Name     string `json:"name"`
+			Error    string `json:"error"`
+			Selected []struct {
+				Start  float64  `json:"start"`
+				End    float64  `json:"end"`
+				Score  *float64 `json:"score"`
+				Reason string   `json:"reason"`
+			} `json:"selected"`
 			Metrics *struct {
 				Precision   float64 `json:"precision"`
 				Recall      float64 `json:"recall"`
@@ -115,6 +121,16 @@ func TestEvalHarness(t *testing.T) {
 	full := results.Cases[byName["full"]].Metrics
 	if full == nil {
 		t.Fatal("full case has no metrics")
+	}
+	// Every selected clip must carry the style engine's explanation — the
+	// results document is self-diagnosing (why each moment was picked).
+	for i, sel := range results.Cases[byName["full"]].Selected {
+		if sel.Score == nil || *sel.Score <= 0 {
+			t.Errorf("selected clip %d has no usable score: %+v", i, sel)
+		}
+		if sel.Reason == "" {
+			t.Errorf("selected clip %d has no reason: %+v", i, sel)
+		}
 	}
 	// The style selects scene-shaped events; annotated everything → ~1.0.
 	if full.Precision < 0.99 || full.Recall < 0.99 || full.F1 < 0.99 {

@@ -254,12 +254,6 @@ func round4(v float64) float64 {
 	return math.Round(v*10000) / 10000
 }
 
-// IntervalJSON is the JSON form of Interval (results documents, CLI output).
-type IntervalJSON struct {
-	Start float64 `json:"start"`
-	End   float64 `json:"end"`
-}
-
 // Macro aggregates case metrics into a run-level summary (unweighted mean
 // over scored cases; range totals summed).
 type Macro struct {
