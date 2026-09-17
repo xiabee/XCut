@@ -344,17 +344,11 @@ func evalCheck(a *App, manifestPath, styleFlag string) error {
 		tools.FFprobe = ""
 		fmt.Fprintf(a.Stdout, "check: ffprobe not found — media existence checked, durations NOT\n")
 	}
-	// Workspace style overrides are honored when the directory already
-	// exists; check mode never creates workspace state.
-	var styleDirs []string
-	if dir := filepath.Join(a.Workspace().Root, "styles"); dirExists(dir) {
-		styleDirs = append(styleDirs, dir)
-	}
 
 	problems := 0
 	fmt.Fprintf(a.Stdout, "check: %d case(s) (%s)\n", len(manifest.Cases), manifestPath)
 	for _, c := range manifest.Cases {
-		issues, dur, probed := checkCase(a, tools, c, styleFlag, styleDirs)
+		issues, dur, probed := checkCase(a, tools, c, styleFlag)
 		if len(issues) == 0 {
 			durNote := ""
 			if probed {
@@ -380,7 +374,12 @@ func evalCheck(a *App, manifestPath, styleFlag string) error {
 // checkCase validates one case: media existence, ffprobe duration against
 // the annotated ranges, and style resolution. Returns the human-readable
 // issues (empty = pass) plus the probed duration.
-func checkCase(a *App, tools media.Tools, c eval.Case, styleFlag string, styleDirs []string) ([]string, float64, bool) {
+//
+// Styles resolve against the embedded presets only, on purpose: a real eval
+// run builds its timeline in a throwaway workspace whose styles/ directory
+// is always empty, so workspace overrides never apply there. Checking the
+// user's overrides too would report PASS for styles the run will reject.
+func checkCase(a *App, tools media.Tools, c eval.Case, styleFlag string) ([]string, float64, bool) {
 	var issues []string
 	var dur float64
 	probed := false
@@ -409,7 +408,7 @@ func checkCase(a *App, tools media.Tools, c eval.Case, styleFlag string, styleDi
 	if styleName == "" {
 		styleName = "generic_highlight"
 	}
-	if _, serr := style.Load(styleName, styleDirs...); serr != nil {
+	if _, serr := style.Load(styleName); serr != nil {
 		issues = append(issues, "style: "+userSafeMessage(serr))
 	}
 	return issues, dur, probed
@@ -422,9 +421,4 @@ func userSafeMessage(err error) string {
 		return xe.Message
 	}
 	return err.Error()
-}
-
-func dirExists(path string) bool {
-	fi, err := os.Stat(path)
-	return err == nil && fi.IsDir()
 }

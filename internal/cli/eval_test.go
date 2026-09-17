@@ -333,4 +333,30 @@ func TestEvalCheckMode(t *testing.T) {
 	if code := run("eval", good, "--check", "--iou", "0.5"); code == 0 {
 		t.Fatal("--iou with --check must be rejected")
 	}
+
+	// Style fidelity: a real eval run resolves styles in a throwaway
+	// workspace (embedded presets only) — a same-named workspace override
+	// must NOT make check report a PASS the run will refute.
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	override := filepath.Join(root, "styles", "mystyle.json")
+	if err := os.WriteFile(override, []byte(`{"name":"mystyle"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wsStyle := filepath.Join(root, "wsstyle.json")
+	wsManifest := `{
+		"version": 1,
+		"cases": [{"name": "override_case", "media": "ok.mp4",
+		           "style": "mystyle", "expected": [{"start": 0, "end": 3}]}]
+	}`
+	if err := os.WriteFile(wsStyle, []byte(wsManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := run("eval", wsStyle, "--check"); code == 0 {
+		t.Fatal("workspace-only style must fail check (eval runs cannot use it)")
+	}
+	if !strings.Contains(stdout.String(), "unknown style: mystyle") {
+		t.Fatalf("check must reject the workspace-only style:\n%s", stdout.String())
+	}
 }

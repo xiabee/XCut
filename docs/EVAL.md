@@ -66,6 +66,13 @@ With ffprobe absent, existence and style checks still run and the duration
 check is skipped loudly. `--check` fails (nonzero exit) when any case has a
 problem; all problems are reported in one pass.
 
+Style resolution in eval is **embedded presets only**: the run builds each
+case's timeline in a throwaway workspace with no style overrides, so
+workspace `<workspace>/styles/` presets do not apply inside eval (the UI and
+render pipeline honor them; eval deliberately isolates). `--check` enforces
+the same rule — a manifest naming a workspace-only style fails the check
+exactly as it would fail the run.
+
 ```
 eval: 1 case(s), hit_iou 0.30 (workspace C:\…\xcut-eval-…)
   match_day_1             P 0.812  R 0.734  F1 0.771  ranges 4/6  dup 0.25  clips 8
