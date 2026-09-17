@@ -62,6 +62,9 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-15 | session #9 re-check: analyze (cache hit) | same | 1.03 s wall incl. CLI process start | ~0x | — |
 | 2026-09-15 | session #9 re-check: render (concat path) | 10s 1-clip 1080p30 timeline | 2.5 s wall (probe: 10.02 s output) | **0.25x** output duration | vs 3.3 s / 0.33x session #4 row — no regression |
 | 2026-09-14 | session #8 re-check: serve idle RAM | — | 17.2 MB WS / 10 s CPU delta 0 | — | goals met (<100 MB, ~0%); +3 MB vs session #7 rows (health ffmpeg lookup + new endpoints) |
+| 2026-09-18 | session #12 re-check: analyze (cold) | 300s 1080p30 testsrc2 + sine | 17.5 s wall | **0.058x realtime** | session #12 HEAD (92f0f5c), CLI wall incl. process start; faster than the 26.9–39.5 s band (idle-night machine), no regression — tonight's changes are CLI/eval/scripts-side |
+| 2026-09-18 | session #12 re-check: analyze (cache hit) | same | 0.31 s wall | ~0x | fingerprint-keyed cache across projects in the workspace |
+| 2026-09-18 | session #12 re-check: render (concat path) | 10s 1-clip 1080p30 timeline | 2.2 s wall | **0.22x** output duration | vs 2.5 s / 0.25x session #9 row — no regression |
 
 Analysis proxies (session #3): the win is on **repeated** analysis (style
 changes, re-runs, multi-project sharing) — analyzer passes drop from
