@@ -3,6 +3,7 @@
 /dist/
 *.test
 *.out
+*.tmp
 
 # Local databases
 *.db
