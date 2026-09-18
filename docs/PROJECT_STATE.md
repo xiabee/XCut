@@ -208,6 +208,9 @@ Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
 
 - `go test ./...` all packages green (full suite re-run after each
   milestone; integration tests run against `.tools` ffmpeg 9.0.1)
+- Secret scanning: gitleaks (repo-local .tools/bin) runs in every gate —
+  full git history + working tree (uncommitted edits included); the scan
+  fails the gate on any finding (verified with a planted secret)
 - `go test -race` all packages green on the Windows host (full gate) —
   a gcc toolchain (windows-gnu, from the Rust setup) now satisfies the
   gate's cgo requirement

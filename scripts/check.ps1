@@ -28,6 +28,15 @@ if (-not $hasFfmpeg) {
 if (Test-Path ".tools/bin") {
     $env:PATH = (Resolve-Path ".tools/bin").Path + ";" + $env:PATH
 }
+# Secret scanning: gitleaks over the full git history AND the working
+# tree (untracked files included — the gate runs before a commit, so a
+# secret sitting in a fresh edit must be caught here). Resolved from PATH
+# or the repo-local .tools/bin copy (which ships to CI snapshots); when
+# neither exists the step skips LOUDLY rather than silently passing.
+$gitleaks = $null
+$gkCmd = Get-Command gitleaks -ErrorAction SilentlyContinue
+if ($gkCmd) { $gitleaks = $gkCmd.Source }
+elseif (Test-Path ".tools/bin/gitleaks.exe") { $gitleaks = (Resolve-Path ".tools/bin/gitleaks.exe").Path }
 if ($hasFfmpeg) {
     Write-Host "== ffmpeg: $((ffmpeg -version 2>$null | Select-Object -First 1))"
 }
@@ -39,6 +48,19 @@ function Invoke-Step([string]$Name, [scriptblock]$Body) {
     Write-Host "== $Name"
     & $Body
     if ($LASTEXITCODE -ne 0) { throw "$Name failed with exit code $LASTEXITCODE" }
+}
+
+if ($gitleaks) {
+    if (Test-Path ".git") {
+        Invoke-Step "gitleaks (git history)" { & $gitleaks git . --no-banner --redact }
+    }
+    # The working-tree scan always runs: a secret sitting in an
+    # uncommitted edit is invisible to a git scan and is exactly what a
+    # pre-commit gate must catch. CI snapshots carry no .git dir, so on
+    # nodes this is the only scan — still a real gate.
+    Invoke-Step "gitleaks (working tree)" { & $gitleaks dir . --no-banner --redact }
+} else {
+    Write-Host "== gitleaks: NOT FOUND on PATH or .tools/bin — secret scan SKIPPED (install it: https://github.com/zricethezav/gitleaks)"
 }
 
 Invoke-Step "gofmt" {
