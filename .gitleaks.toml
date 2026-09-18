@@ -1,0 +1,14 @@
+# gitleaks config — repo defaults plus one repo-specific allowlist.
+#
+# .gotmp/ is the documented never-committed scratch area (.gitignore 30):
+# verification scaffolding lands there (browser profiles, fixture media,
+# throwaway drives). Chrome profiles and lavfi binaries are dense with
+# token-shaped and high-entropy strings — all false positives. Git history
+# and the tracked working tree remain fully scanned.
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''(^|/)\.gotmp/''',
+]

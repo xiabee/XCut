@@ -88,8 +88,8 @@ async function refreshHealth() {
     // Setup guidance: a double-clicked exe usually means no PATH-managed
     // FFmpeg. Stay visible until the toolchain appears.
     warn.hidden = h.ffmpeg !== "missing";
-    if (warn.hidden) warn.textContent = "";
-    else warn.textContent = t("FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.");
+    if (warn.hidden) $("syswarn-text").textContent = "";
+    else $("syswarn-text").textContent = t("FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.");
   } catch (_) {
     el.textContent = t("offline");
     el.className = "health bad";
@@ -307,6 +307,9 @@ async function refreshAssets() {
         thumb.appendChild(c);
         thumbCache.set(a.id, c.toDataURL("image/jpeg", 0.6));
         v.src = ""; // release the decoder
+        // The timeline may have rendered before this capture landed (its
+        // blocks read the same cache); repaint once so blocks are not dark.
+        if (timelineDoc) renderTimeline();
       } catch (_) { /* frame capture is best-effort */ }
     }, { once: true });
     grid.appendChild(v);
