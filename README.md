@@ -40,8 +40,17 @@
 
 ### 方式一：下载预编译版本（推荐）
 
-到 [**Releases**](https://github.com/xiabee/XCut/releases) 下载 Windows zip（含 QUICKSTART.txt），
-解压后双击 `xcut.exe` 即可；Linux/macOS 下载对应平台的静态二进制。
+到 [**Releases**](https://github.com/xiabee/XCut/releases) 下载：
+
+- **Windows 安装包** `xcut-*-windows-setup.exe`（约 6 MB）—— 双击安装，
+  含开始菜单/桌面快捷方式与卸载器；
+- **Windows 免安装 zip**（含 QUICKSTART.txt）—— 解压后双击 `xcut.exe`；
+- Linux/macOS 下载对应平台的静态二进制。
+
+首次启动会自动检测环境：若缺少 FFmpeg，界面顶栏提供**一键安装**
+（官方构建，经校验和验证后装到 exe 旁的 bin 目录，不会静默捆绑）。
+AI 字幕等能力由你自行配置本地后端（设置 `workers.ai_bin` 或把
+`xcut-ai` 放到 PATH），应用只提供接口、绝不自行下载模型。
 
 ### 方式二：从源码构建
 

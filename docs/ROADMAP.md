@@ -60,7 +60,16 @@ web UI stays the same asset tree served to browsers).
       volume), keyboard shortcuts, empty states, docs. Shipped
       2026-09-13 (Delete/Space/Ctrl+S shortcuts; score + why per clip)
       — session #8.
-- [ ] Desktop packaging (icon, installer/zip, tray) — zip + icon shipped
-      in session #8; tray/auto-update remain.
-- [ ] Model registry (explicit installs, no silent downloads)
+- [x] Desktop packaging (icon, installer/zip, tray) — zip + icon shipped
+      in session #8; the true installer (Inno Setup `xcut-*-windows-
+      setup.exe`, shortcuts, InfoBefore policy page, uninstaller)
+      shipped in session #13 (2026-09-18, owner directive). tray and
+      auto-update remain open.
+- [x] Model registry (explicit installs, no silent downloads) — resolved
+      in session #13 (2026-09-18) as the explicit-configuration surface:
+      `/health` reports `ai_sidecar: ok|missing`, the subtitles panel
+      shows the configure hint, and the sidecar protocol + `workers.ai_bin`
+      stay the only registration path. The core never downloads models
+      (D3); FFmpeg auto-install is the one pinned-source exception and it
+      downloads nothing until the user clicks.
 - [ ] Sandbox options for FFmpeg (job objects / containers)

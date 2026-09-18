@@ -3,12 +3,20 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
+Updated: 2026-09-18 (late night) — nightly session #13 (owner directive:
+UI v2 + one-click setup) checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #12 (eval workflow tooling: `--check` fast manifest
+- HEAD: session #13 (owner-directive night: UI v2 visual refresh; one-
+  click FFmpeg install — pinned Gyan.dev 9.0.1 artifact, size+SHA256 in
+  code, zip-slip-guarded extract into <exe>/bin, ffprobe -version gate,
+  live neighbor re-probe so no restart is needed; true Windows installer
+  via Inno Setup (installer/xcut.iss + scripts/make-setup.ps1) with an
+  InfoBefore policy page and real uninstaller; /health ai_sidecar probe;
+  CLI output guards refusing subtitles/eval --out onto their own inputs)
+  on top of session #12 (eval workflow tooling: `--check` fast manifest
   validation, self-diagnosing results with per-clip score/reason,
   per-case liveness lines, faithful style resolution; the startup
   sweep now reclaims upload staging inside per-project imports dirs —

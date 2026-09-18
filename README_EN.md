@@ -40,9 +40,20 @@ Target scenarios: **badminton · KTV · vlogs · stage performance · sports hig
 
 ### Option 1: download a prebuilt build (recommended)
 
-Grab the Windows zip (includes a QUICKSTART.txt) or a static Linux binary from
-[**Releases**](https://github.com/xiabee/XCut/releases), unzip, double-click
-`xcut.exe` (or run the binary).
+Grab from [**Releases**](https://github.com/xiabee/XCut/releases):
+
+- **Windows installer** `xcut-*-windows-setup.exe` (~6 MB) — double-click
+  to install, with Start-menu/desktop shortcuts and a real uninstaller;
+- **portable Windows zip** (includes a QUICKSTART.txt) — unzip,
+  double-click `xcut.exe`;
+- static Linux binaries for amd64/arm64.
+
+First launch detects your environment: if FFmpeg is missing, a bar at
+the top offers a **one-click install** (official build, checksum-verified,
+landed next to the exe — never bundled, never silent). AI features such
+as subtitles expect a local backend you configure yourself (set
+`workers.ai_bin` or put `xcut-ai` on PATH) — the app provides the
+interface and never downloads models on its own.
 
 ### Option 2: build from source
 

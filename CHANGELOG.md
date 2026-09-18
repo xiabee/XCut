@@ -3,6 +3,62 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-18 night session #13 (owner directive: UI + installer)
+
+### Added
+- **One-click FFmpeg install** (owner directive): when the app detects a
+  missing FFmpeg, the warning strip grows an install button — source
+  (official Gyan.dev build on GitHub), size (~110 MB) and license (GPL)
+  are stated before it runs. The artifact URL, exact byte size and SHA256
+  are pinned in code: a moved or tampered download refuses loudly. Only
+  `ffmpeg.exe`/`ffprobe.exe` are extracted (zip-slip guarded) into the
+  exe-neighbor `bin\` directory; the installed ffprobe must answer
+  `-version` before the app calls it done. Tool resolution re-probes the
+  neighbor locations live, so the pipeline is usable the moment the
+  install lands — no restart. Non-Windows refuses honestly (use the
+  system package manager).
+- **True Windows installer** (owner directive): `xcut-<version>-windows-
+  setup.exe` (~6 MB, Inno Setup) with Start-menu/desktop shortcuts, an
+  InfoBefore page stating the auto-install and configure-your-own-AI
+  policies (en+zh), and a real uninstaller. FFmpeg stays unbundled by
+  design — the pinned in-app download keeps the installer small and the
+  distribution license-clean.
+- **AI sidecar visibility**: `/health` reports `ai_sidecar: ok|missing`
+  (LookPath only — health never spawns the sidecar), and the subtitles
+  panel appends a configure hint when nothing resolves. The configure-
+  your-own-AI interface itself (sidecar protocol v1, `workers.ai_bin`,
+  `--model`/`--lang`) already existed; it is now visible when unset.
+  Bundling a model into the core stays rejected by design (D3): useful
+  STT models weigh tens-to-hundreds of MB against a ~13 MB binary — the
+  sidecar route keeps capability growth on the user's terms.
+
+### Changed
+- **UI v2 visual refresh** (owner directive): gradient brand/accent
+  system, layered surfaces with hairline highlights, focus-visible
+  rings, refined buttons/inputs/status pills, animated dropdown and
+  banner, pulsing running-job state, ambient glow, reduced-motion
+  support, favicon. Trim handles are now drawn — the JS pointer targets
+  existed since session #8 but no CSS ever painted them. Timeline blocks
+  repaint once thumbnails finish capturing (no more dark blocks until
+  the first click).
+
+### Fixed
+- **`xcut subtitles --out` / `xcut eval --out` could overwrite their own
+  inputs**: a subtitle file or eval results written onto the source
+  media (or a hand-written annotation manifest) truncated irreplaceable
+  data. Both commands now share the render guard's same-file identity
+  check and refuse loudly before any work starts.
+- **Hidden state resurrection in the UI**: author `display:flex` on the
+  editor shell and warning strip outranked the UA's `[hidden]` rule, so
+  the empty-state editor rendered beneath the placeholder and the
+  warning strip could never hide. A `[hidden]{display:none!important}`
+  base rule now owns hiding.
+- **`.gotmp/` no longer trips the secret scanner**: the never-committed
+  scratch area (verification scaffolding: browser profiles, fixture
+  media) is dense with token-shaped strings; the gitleaks allowlist
+  covers only that ignored directory — tracked tree and full history
+  stay scanned.
+
 ## [Unreleased] — 2026-09-17 night session #12
 
 ### Fixed
