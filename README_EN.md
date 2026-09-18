@@ -210,7 +210,7 @@ export XCUT_SIDECAR_STT_URL="http://127.0.0.1:9000"
 
 # single-frame semantic description (POST /v1/chat/completions, multimodal) —
 # the seam for match-phase awareness and content tagging
-export XCUT_SIDECAR_VISION_URL="https://gateway-host:8443"
+export XCUT_SIDECAR_VISION_URL="https://your-gateway.example:8443"
 export XCUT_SIDECAR_VISION_MODEL="vision"
 export XCUT_SIDECAR_INSECURE_TLS=1   # for self-signed certificates
 ```

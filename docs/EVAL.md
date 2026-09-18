@@ -90,25 +90,21 @@ results: eval/results.json
   `score_breakdown` — why each moment was picked), and duplicate pairs —
   enough to see *where*, *why*, and *how* the algorithm lost points.
 
-## Worked example: the badminton match (REDACTED)
+## Worked example: annotating a badminton broadcast
 
-The owner's 10:03 fixed-camera men's-singles match carries a burned-in
-scoreboard — every score change marks exactly one finished rally, making it
-natural annotation ground truth. Recipe (data stays in the gitignored
-/eval/):
+A fixed-camera badminton broadcast with a burned-in scoreboard is ideal
+annotation ground truth: every score change marks exactly one finished rally.
+Recipe (keep data in the gitignored /eval/):
 
-1. Fetch the 720p media via the anonymous HTML5 endpoint (view API → cid →
-   playurl `platform=html5&high_quality=1` → download `durl[0].url` with a
-   browser UA + bilibili Referer).
+1. Obtain the recording you have the rights to use, locally.
 2. Scrub the video; note the time at each score change. The span between two
    changes contains exactly one rally (+ the serve pause); annotate the
-   active part, consistently. Frame-sampled seeds from 2026-09-17 (verify,
-   don't trust): 0:1 ≈ 10s, 3:5 ≈ 96s, 9:13 ≈ 300s, 14:15 ≈ 400s,
-   22:19 ≈ 595s (match point; ~41 points => ~41 rallies).
+   active part, consistently. A 10-minute men's-singles game typically
+   yields ~40 rallies.
 3. Baseline → change → compare macro P/R/F1, range hits, dup rate (workflow
    below). The court ROI is worth an A/B: run the manifest with and without
-   `asset_roi` (the region used in the night-session review: x 0.03, y 0.38,
-   w 0.60, h 0.62 for this camera).
+   `asset_roi` (draw the region for your camera once in the web UI and reuse
+   the numbers here).
 
 The PROVISIONAL constants in `internal/event/rally.go` (0.4 adaptive-floor
 ratio, P75 baseline, 4x cap, ±6s chunk-snap) are awaiting exactly these

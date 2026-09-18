@@ -28,3 +28,9 @@ target/
 /eval/
 soak-results.json
 .gotmp/
+
+# Night-ops records and automation config: kept locally, never published
+/NIGHTOPS.yaml
+/docs/NIGHTLY_PROGRESS.md
+/docs/NIGHTLY_LOG.md
+/docs/ACCEPTANCE.md

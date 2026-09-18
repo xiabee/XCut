@@ -1,4 +1,4 @@
-# night-automation local CI gate — delegates to this repo's own quality gate
+# Local CI gate — delegates to this repo's own quality gate
 # (scripts/check.ps1), which sets up the local FFmpeg environment the
 # render tests require. Exit code is authoritative.
 #Requires -Version 5

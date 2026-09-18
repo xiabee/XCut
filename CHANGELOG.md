@@ -57,7 +57,7 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 - **The rally motion floor tracks the video's own active level**: an
   absolute floor assumed a stable signal scale, but real footage drops
   several-fold within one clip (encode/shutter drift; per-frame
-  normalization does not remove it) — on the owner's 10-minute match the
+  normalization does not remove it) — on a real 10-minute match the
   match point itself was silently refused. The floor now clamps to the
   video's active level (P75 of chunk means, 0.4x, capped at 4x relief);
   on that match, candidate coverage went from 14 to 21 of 21 chunks.

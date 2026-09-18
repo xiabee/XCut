@@ -191,7 +191,7 @@ export XCUT_SIDECAR_STT_URL="http://127.0.0.1:9000"
 
 # 单帧语义描述（POST /v1/chat/completions，多模态模型）——
 # 比赛阶段感知、内容打标等语义信号的接入面
-export XCUT_SIDECAR_VISION_URL="https://gateway-host:8443"
+export XCUT_SIDECAR_VISION_URL="https://your-gateway.example:8443"
 export XCUT_SIDECAR_VISION_MODEL="vision"
 export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 ```
@@ -261,7 +261,7 @@ cargo test                                          # Rust 侧（crates/）
 测试用 FFmpeg `lavfi` 现场生成全部媒体 fixture——仓库里没有二进制
 fixture。缺少 FFmpeg 时集成测试自动跳过。
 
-架构、决策、安全模型、性能策略与夜间开发日志都在 [`docs/`](docs/)：
+架构、决策、安全模型、性能策略都在 [`docs/`](docs/)：
 
 | 文档 | 内容 |
 |---|---|

@@ -91,7 +91,7 @@ func TestSubtitlesFlow(t *testing.T) {
 		t.Fatalf("duplicate transcribe: %d %v (want 409)", recDup.Code, outDup)
 	}
 	// 30s: on AV-scanned machines a cold python sidecar start can be slow
-	// (the remote-node node flaked once at 15s; the immediate re-run passed).
+	// (a remote CI node flaked once at 15s; the immediate re-run passed).
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		rec, out = do(t, s, "GET", "/api/v1/jobs/"+jobID, "")

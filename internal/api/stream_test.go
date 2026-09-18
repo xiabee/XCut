@@ -130,10 +130,11 @@ func TestStreamRearmsWriteDeadline(t *testing.T) {
 
 	// NOTE: no plain-ServeContent counterfactual here. Its cut point
 	// depends on how much of the body loopback kernel buffering swallows —
-	// on this host ~450 KiB, on remote-node the whole 1 MiB (never a block,
-	// never a deadline). Machine-dependent flakiness for zero coverage the
-	// two subtests don't already provide: "progressing survives" fails if
-	// re-arming is lost, "stalled is cut" fails if the deadline is gone.
+	// on this host ~450 KiB, on the remote CI node the whole 1 MiB (never a
+	// block, never a deadline). Machine-dependent flakiness for zero
+	// coverage the two subtests don't already provide: "progressing
+	// survives" fails if re-arming is lost, "stalled is cut" fails if the
+	// deadline is gone.
 
 	// Stalled reader: the body must exceed what loopback kernel buffering
 	// can swallow so the server's write genuinely blocks (Windows autotune

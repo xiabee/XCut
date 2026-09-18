@@ -56,8 +56,7 @@ never assertions.
   migration.
 - Docs that must stay truthful: `docs/PROJECT_STATE.md` (update after every
   milestone), `docs/PERFORMANCE.md` (measured numbers only — "Not measured"
-  beats invented), `docs/NIGHTLY_LOG.md` (facts per milestone),
-  `docs/ACCEPTANCE.md` (checkboxes with evidence), `CHANGELOG.md`.
+  beats invented), `CHANGELOG.md`.
 
 ## Boundaries quick map
 

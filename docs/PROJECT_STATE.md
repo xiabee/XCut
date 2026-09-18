@@ -22,7 +22,7 @@ Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
   sidecar), all pushed
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
-  entry; remote-node remote runs after every milestone
+  entry; a remote CI node re-runs the same gate after every milestone
 
 ## Working Architecture
 
@@ -215,9 +215,9 @@ Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
   go1.26.4: four stdlib advisories in crypto/tls, net/http, encoding/asn1
   affected called code); gosec HIGH/HIGH clean in the full gate since
   session #5 (5 path-taint findings annotated with written justifications)
-- Remote acceptance: `night-automation ci run XCut --node remote-node` PASS after
-  every milestone (38 consecutive passes cumulative through session #5);
-  the node caught one real concurrency bug local runs had missed (M37)
+- Remote acceptance: an independent CI node re-runs the project gate PASS
+  after every milestone (38 consecutive passes cumulative through session
+  #5); the node caught one real concurrency bug local runs had missed (M37)
 - `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
   toolchain fallback — no MSVC Build Tools on this machine)
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
@@ -241,8 +241,8 @@ Updated: 2026-09-18 (early hours) — nightly session #12 checkpoint
   two strictly separated. Proxy decision is width-based only — a
   high-resolution low-fps source still benefits, a tiny-fps source
   already decodes cheaply.
-- Badminton v2 on real footage (session #11 review, owner's 10-min
-  match REDACTED): the pipeline now covers the whole match (21/21
+- Badminton v2 on real footage (session #11 review, a real 10-min men's
+  singles broadcast): the pipeline now covers the whole match (21/21
   chunks candidates; the match point included), selection is driven by
   genuine score differences, and piece boundaries snap to natural
   breaks. STILL OPEN: (a) the reel's 60s budget fills from the
