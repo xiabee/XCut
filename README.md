@@ -1,39 +1,63 @@
-# XCut
+<div align="center">
 
-**本地优先的自动视频剪辑。** XCut 用一条确定性流水线把原始素材变成高光成片：
-探测 → 分析 → 事件 → 风格 → 时间线 → 渲染。无云端、无遥测、不依赖 AI。
+# 🎬 XCut
+
+**本地优先的自动视频剪辑 / Local-first automatic video editing**
+
+用一条确定性流水线把原始素材变成高光成片：
+**探测 → 分析 → 事件 → 风格 → 时间线 → 渲染**
+无云端 · 无遥测 · 不依赖 AI
+
+[![Release](https://img.shields.io/github/v/release/xiabee/XCut?include_prereleases&label=%E6%9C%80%E6%96%B0%E7%89%88&color=blue)](https://github.com/xiabee/XCut/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Platform](https://img.shields.io/badge/Windows%20%7C%20Linux-amd64%20%7C%20arm64-lightgrey)](https://github.com/xiabee/XCut/releases)
+[![Status](https://img.shields.io/badge/status-Alpha-orange)](docs/ROADMAP.md)
 
 [English](README_EN.md) | 中文
 
-- 核心：**Go**（单一静态二进制）
-- 可选热路径 worker：**Rust**（`xcut-worker-media`）
-- 媒体工具：**FFmpeg / ffprobe**
-- 存储：**SQLite**（纯 Go 驱动，无 CGO）
-- 状态：**Alpha** —— 流水线、本地 Web UI 与 HTTP API 已端到端可用
-  （见 [docs/ROADMAP.md](docs/ROADMAP.md)）
+</div>
 
-## 为什么是 XCut
+---
 
-大多数"AI 视频剪辑"工具会把你的素材上传到别人的服务器。XCut 为个人电脑
-而生——迷你主机、家庭服务器、游戏桌面——带着严格的资源预算、仅监听
-本机的安全默认值，以及一条只装 FFmpeg 就能工作的确定性基线。AI 是未来的
-*增强项*（可选 sidecar worker），永远不是地基。
+## ✨ 亮点
 
-目标场景：羽毛球、KTV、Vlog、舞台演出、体育高光。
+| | |
+|---|---|
+| 🖱️ **双击即用** | 原生桌面窗口（WebView2）承载内嵌 Web UI——不需要 Node、没有构建步骤、没有额外文件 |
+| 🎞️ **拖放导入** | 视频文件直接拖进页面，同名不覆盖；也支持本地路径导入 |
+| ✂️ **可视化时间线** | 片段色块按时长比例渲染、缩略图、拖动排序、边缘手柄裁剪、转场徽标（cut / fade / xfade）、检查器编辑与快捷键 |
+| 🏸 **懂球的风格引擎** | 羽毛球 rally 模式：击球驱动的打分、球场 ROI 运动分析、多样性去重；每个片段都带"为什么入选"的解释 |
+| 🎤 **字幕与卡拉 OK** | 经 AI sidecar 语音转写 → SRT 或逐字填充的卡拉 OK ASS，一键烧录进成片 |
+| 🔒 **本地优先** | 仅监听本机回环、无遥测；AI 是可选 sidecar 增强，永远不是地基 |
+| 📦 **资源有界** | 任务、进程、缓存、临时文件、日志全部有配置上限；空闲约 15 MB 内存、约 0% CPU |
 
-## 快速开始
+目标场景：**羽毛球 · KTV · Vlog · 舞台演出 · 体育高光**
 
-前置条件：PATH 上有 **FFmpeg + ffprobe**（或设置 `XCUT_FFMPEG` /
-`XCUT_FFPROBE`）。构建需要 Go 1.25+。
+## 🚀 快速开始
+
+> 前置条件：**FFmpeg + ffprobe**（PATH 上有，或设置 `XCUT_FFMPEG` / `XCUT_FFPROBE`；或放在 exe 旁边）。
+
+### 方式一：下载预编译版本（推荐）
+
+到 [**Releases**](https://github.com/xiabee/XCut/releases) 下载 Windows zip（含 QUICKSTART.txt），
+解压后双击 `xcut.exe` 即可；Linux/macOS 下载对应平台的静态二进制。
+
+### 方式二：从源码构建
+
+构建需要 Go 1.25+：
 
 ```sh
-# 构建（Windows / Linux / macOS）
+git clone https://github.com/xiabee/XCut.git && cd XCut
 go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 
 # 环境自检
 ./xcut doctor
+```
 
-# 一条龙：导入 → 分析 → 时间线 → 渲染
+### 一条龙出片
+
+```sh
 ./xcut auto my-video.mp4 --project first-run --style generic_highlight
 
 # 成片落在工作区的工程目录里：
@@ -56,41 +80,55 @@ go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 ./xcut jobs badminton-2026                    # 任务历史（崩溃安全）
 ```
 
-## 配置
+## 🖥️ Serve（本地 Web UI + HTTP API）
 
-`./xcut config show` 打印生效配置；优先级为
-默认值 < 配置文件（`<workspace>/config.json`）< 环境变量（`XCUT_*`）< CLI 参数。
+```sh
+./xcut client     # 原生桌面窗口（WebView2）承载内嵌 UI
+./xcut serve      # 同一套 UI 跑在浏览器 http://127.0.0.1:8619
+```
 
-关键旋钮（完整资源/配置面；展示默认值）：
+创建工程，把视频文件拖进页面（或用"选择文件…"按钮）或填本地路径导入，
+然后带着实时任务进度跑 分析 → 时间线 → 渲染——渲染出的 MP4 直接在
+页面里播放。编辑工作区是一条真正的时间线：片段按时长比例渲染成色块并带
+客户端截取的缩略图，接缝显示可编辑的转场徽标（cut / fade / xfade），
+色块可拖动排序，边缘手柄可裁剪，检查器编辑所选片段的裁剪、速度、音量与
+转场（Delete 移除、Space 播放、Ctrl+S 保存）。逐片段预览跟随标尺播放头。
+工程还能通过 AI sidecar 把语音转写成字幕并烧录进成片（普通 SRT 或
+卡拉 OK 式逐字填充的 ASS），球场 ROI 直接在帧上框选。UI 是内嵌进二进制
+的原生 HTML/JS（`go:embed`）：不需要 Node、没有构建步骤、没有额外文件。
+设计文档：docs/CLIENT_DESIGN.md。
 
-| 键 | 默认值 | 含义 |
-|---|---|---|
-| `workspace` | `~/.xcut` | 数据目录（数据库、缓存、临时、工程） |
-| `resource.max_concurrent_jobs` | 2 | 并行任务硬上限 |
-| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限 |
-| `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
-| `resource.max_analysis_workers` | 2 | 单次分析的 ffmpeg 并发 |
-| `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |
-| `resource.frame_sample_fps` | 2 | 分析采样率 |
-| `resource.analysis_width` | 640 | 分析降采样宽度 |
-| `resource.proxy_enabled` | `false` | 生成低分辨率分析代理（需主动开启） |
-| `resource.max_proxy_gb` | 2 | 代理磁盘预算（LRU 逐出） |
-| `resource.proxy_threads` | 继承 | 一次性代理编码线程（解码受限；调高可缩短冷启动） |
-| `resource.analyzer_call_timeout` | `30m` | 单分析器 ffmpeg 预算（防挂死） |
-| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | 磁盘预算 |
-| `jobs.max_history` | 500 | 保留的终态任务行数（随任务完成修剪） |
-| `job.stale_running_after` | `2h` | CLI 启动孤儿任务对账的年龄门槛 |
-| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve 日志轮转 |
-| `server.listen` | `127.0.0.1:8619` | 除 `listen_remote` 外强制本机回环 |
-| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` 音频分析器 |
-| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar 二进制（能力自动探测） |
-| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | 工具链覆盖（或 `XCUT_FFMPEG`/`XCUT_FFPROBE`） |
+![xcut web UI：一个已导入素材的工程、四个成功任务，渲染的高光正在
+结果面板中播放](docs/img/web-ui.png)
 
-没有任何东西无界运行：任务、进程、缓存、代理、临时文件与日志都有配置
-上限。`xcut cleanup [--dry-run]` 回收临时空间；`xcut cache stats|clear`
-检查并清理分析/代理缓存。
+<details>
+<summary><b>HTTP API 一览</b>（<code>/api/v1</code>，仅本机回环）</summary>
 
-## 风格（Styles）
+```sh
+curl http://127.0.0.1:8619/api/v1/health
+curl http://127.0.0.1:8619/api/v1/projects
+curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
+curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # 内容上传（拖放导入的落点；8 GiB/文件）
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
+curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # 取消排队/运行中的任务（202；终态 409）
+curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # 片段预览（支持 range）
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # 经 AI sidecar 语音转写（202 + 任务）
+curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # 查询已有字幕产物
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # 把字幕烧录进成片
+curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<aid>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # 每源球场 ROI
+```
+
+异步任务端点返回 `202` 与 `job_id`；轮询 `GET /api/v1/jobs/{id}`。
+每个工程同时只允许一个 analyze/timeline/render 任务排队或运行——重复
+触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
+CLI 运行（在你自己的终端里同步执行）用 Ctrl+C 取消。
+仅监听本机回环是设计决定：在认证机制出现之前，`xcut serve` **拒绝**
+非回环地址（见 `docs/SECURITY.md`）。
+
+</details>
+
+## 🎨 风格（Styles）
 
 风格是数据而非代码——`internal/style/presets/` 里的受校验 JSON 预设
 （内嵌），可被 `<workspace>/styles/` 覆盖：
@@ -115,7 +153,7 @@ go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 Web UI 支持中英文：顶栏选择器即时切换，偏好持久化，首次访问自动跟随
 浏览器语言（零依赖——以英文字符串为键的纯 JSON 词典，Go 测试防漂移）。
 
-## 时间线与渲染
+## ✂️ 时间线与渲染
 
 渲染器严格按校验后的时间线执行：`cut`、`fade`（经黑场）与 `xfade`
 （真正交叉淡化）可在同一条时间线内自由混用；逐片段 `speed` 对视频与
@@ -123,46 +161,7 @@ Web UI 支持中英文：顶栏选择器即时切换，偏好持久化，首次�
 而非悄悄丢弃。输出经 ffprobe 校验后原子发布；若 `--out` 会覆盖任何源
 素材，渲染直接拒绝。
 
-## Serve（本地 Web UI + HTTP API）
-
-```sh
-./xcut client     # 原生桌面窗口（WebView2）承载内嵌 UI
-./xcut serve      # 同一套 UI 跑在浏览器 http://127.0.0.1:8619
-```
-
-创建工程，把视频文件拖进页面（或用"选择文件…"按钮）或填本地路径导入，
-然后带着实时任务进度跑 分析 → 时间线 → 渲染——渲染出的 MP4 直接在
-页面里播放。编辑工作区是一条真正的时间线：
-片段按时长比例渲染成色块并带客户端截取的缩略图，接缝显示可编辑的转场
-徽标（cut / fade / xfade），色块可拖动排序，边缘手柄可裁剪，检查器
-编辑所选片段的裁剪、速度、音量与转场（Delete 移除、Space 播放、
-Ctrl+S 保存）。逐片段预览跟随标尺播放头。工程还能通过 AI sidecar 把
-语音转写成字幕并烧录进成片（普通 SRT 或卡拉 OK 式逐字填充的 ASS），
-球场 ROI 直接在帧上框选。UI 是内嵌进二进制的原生 HTML/JS（`go:embed`）：
-不需要 Node、没有构建步骤、没有额外文件。设计文档：
-docs/CLIENT_DESIGN.md。
-
-![xcut web UI：一个已导入素材的工程、四个成功任务，渲染的高光正在
-结果面板中播放](docs/img/web-ui.png)
-
-HTTP API（`/api/v1`，仅本机回环）：
-
-```sh
-curl http://127.0.0.1:8619/api/v1/health
-curl http://127.0.0.1:8619/api/v1/projects
-curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
-curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # 内容上传（拖放导入的落点；8 GiB/文件）
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
-curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # 取消排队/运行中的任务（202；终态 409）
-curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # 片段预览（支持 range）
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # 经 AI sidecar 语音转写（202 + 任务）
-curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # 查询已有字幕产物
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # 把字幕烧录进成片
-curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<aid>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # 每源球场 ROI
-```
-
-## 字幕（KTV/吉他弹唱）
+## 🎤 字幕（KTV/吉他弹唱）
 
 语音转文字是 AI 能力，因此遵循 sidecar 规则：核心绝不运行或下载模型。
 参考 sidecar（`scripts/xcut-ai-sidecar.py`）探测本机安装的 Whisper 后端
@@ -180,7 +179,8 @@ whisper.cpp 的 `whisper-cli`——没有安装时如实报告不可用；装好
 sidecar 文本会被转义，杂散花括号或换行无法破坏 ASS 事件）；没有词级
 时间戳时只产出普通 SRT。SRT 生成后，"预览文本"开关可以内联显示字幕内容。
 
-### 语义 / 视觉 AI（预留接口）
+<details>
+<summary><b>语义 / 视觉 AI（预留接口）</b></summary>
 
 参考 sidecar 另外支持两个 env 配置的 OpenAI 兼容 HTTP 后端——不捆绑
 模型、不静默下载，配置即点亮：
@@ -199,15 +199,46 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 配置后 `frame_describe` 能力在 sidecar capabilities 里点亮（核心消费
 它的流水线属后续工作）；`XCUT_SIDECAR_TIMEOUT`（秒）限制单次 HTTP 调用。
 
-异步任务端点返回 `202` 与 `job_id`；轮询 `GET /api/v1/jobs/{id}`。
-每个工程同时只允许一个 analyze/timeline/render 任务排队或运行——重复
-触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
-CLI 运行（在你自己的终端里同步执行）用 Ctrl+C 取消。
-仅监听本机回环是设计决定：在认证机制出现之前，`xcut serve` **拒绝**
-非回环地址（见 `docs/SECURITY.md`）。空闲占用极小——实测约 15 MB 内存、
-约 0% CPU（docs/PERFORMANCE.md）。
+</details>
 
-## 可选的 Rust worker
+## ⚙️ 配置
+
+`./xcut config show` 打印生效配置；优先级为
+默认值 < 配置文件（`<workspace>/config.json`）< 环境变量（`XCUT_*`）< CLI 参数。
+
+<details>
+<summary><b>全部资源/配置旋钮</b>（展示默认值）</summary>
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `workspace` | `~/.xcut` | 数据目录（数据库、缓存、临时、工程） |
+| `resource.max_concurrent_jobs` | 2 | 并行任务硬上限 |
+| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限 |
+| `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
+| `resource.max_analysis_workers` | 2 | 单次分析的 ffmpeg 并发 |
+| `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |
+| `resource.frame_sample_fps` | 2 | 分析采样率 |
+| `resource.analysis_width` | 640 | 分析降采样宽度 |
+| `resource.proxy_enabled` | `false` | 生成低分辨率分析代理（需主动开启） |
+| `resource.max_proxy_gb` | 2 | 代理磁盘预算（LRU 逐出） |
+| `resource.proxy_threads` | 继承 | 一次性代理编码线程（解码受限；调高可缩短冷启动） |
+| `resource.analyzer_call_timeout` | `30m` | 单分析器 ffmpeg 预算（防挂死） |
+| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | 磁盘预算 |
+| `jobs.max_history` | 500 | 保留的终态任务行数（随任务完成修剪） |
+| `job.stale_running_after` | `2h` | CLI 启动孤儿任务对账的年龄门槛 |
+| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve 日志轮转 |
+| `server.listen` | `127.0.0.1:8619` | 除 `listen_remote` 外强制本机回环 |
+| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` 音频分析器 |
+| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar 二进制（能力自动探测） |
+| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | 工具链覆盖（或 `XCUT_FFMPEG`/`XCUT_FFPROBE`） |
+
+</details>
+
+没有任何东西无界运行：任务、进程、缓存、代理、临时文件与日志都有配置
+上限。`xcut cleanup [--dry-run]` 回收临时空间；`xcut cache stats|clear`
+检查并清理分析/代理缓存。
+
+## 🦀 可选的 Rust worker
 
 Rust worker 加速音频分析，并为所有未来 worker（包括 AI sidecar）验证
 进程边界协议。它**永远不是必需品**：
@@ -220,7 +251,7 @@ cargo build --release -p xcut-worker-media
 
 `auto` 模式在 worker 缺失或遇到编解码缺口时自动回退到内置 FFmpeg 分析器。
 
-## 开发
+## 🛠️ 开发
 
 ```sh
 go build ./... && go vet ./... && go test ./...   # Go 侧
@@ -232,16 +263,18 @@ fixture。缺少 FFmpeg 时集成测试自动跳过。
 
 架构、决策、安全模型、性能策略与夜间开发日志都在 [`docs/`](docs/)：
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 流水线、边界、worker 协议
-- [docs/DECISIONS.md](docs/DECISIONS.md) — ADR 日志（为什么是 Go/Rust/SQLite/JSON…）
-- [docs/SECURITY.md](docs/SECURITY.md) — 威胁模型与控制措施
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — 实测基线
-- [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — 当前真实可用状态
-- [docs/ROADMAP.md](docs/ROADMAP.md) — 演进方向
-- [docs/USAGE.md](docs/USAGE.md) — 逐命令参考
-- [docs/EVAL.md](docs/EVAL.md) — 选择质量评估（`xcut eval`）
+| 文档 | 内容 |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 流水线、边界、worker 协议 |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | ADR 日志（为什么是 Go/Rust/SQLite/JSON…） |
+| [docs/SECURITY.md](docs/SECURITY.md) | 威胁模型与控制措施 |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | 实测基线 |
+| [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) | 当前真实可用状态 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 演进方向 |
+| [docs/USAGE.md](docs/USAGE.md) | 逐命令参考 |
+| [docs/EVAL.md](docs/EVAL.md) | 选择质量评估（`xcut eval`） |
 
-## 打包
+## 📦 打包
 
 ```sh
 scripts/build-release.ps1   # Windows（PowerShell 5.1+）
@@ -258,6 +291,6 @@ scripts/build-release.sh    # Linux/macOS（bash）
 Go 二进制完全静态（无 CGO）——即拷即用。Linux 的 Rust worker 用内置
 `rust-lld` 针对 musl 目标构建，无需平台工具链。
 
-## 许可证
+## 📄 许可证
 
 [MIT](LICENSE)

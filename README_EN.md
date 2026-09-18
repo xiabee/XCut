@@ -1,41 +1,64 @@
-# XCut
+<div align="center">
+
+# 🎬 XCut
+
+**Local-first automatic video editing / 本地优先的自动视频剪辑**
+
+Raw footage in, highlight cut out — one deterministic pipeline:
+**probe → analyze → events → style → timeline → render**
+No cloud · no telemetry · no AI required
+
+[![Release](https://img.shields.io/github/v/release/xiabee/XCut?include_prereleases&label=release&color=blue)](https://github.com/xiabee/XCut/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Platform](https://img.shields.io/badge/Windows%20%7C%20Linux-amd64%20%7C%20arm64-lightgrey)](https://github.com/xiabee/XCut/releases)
+[![Status](https://img.shields.io/badge/status-Alpha-orange)](docs/ROADMAP.md)
 
 English | [中文](README.md)
 
-**Local-first automatic video editing.** XCut turns raw footage into highlight
-cuts with a deterministic pipeline: probe → analyze → events → style →
-timeline → render. No cloud, no telemetry, no AI required.
+</div>
 
-- Core: **Go** (single static binary)
-- Optional hot-path worker: **Rust** (`xcut-worker-media`)
-- Media tooling: **FFmpeg / ffprobe**
-- Storage: **SQLite** (pure-Go driver, no CGO)
-- Status: **Alpha** — pipeline, localhost web UI and HTTP API work end-to-end
-  (see [docs/ROADMAP.md](docs/ROADMAP.md))
+---
 
-## Why XCut
+## ✨ Highlights
 
-Most "AI video editing" tools ship your footage to someone else's server.
-XCut is built for personal machines — mini PCs, home servers, gaming desktops —
-with hard resource budgets, a localhost-only security default, and a
-deterministic baseline that works with nothing but FFmpeg installed. AI is a
-future *enhancer* (optional sidecar workers), never the foundation.
+| | |
+|---|---|
+| 🖱️ **Double-click friendly** | A native desktop window (WebView2) over the embedded web UI — no Node, no build step, no extra files |
+| 🎞️ **Drag-and-drop import** | Drop video files onto the page, never overwriting an existing copy; local-path import stays too |
+| ✂️ **A real visual timeline** | Clip blocks sized by duration with thumbnails, drag reorder, edge-handle trimming, transition badges (cut / fade / xfade), a full inspector with keyboard shortcuts |
+| 🏸 **A style engine that knows the court** | Badminton rally mode: hit-driven scoring, court-ROI motion analysis, diversity dedup — every clip carries its "why" |
+| 🎤 **Subtitles & karaoke** | Speech-to-text via an AI sidecar → plain SRT or word-swept karaoke ASS, burned into the render with one checkbox |
+| 🔒 **Local-first** | Loopback-only, no telemetry; AI is an optional sidecar enhancer, never the foundation |
+| 📦 **Bounded by design** | Jobs, processes, caches, temp files and logs all have configured ceilings; idle footprint ~15 MB RAM, ~0% CPU |
 
-Target scenarios: badminton, KTV, vlogs, stage performance, sports highlights.
+Target scenarios: **badminton · KTV · vlogs · stage performance · sports highlights**
 
-## Quick Start
+## 🚀 Quick start
 
-Prerequisites: **FFmpeg + ffprobe** on PATH (or set `XCUT_FFMPEG` /
-`XCUT_FFPROBE`). Go 1.25+ to build.
+> Prerequisites: **FFmpeg + ffprobe** (on PATH, via `XCUT_FFMPEG` / `XCUT_FFPROBE`, or placed beside the executable).
+
+### Option 1: download a prebuilt build (recommended)
+
+Grab the Windows zip (includes a QUICKSTART.txt) or a static Linux binary from
+[**Releases**](https://github.com/xiabee/XCut/releases), unzip, double-click
+`xcut.exe` (or run the binary).
+
+### Option 2: build from source
+
+Go 1.25+ to build:
 
 ```sh
-# build (Windows / Linux / macOS)
+git clone https://github.com/xiabee/XCut.git && cd XCut
 go build -o xcut ./cmd/xcut          # produces xcut.exe on Windows
 
 # check your environment
 ./xcut doctor
+```
 
-# one-shot: import → analyze → timeline → render
+### One-shot cut
+
+```sh
 ./xcut auto my-video.mp4 --project first-run --style generic_highlight
 
 # output lands in the project directory of your workspace:
@@ -58,42 +81,60 @@ Verify the result with any player or `ffprobe`.
 ./xcut jobs badminton-2026                    # job history (crash-safe)
 ```
 
-## Configuration
+## 🖥️ Serve (local web UI + HTTP API)
 
-`./xcut config show` prints the effective config; precedence is
-defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
-< CLI flags.
+```sh
+./xcut client     # native desktop window (WebView2) over the embedded UI
+./xcut serve      # same UI in your browser at http://127.0.0.1:8619
+```
 
-Knobs (the complete resource/config surface; defaults shown):
+Create a project, drag video files onto the page (or use the file picker)
+or import a local path, and run analyze → timeline → render with live job
+progress — the rendered MP4 plays right in the page.
+The editing workspace is a real timeline: clips render as blocks sized by
+duration with client-captured thumbnails, joins show editable transition
+badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
+and the inspector edits trim, speed, volume and the transition of the
+selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
+preview follows the ruler playhead. Projects can also transcribe speech
+to subtitles through an AI sidecar and burn them (plain SRT or
+karaoke-style word-fill ASS) into the render, and the court ROI is drawn
+directly on a frame. The UI is vanilla HTML/JS embedded in the binary
+(`go:embed`): no Node, no build step, no extra files. Design:
+docs/CLIENT_DESIGN.md.
 
-| Key | Default | Meaning |
-|---|---|---|
-| `workspace` | `~/.xcut` | data directory (DB, cache, temp, projects) |
-| `resource.max_concurrent_jobs` | 2 | hard cap on parallel jobs |
-| `resource.max_ffmpeg_processes` | 2 | hard cap on parallel ffmpeg/ffprobe |
-| `resource.max_render_workers` | 1 | independent cap on concurrent render jobs |
-| `resource.max_analysis_workers` | 2 | per-analysis ffmpeg call concurrency |
-| `resource.ffmpeg_threads` | 2 | per-process `-threads` |
-| `resource.frame_sample_fps` | 2 | analysis sampling rate |
-| `resource.analysis_width` | 640 | analysis downscale width |
-| `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |
-| `resource.max_proxy_gb` | 2 | proxy disk budget (LRU-evicted) |
-| `resource.proxy_threads` | inherit | one-shot proxy encode threads (decode-bound; higher cuts cold-start) |
-| `resource.analyzer_call_timeout` | `30m` | per-analyzer ffmpeg budget (hang protection) |
-| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
-| `jobs.max_history` | 500 | terminal job rows kept (pruned as jobs finish) |
-| `job.stale_running_after` | `2h` | age-gate for CLI startup orphan reconciliation |
-| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve log file rotation |
-| `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
-| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
-| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar binary (capability-detected) |
-| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | toolchain override (or `XCUT_FFMPEG`/`XCUT_FFPROBE`) |
+![xcut web UI: a project with imported asset, four succeeded jobs, and the
+rendered highlight playing in the result panel](docs/img/web-ui.png)
 
-Nothing runs unbounded: jobs, processes, cache, proxies, temp and logs all
-have configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space;
-`xcut cache stats|clear` inspects and clears the analysis/proxy caches.
+<details>
+<summary><b>HTTP API reference</b> (<code>/api/v1</code>, loopback-only)</summary>
 
-## Styles
+```sh
+curl http://127.0.0.1:8619/api/v1/health
+curl http://127.0.0.1:8619/api/v1/projects
+curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
+curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # content upload (where drag-drop lands; 8 GiB per file)
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
+curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
+curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
+curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # which subtitle artifacts exist
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # burn the subtitles into the render
+curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # per-source court ROI
+```
+
+Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
+Only one analyze/timeline/render job may be queued or running per project — a
+duplicate trigger returns `409` (imports are never deduplicated). Active jobs
+show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
+cancelled with Ctrl+C.
+Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
+authentication exists (see `docs/SECURITY.md`).
+
+</details>
+
+## 🎨 Styles
 
 Styles are data, not code — validated JSON presets in
 `internal/style/presets/` (embedded) overridable from `<workspace>/styles/`:
@@ -124,7 +165,7 @@ instantly, the choice persists, and first-time visitors get whichever
 language their browser prefers (no dependencies — a plain JSON dictionary
 keyed by the English strings, drift-checked by a Go test).
 
-## Timeline & rendering
+## ✂️ Timeline & rendering
 
 The renderer applies the timeline exactly as validated: `cut`, `fade`
 (through black) and `xfade` (real crossfade) transitions may be freely mixed
@@ -134,55 +175,7 @@ are refused loudly instead of silently dropped. Output is ffprobe-verified
 before an atomic publish, and a render is refused if its `--out` would
 overwrite any source media.
 
-## Serve (local web UI + HTTP API)
-
-```sh
-./xcut serve                # http://127.0.0.1:8619, ctrl+c to stop
-```
-
-Two ways in:
-
-```sh
-./xcut client     # native desktop window (WebView2) over the embedded UI
-./xcut serve      # same UI in your browser at http://127.0.0.1:8619
-```
-
-Create a project, drag video files onto the page (or use the file picker)
-or import a local path, and run analyze → timeline → render with live job
-progress — the rendered MP4 plays right in the page.
-The editing workspace is a real timeline: clips render as blocks sized by
-duration with client-captured thumbnails, joins show editable transition
-badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
-and the inspector edits trim, speed, volume and the transition of the
-selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
-preview follows the ruler playhead. Projects can also transcribe speech
-to subtitles through an AI sidecar and burn them (plain SRT or
-karaoke-style word-fill ASS) into the render, and the court ROI is drawn
-directly on a frame. The UI is vanilla HTML/JS embedded in the binary
-(`go:embed`): no Node, no build step, no extra files. Design:
-docs/CLIENT_DESIGN.md.
-
-![xcut web UI: a project with imported asset, four succeeded jobs, and the
-rendered highlight playing in the result panel](docs/img/web-ui.png)
-
-HTTP API (`/api/v1`, loopback-only):
-
-```sh
-curl http://127.0.0.1:8619/api/v1/health
-curl http://127.0.0.1:8619/api/v1/projects
-curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
-curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # content upload (where drag-drop lands; 8 GiB per file)
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
-curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
-curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
-curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # which subtitle artifacts exist
-curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # burn the subtitles into the render
-curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # per-source court ROI
-```
-
-## Subtitles (KTV/guitar sing-along)
+## 🎤 Subtitles (KTV/guitar sing-along)
 
 Speech-to-text is an AI capability, so it follows the sidecar rule: the core
 never runs or downloads models. The reference sidecar
@@ -204,16 +197,69 @@ escaped, so stray braces or newlines cannot corrupt the ASS events);
 without them only plain SRT is produced. A "preview transcript" toggle
 shows the cue text inline once an SRT exists.
 
-Async job endpoints return `202` with a `job_id`; poll `GET /api/v1/jobs/{id}`.
-Only one analyze/timeline/render job may be queued or running per project — a
-duplicate trigger returns `409` (imports are never deduplicated). Active jobs
-show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
-cancelled with Ctrl+C.
-Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
-authentication exists (see `docs/SECURITY.md`). Idle footprint is tiny —
-measured ~15 MB RAM, ~0% CPU (docs/PERFORMANCE.md).
+<details>
+<summary><b>Semantic / vision AI (reserved seam)</b></summary>
 
-## Optional Rust worker
+The reference sidecar also supports two env-configured OpenAI-compatible
+HTTP backends — no bundled models, no silent downloads; configure and the
+capability lights up:
+
+```sh
+# speech-to-text through a remote Whisper server (POST /v1/audio/transcriptions)
+export XCUT_SIDECAR_STT_URL="http://127.0.0.1:9000"
+
+# single-frame semantic description (POST /v1/chat/completions, multimodal) —
+# the seam for match-phase awareness and content tagging
+export XCUT_SIDECAR_VISION_URL="https://gateway-host:8443"
+export XCUT_SIDECAR_VISION_MODEL="vision"
+export XCUT_SIDECAR_INSECURE_TLS=1   # for self-signed certificates
+```
+
+Once configured, the `frame_describe` capability lights up in the sidecar's
+capabilities (pipeline consumption of it is future work);
+`XCUT_SIDECAR_TIMEOUT` (seconds) bounds one HTTP call.
+
+</details>
+
+## ⚙️ Configuration
+
+`./xcut config show` prints the effective config; precedence is
+defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
+< CLI flags.
+
+<details>
+<summary><b>All resource/config knobs</b> (defaults shown)</summary>
+
+| Key | Default | Meaning |
+|---|---|---|
+| `workspace` | `~/.xcut` | data directory (DB, cache, temp, projects) |
+| `resource.max_concurrent_jobs` | 2 | hard cap on parallel jobs |
+| `resource.max_ffmpeg_processes` | 2 | hard cap on parallel ffmpeg/ffprobe |
+| `resource.max_render_workers` | 1 | independent cap on concurrent render jobs |
+| `resource.max_analysis_workers` | 2 | per-analysis ffmpeg call concurrency |
+| `resource.ffmpeg_threads` | 2 | per-process `-threads` |
+| `resource.frame_sample_fps` | 2 | analysis sampling rate |
+| `resource.analysis_width` | 640 | analysis downscale width |
+| `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |
+| `resource.max_proxy_gb` | 2 | proxy disk budget (LRU-evicted) |
+| `resource.proxy_threads` | inherit | one-shot proxy encode threads (decode-bound; higher cuts cold-start) |
+| `resource.analyzer_call_timeout` | `30m` | per-analyzer ffmpeg budget (hang protection) |
+| `resource.max_temp_gb` / `max_cache_gb` | 20 / 10 | disk budgets |
+| `jobs.max_history` | 500 | terminal job rows kept (pruned as jobs finish) |
+| `job.stale_running_after` | `2h` | age-gate for CLI startup orphan reconciliation |
+| `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve log file rotation |
+| `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
+| `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
+| `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar binary (capability-detected) |
+| `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | toolchain override (or `XCUT_FFMPEG`/`XCUT_FFPROBE`) |
+
+</details>
+
+Nothing runs unbounded: jobs, processes, cache, proxies, temp and logs all
+have configured ceilings. `xcut cleanup [--dry-run]` reclaims temp space;
+`xcut cache stats|clear` inspects and clears the analysis/proxy caches.
+
+## 🦀 Optional Rust worker
 
 The Rust worker accelerates audio analysis and validates the process-boundary
 protocol used by all future workers (AI sidecars included). It is **never
@@ -228,7 +274,7 @@ cargo build --release -p xcut-worker-media
 `auto` mode falls back to the built-in FFmpeg analyzer whenever the worker is
 missing or hits a codec gap.
 
-## Development
+## 🛠️ Development
 
 ```sh
 go build ./... && go vet ./... && go test ./...   # Go side
@@ -242,16 +288,18 @@ absent.
 Architecture, decisions, security model, performance policy and the nightly
 log live in [`docs/`](docs/):
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, boundaries, worker protocol
-- [docs/DECISIONS.md](docs/DECISIONS.md) — ADR log (why Go/Rust/SQLite/JSON…)
-- [docs/SECURITY.md](docs/SECURITY.md) — threat model and controls
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — measured baselines
-- [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — what actually works right now
-- [docs/ROADMAP.md](docs/ROADMAP.md) — where this is going
-- [docs/USAGE.md](docs/USAGE.md) — per-command reference
-- [docs/EVAL.md](docs/EVAL.md) — selection-quality evaluation (`xcut eval`)
+| Doc | Contents |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | pipeline, boundaries, worker protocol |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | ADR log (why Go/Rust/SQLite/JSON…) |
+| [docs/SECURITY.md](docs/SECURITY.md) | threat model and controls |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | measured baselines |
+| [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) | what actually works right now |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | where this is going |
+| [docs/USAGE.md](docs/USAGE.md) | per-command reference |
+| [docs/EVAL.md](docs/EVAL.md) | selection-quality evaluation (`xcut eval`) |
 
-## Packaging
+## 📦 Packaging
 
 ```sh
 scripts/build-release.ps1   # Windows (PowerShell 5.1+)
@@ -269,6 +317,6 @@ The Go binaries are fully static (no CGO) — drop-in executables. The Linux
 Rust worker is built with the bundled `rust-lld` against the musl target, so
 no platform toolchain is needed for the build.
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
