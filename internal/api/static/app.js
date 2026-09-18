@@ -1033,6 +1033,7 @@ async function refreshSubtitlesStatus() {
       status.textContent = t("none yet — transcribe to create");
       links.innerHTML = "";
       previewBtn.hidden = true; hideTranscript();
+      checkAISidecar(status);
       return;
     }
     status.textContent = st.ass ? t("srt + karaoke ass ready") : t("srt ready");
@@ -1049,6 +1050,18 @@ async function refreshSubtitlesStatus() {
     previewBtn.hidden = !st.srt;
     if (!st.srt) hideTranscript();
   } catch (_) { status.textContent = t("status unavailable"); }
+}
+
+// checkAISidecar appends the configured-sidecar state to a status line:
+// health reports only whether a sidecar binary resolves (LookPath, no
+// process spawn) — the user-facing hint for "you need to configure AI".
+async function checkAISidecar(statusEl) {
+  try {
+    const h = await api("/api/v1/health");
+    if (h.ai_sidecar === "missing" && statusEl) {
+      statusEl.textContent += " · " + t("no AI sidecar — set workers.ai_bin or install xcut-ai on PATH");
+    }
+  } catch (_) { /* health already handled elsewhere */ }
 }
 
 $("btn-subs-preview").addEventListener("click", async () => {

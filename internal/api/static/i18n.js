@@ -22,6 +22,7 @@ window.XCUT_I18N = {
     "verifying FFmpeg…": "正在校验 FFmpeg…",
     "FFmpeg installed — the pipeline is ready": "FFmpeg 已安装 —— 流水线就绪",
     "FFmpeg install failed: {msg}": "FFmpeg 安装失败：{msg}",
+    "no AI sidecar — set workers.ai_bin or install xcut-ai on PATH": "未配置 AI 边车 —— 请设置 workers.ai_bin 或把 xcut-ai 安装到 PATH",
 
     "Media": "媒体",
     "Import": "导入",

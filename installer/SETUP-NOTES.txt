@@ -1,0 +1,25 @@
+XCut — local-first automatic video editing / 本地优先的自动视频剪辑
+
+What happens after install / 安装后会发生什么
+---------------------------------------------
+XCut detects its environment on first launch.
+XCut 首次启动时会自动检测当前环境。
+
+If FFmpeg is missing, the app shows a yellow bar with a one-click
+installer: it downloads the official Gyan.dev build (~110 MB) once from
+GitHub, verifies it by checksum, and installs it into this folder's
+bin\ directory. Nothing is bundled or downloaded silently.
+若缺少 FFmpeg，应用顶栏会出现黄色提示条并提供一键安装：
+从 GitHub 一次性下载 Gyan.dev 官方构建（约 110 MB），经校验和验证后
+安装到本目录的 bin\ 子目录。不会静默捆绑或下载任何组件。
+
+AI features (subtitles / karaoke) use a local Whisper backend that you
+configure: install faster-whisper (or any supported backend) and point
+workers.ai_bin at it, or put xcut-ai on PATH. XCut never downloads
+models on its own.
+AI 功能（字幕 / 卡拉OK）使用本地 Whisper 后端，由你自行配置：
+安装 faster-whisper（或其他受支持后端）后设置 workers.ai_bin，
+或将 xcut-ai 放到 PATH。XCut 绝不会自行下载模型。
+
+Your videos stay on this machine.
+你的视频始终保留在本机。

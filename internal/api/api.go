@@ -19,6 +19,7 @@ import (
 	"github.com/xiabee/XCut/internal/setup"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
+	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -146,7 +147,8 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	// Cheap presence check (no process spawn): the double-clicked-exe
 	// audience has no PATH set up, and the UI must be able to tell them
-	// WHY analyze/render would fail.
+	// WHY analyze/render would fail. The AI sidecar gets the same cheap
+	// treatment — resolution is LookPath only, never a capabilities call.
 	t := media.ResolveTools(s.Pipe.Cfg)
 	_, ffmpegErr := exec.LookPath(t.FFmpeg)
 	resp := map[string]any{
@@ -157,6 +159,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	}
 	if ffmpegErr != nil {
 		resp["ffmpeg"] = "missing"
+	}
+	resp["ai_sidecar"] = "ok"
+	if worker.ResolveAIBin(s.Pipe.Cfg.Workers.AIBin) == "" {
+		resp["ai_sidecar"] = "missing"
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
