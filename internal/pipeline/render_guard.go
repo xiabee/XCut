@@ -46,7 +46,7 @@ func (d Deps) guardRenderOut(project *storage.Project, outPath string) error {
 		if p == "" {
 			continue
 		}
-		if sameFileOrPath(outPath, p) {
+		if SameFileOrPath(outPath, p) {
 			return xcerr.E(xcerr.CodeValidation,
 				"render output would overwrite a source file — pick a different --out path", nil)
 		}
@@ -54,13 +54,15 @@ func (d Deps) guardRenderOut(project *storage.Project, outPath string) error {
 	return nil
 }
 
-// sameFileOrPath reports whether a and b denote the same file. When both
+// SameFileOrPath reports whether a and b denote the same file. When both
 // exist, the OS answers (same inode on unix, same file ID on Windows — this
 // also sees through hardlinks and case differences); otherwise the fallback
 // is a normalized string comparison (absolute, cleaned, case-folded on
 // Windows where the filesystem is case-insensitive) so a not-yet-existing
 // output cannot sneak through with different casing or separators.
-func sameFileOrPath(a, b string) bool {
+// Shared identity check behind every "output must not clobber its own
+// input" guard (render guard here, CLI writers elsewhere).
+func SameFileOrPath(a, b string) bool {
 	if fa, err := os.Stat(a); err == nil {
 		if fb, err := os.Stat(b); err == nil {
 			return os.SameFile(fa, fb)

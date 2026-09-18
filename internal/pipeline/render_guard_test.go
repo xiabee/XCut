@@ -177,10 +177,10 @@ func TestSameFileOrPathExists(t *testing.T) {
 	if err := os.Link(a, b); err != nil {
 		t.Skip("hardlinks not supported on this filesystem")
 	}
-	if !sameFileOrPath(a, b) {
+	if !SameFileOrPath(a, b) {
 		t.Fatal("hardlinked paths must compare equal")
 	}
-	if sameFileOrPath(a, filepath.Join(dir, "other.mp4")) {
+	if SameFileOrPath(a, filepath.Join(dir, "other.mp4")) {
 		t.Fatal("distinct files must not compare equal")
 	}
 }

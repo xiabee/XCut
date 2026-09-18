@@ -108,6 +108,22 @@ func cmdEval(a *App, args []string) error {
 		return err
 	}
 
+	// Results are derived data; the manifest (hand-written annotations) and
+	// the case media are the irreplaceable inputs — refuse an --out that
+	// would clobber either, before any ffmpeg work starts.
+	if outPath != "" {
+		if pipeline.SameFileOrPath(outPath, pos[0]) {
+			return xcerr.E(xcerr.CodeValidation,
+				"eval results would overwrite the input manifest — pick a different --out path", nil)
+		}
+		for _, c := range manifest.Cases {
+			if pipeline.SameFileOrPath(outPath, c.Media) {
+				return xcerr.E(xcerr.CodeValidation,
+					"eval results would overwrite a case's source media — pick a different --out path", nil)
+			}
+		}
+	}
+
 	// Run in an isolated throwaway workspace: eval never touches the user's
 	// projects, and cases share one analysis cache.
 	wsDir, err := os.MkdirTemp("", "xcut-eval-*")

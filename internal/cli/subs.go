@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/subs"
 	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -68,6 +69,21 @@ func cmdSubtitles(a *App, args []string) error {
 		}
 	}
 
+	// Resolve the effective output path first so the source-overwrite guard
+	// fires before any sidecar work: subtitles are derived data, the media
+	// is the user's original — same rule as render (never clobber the input).
+	if outPath == "" {
+		ext := ".srt"
+		if karaoke {
+			ext = ".ass"
+		}
+		outPath = strings.TrimSuffix(abs, filepath.Ext(abs)) + ext
+	}
+	if pipeline.SameFileOrPath(outPath, abs) {
+		return xcerr.E(xcerr.CodeValidation,
+			"subtitle output would overwrite the source media — pick a different --out path", nil)
+	}
+
 	bin := worker.ResolveAIBin(a.Cfg.Workers.AIBin)
 	if bin == "" {
 		return xcerr.E(xcerr.CodeNotFound,
@@ -101,14 +117,6 @@ func cmdSubtitles(a *App, args []string) error {
 	t, err := subs.Parse(raw)
 	if err != nil {
 		return err
-	}
-
-	if outPath == "" {
-		ext := ".srt"
-		if karaoke {
-			ext = ".ass"
-		}
-		outPath = strings.TrimSuffix(abs, filepath.Ext(abs)) + ext
 	}
 
 	f, err := os.Create(outPath)
