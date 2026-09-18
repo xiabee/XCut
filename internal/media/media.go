@@ -10,7 +10,9 @@ package media
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -27,7 +29,10 @@ type Tools struct {
 }
 
 // ResolveTools applies config to environment lookups. It does not verify the
-// binaries run; use ProbeVersion for that.
+// binaries run; use ProbeVersion for that. When nothing is configured and
+// PATH has nothing either, the exe-neighbor locations are re-probed live —
+// tools can appear mid-session (the component installer lands them in
+// <exe>/bin), and resolution must not stay frozen at process start.
 func ResolveTools(cfg *config.Config) Tools {
 	t := Tools{
 		FFmpeg:  cfg.FFmpeg.Bin,
@@ -39,6 +44,19 @@ func ResolveTools(cfg *config.Config) Tools {
 	}
 	if t.FFprobe == "" {
 		t.FFprobe = "ffprobe"
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		if _, err := exec.LookPath(t.FFmpeg); err != nil {
+			if p, ok := config.NeighborBin(dir, "ffmpeg"); ok {
+				t.FFmpeg = p
+			}
+		}
+		if _, err := exec.LookPath(t.FFprobe); err != nil {
+			if p, ok := config.NeighborBin(dir, "ffprobe"); ok {
+				t.FFprobe = p
+			}
+		}
 	}
 	return t
 }

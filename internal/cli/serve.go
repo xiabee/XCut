@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/xiabee/XCut/internal/api"
+	"github.com/xiabee/XCut/internal/setup"
 	"github.com/xiabee/XCut/internal/version"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -68,6 +70,15 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 	a.Log = slogSvc
 
 	srv := &api.Server{DB: db, Pipe: a.Pipeline(db), Log: a.Log}
+	// Component auto-install (owner directive): a double-clicked exe on a
+	// machine without FFmpeg gets a pinned-source, hash-checked download
+	// into the exe-neighbor bin/ dir config.Resolve already probes. The
+	// scratch zip lives under the workspace temp dir (bounded, removed
+	// when the install finishes either way).
+	if exe, exeErr := os.Executable(); exeErr == nil {
+		srv.Setup = setup.NewFFmpegInstaller(
+			filepath.Dir(exe), filepath.Join(a.Cfg.Workspace, "temp", "setup"))
+	}
 	// Serve owns every timeline document write in this process: PUTs,
 	// backup restores and regeneration writes must share one mutex or a
 	// PUT racing a regeneration could collide revisions with it.

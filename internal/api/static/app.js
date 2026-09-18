@@ -86,8 +86,10 @@ async function refreshHealth() {
     el.textContent = `v${h.version} · ${t("online")}`;
     el.className = "health ok";
     // Setup guidance: a double-clicked exe usually means no PATH-managed
-    // FFmpeg. Stay visible until the toolchain appears.
+    // FFmpeg. Stay visible until the toolchain appears; the one-click
+    // installer (pinned official source) sits in the same strip.
     warn.hidden = h.ffmpeg !== "missing";
+    $("btn-setup-ffmpeg").hidden = h.ffmpeg === "ok" || installPoll !== null;
     if (warn.hidden) $("syswarn-text").textContent = "";
     else $("syswarn-text").textContent = t("FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.");
   } catch (_) {
@@ -95,6 +97,47 @@ async function refreshHealth() {
     el.className = "health bad";
   }
 }
+
+/* ---------- FFmpeg one-click install (pinned official source) ---------- */
+let installPoll = null;
+$("btn-setup-ffmpeg").addEventListener("click", async () => {
+  const btn = $("btn-setup-ffmpeg");
+  const st = $("setup-status");
+  btn.disabled = true;
+  try {
+    await post("/api/v1/setup/ffmpeg", {});
+  } catch (e) {
+    banner(tf("FFmpeg install failed: {msg}", { msg: e.message }));
+    btn.disabled = false;
+    return;
+  }
+  btn.hidden = true;
+  installPoll = setInterval(async () => {
+    let s;
+    try { s = await api("/api/v1/setup/ffmpeg"); } catch (_) { return; }
+    if (s.phase === "downloading") {
+      st.textContent = tf("installing FFmpeg… {pct}%", { pct: Math.round(s.progress_pct) });
+    } else if (s.phase === "extracting") {
+      st.textContent = t("unpacking FFmpeg…");
+    } else if (s.phase === "verifying") {
+      st.textContent = t("verifying FFmpeg…");
+    } else if (s.phase === "done") {
+      clearInterval(installPoll);
+      installPoll = null;
+      st.textContent = "";
+      btn.disabled = false;
+      banner(t("FFmpeg installed — the pipeline is ready"));
+      await refreshHealth();
+    } else if (s.phase === "error" || s.phase === "unavailable") {
+      clearInterval(installPoll);
+      installPoll = null;
+      st.textContent = "";
+      btn.disabled = false;
+      btn.hidden = false;
+      banner(tf("FFmpeg install failed: {msg}", { msg: s.error || "installer unavailable" }));
+    }
+  }, 800);
+});
 
 /* ---------- projects ---------- */
 async function refreshProjects() {

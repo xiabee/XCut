@@ -15,6 +15,14 @@ window.XCUT_I18N = {
     "Lost contact with the server — retrying…": "与服务器失去联系 — 正在重试…",
     "FFmpeg not found — put ffmpeg.exe and ffprobe.exe next to xcut.exe (or in a bin folder beside it), or install them on PATH, then restart.": "未检测到 FFmpeg —— 请把 ffmpeg.exe 和 ffprobe.exe 放到 xcut.exe 同目录（或其旁边的 bin 目录），或安装到 PATH 后重启应用。",
 
+    "Install FFmpeg automatically": "一键安装 FFmpeg",
+    "official Gyan.dev build · ~110 MB · GPL — downloads once from GitHub, verified by checksum": "Gyan.dev 官方构建 · 约 110 MB · GPL —— 从 GitHub 下载一次，经校验和验证",
+    "installing FFmpeg… {pct}%": "正在安装 FFmpeg… {pct}%",
+    "unpacking FFmpeg…": "正在解压 FFmpeg…",
+    "verifying FFmpeg…": "正在校验 FFmpeg…",
+    "FFmpeg installed — the pipeline is ready": "FFmpeg 已安装 —— 流水线就绪",
+    "FFmpeg install failed: {msg}": "FFmpeg 安装失败：{msg}",
+
     "Media": "媒体",
     "Import": "导入",
     "pick files…": "选择文件…",

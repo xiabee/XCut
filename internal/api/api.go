@@ -16,6 +16,7 @@ import (
 
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/pipeline"
+	"github.com/xiabee/XCut/internal/setup"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -31,6 +32,11 @@ type Server struct {
 	// a failed upload/trigger is invisible in serve.log. nil (tests) keeps
 	// the old silent behavior.
 	Log *slog.Logger
+
+	// Setup drives the pinned-source component installer (FFmpeg). nil
+	// (tests, or a serve built without one) makes the setup endpoints
+	// answer honestly that the installer is unavailable.
+	Setup *setup.Installer
 
 	// TimelineMu serializes timeline document writes (revision-guarded
 	// PUTs, backup restores, and regeneration via Pipe.TimelineWriteLock)
@@ -126,6 +132,10 @@ func (s *Server) Handler() http.Handler {
 	// Timeline inspection and manual editing.
 	mux.HandleFunc("GET /api/v1/projects/{id}/timeline", s.handleTimelineGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/timeline", s.handleTimelinePut)
+
+	// Component setup (pinned-source FFmpeg auto-install).
+	mux.HandleFunc("GET /api/v1/setup/ffmpeg", s.handleSetupFFmpegStatus)
+	mux.HandleFunc("POST /api/v1/setup/ffmpeg", s.handleSetupFFmpegStart)
 
 	s.RegisterExtensionEndpoints(mux)
 	registerStatic(mux)

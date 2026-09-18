@@ -20,12 +20,12 @@ func neighborTools(cfg *Config) {
 	}
 	dir := filepath.Dir(exe)
 	if cfg.FFmpeg.Bin == "" {
-		if p, ok := neighborBin(dir, "ffmpeg"); ok {
+		if p, ok := NeighborBin(dir, "ffmpeg"); ok {
 			cfg.FFmpeg.Bin = p
 		}
 	}
 	if cfg.FFmpeg.ProbeBin == "" {
-		if p, ok := neighborBin(dir, "ffprobe"); ok {
+		if p, ok := NeighborBin(dir, "ffprobe"); ok {
 			cfg.FFmpeg.ProbeBin = p
 		}
 	}
@@ -33,7 +33,10 @@ func neighborTools(cfg *Config) {
 
 // neighborBin looks for <name>[.exe] in dir and in dir/bin. Empty (with
 // ok=false) when nothing is there — callers keep the PATH fallback.
-func neighborBin(dir, name string) (string, bool) {
+// NeighborBin looks for <name>[.exe] in dir and in dir/bin at call time —
+// the exported live form of the startup probe, used by tool resolution so
+// tools that appear mid-session (component installer) are found.
+func NeighborBin(dir, name string) (string, bool) {
 	suffix := ""
 	if runtime.GOOS == "windows" {
 		suffix = ".exe"

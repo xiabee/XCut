@@ -13,7 +13,7 @@ import (
 func TestNeighborBinFound(t *testing.T) {
 	dir := t.TempDir()
 
-	if _, ok := neighborBin(dir, "ffmpeg"); ok {
+	if _, ok := NeighborBin(dir, "ffmpeg"); ok {
 		t.Fatal("empty dir must not report a hit")
 	}
 
@@ -27,7 +27,7 @@ func TestNeighborBinFound(t *testing.T) {
 	if err := os.WriteFile(direct, []byte("stub"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := neighborBin(dir, "ffmpeg")
+	got, ok := NeighborBin(dir, "ffmpeg")
 	if !ok || got != direct {
 		t.Fatalf("direct neighbor = %q, %v", got, ok)
 	}
@@ -41,7 +41,7 @@ func TestNeighborBinFound(t *testing.T) {
 	if err := os.WriteFile(inBin, []byte("stub"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, ok = neighborBin(dir, "ffprobe")
+	got, ok = NeighborBin(dir, "ffprobe")
 	if !ok || got != inBin {
 		t.Fatalf("bin/ neighbor = %q, %v", got, ok)
 	}
@@ -50,7 +50,7 @@ func TestNeighborBinFound(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "bin", "ffmpeg"+suffix), 0o755); runtime.GOOS != "windows" {
 		_ = err // name without suffix is just a dir on unix; skip the check
 	} else if err == nil {
-		if _, ok := neighborBin(sub, "ffmpeg"); ok {
+		if _, ok := NeighborBin(sub, "ffmpeg"); ok {
 			t.Fatal("a directory must not count as a tool")
 		}
 	}
