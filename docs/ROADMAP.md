@@ -106,8 +106,9 @@ web UI stays the same asset tree served to browsers).
       stay the only registration path. The core never downloads models
       (D3); FFmpeg auto-install is the one pinned-source exception and it
       downloads nothing until the user clicks.
-- [~] Sandbox options for FFmpeg (job objects / containers). Two rungs exist
-      on Windows: every child joins a kill-on-close job object (session #8),
-      and `resource.ffmpeg_max_memory_mb` caps each child's memory through
-      that job (session #16, opt-in, uncapped default). Linux container
-      sandboxing and further restriction remain open.
+- [x] Sandbox options for FFmpeg, job-object rung (Windows): every child joins
+      a kill-on-close job object (session #8), and
+      `resource.ffmpeg_max_memory_mb` caps each child's memory through that
+      job (session #16, opt-in, uncapped default; doctor reports the posture).
+- [ ] Sandbox options for FFmpeg, container rung (Linux): sandbox the child
+      pipeline under a container/cgroup boundary.
