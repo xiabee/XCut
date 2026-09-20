@@ -3,8 +3,13 @@
 package media
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -63,7 +68,7 @@ func TestEnsureJobKillOnCloseFlag(t *testing.T) {
 // would silently keep encoders uncapped. Zero stays uncapped: the default
 // must not start failing high-resolution renders that never asked for a cap.
 func TestBuildJobLimitsMemoryCap(t *testing.T) {
-	info := buildJobLimits(0)
+	info := buildJobLimits(128)
 	if info.Basic.LimitFlags&jobObjectLimitProcessMemory != 0 {
 		t.Error("cap 0 must leave the process-memory flag off")
 	}
@@ -85,4 +90,97 @@ func TestBuildJobLimitsMemoryCap(t *testing.T) {
 	if info.JobMemoryLimit != 0 {
 		t.Error("per-job limit set unintentionally; the cap is per process")
 	}
+}
+
+// TestJobObjectMemoryCapKillsRunawayChild is the behavioral proof of the
+// memory-cap rung: a child assigned to a job with a 16 MB cap, allocating in
+// 8 MB steps, must die before it can complete an allocation far past the cap.
+// A test that only asserted the flag would miss the whole class of "the
+// kernel rejected the limit call and we kept going" failures — attach errors
+// are deliberately best-effort, so nothing downstream would notice.
+func TestJobObjectMemoryCapKillsRunawayChild(t *testing.T) {
+	// A fresh job for this test alone: the process-wide job is created once
+	// (sync.Once) and shared with tests that run uncapped.
+	hRaw, _, _ := procCreateJobObjectW.Call(0, 0)
+	if hRaw == 0 {
+		t.Fatal("CreateJobObjectW failed")
+	}
+	defer procCloseHandle.Call(hRaw)
+	h := syscall.Handle(hRaw)
+	info := buildJobLimits(128) // 128 MB: room for the child's Go runtime, not for 30 × 32 MB
+	r, _, callErr := procSetInformationJobObject.Call(
+		uintptr(h), jobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(info)), unsafe.Sizeof(*info))
+	if r == 0 {
+		t.Fatalf("SetInformationJobObject rejected the limits: %v", callErr)
+	}
+
+	markFile := filepath.Join(t.TempDir(), "marks.txt")
+	t.Setenv("XCUT_TEST_ALLOC_CHILD", "1")
+	t.Setenv("XCUT_TEST_MARK_FILE", markFile)
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperAllocChild$", "-test.v")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	attachTo(h, cmd.Process)
+
+	waitErr := cmd.Wait()
+	marks := readMarksOrEmpty(markFile)
+	switch {
+	case marks == 0:
+		t.Fatalf("child died before its first 32 MB block landed — it never ran, so the test proves nothing (waitErr=%v)", waitErr)
+	case waitErr == nil:
+		t.Fatalf("child completed all %d allocations (~1 GB) past a 128 MB cap; the cap did not bind", marks)
+	case marks > 28:
+		t.Fatalf("child survived %d × 32 MB allocations past a 128 MB cap; the cap did not bind", marks)
+	}
+}
+
+// attachTo assigns a started process to an arbitrary job handle (attachJob
+// targets the process-wide singleton; this test needs its own capped job).
+func attachTo(h syscall.Handle, p *os.Process) {
+	ph, _, _ := procOpenProcess.Call(
+		processSetQuota|processTerminate|processSetInformation, 0, uintptr(p.Pid))
+	if ph == 0 {
+		return
+	}
+	defer procCloseHandle.Call(ph)
+	procAssignToJobObject.Call(uintptr(h), ph)
+}
+
+// TestHelperAllocChild allocates in 8 MB steps, marking each step, until
+// killed (expected under the capped job) or done (failure signal to the
+// parent). Only runs when the parent re-executes this binary with the env
+// var set.
+func TestHelperAllocChild(t *testing.T) {
+	if os.Getenv("XCUT_TEST_ALLOC_CHILD") == "" {
+		return
+	}
+	markFile := os.Getenv("XCUT_TEST_MARK_FILE")
+	var live [][]byte
+	for i := 0; i < 30; i++ {
+		block := make([]byte, 32*1024*1024)
+		for j := 0; j < len(block); j += 4096 {
+			block[j] = byte(j) // touch every page: reserves do not fail, commits do
+		}
+		live = append(live, block)
+		writeMark(markFile, "alloc", "step")
+		time.Sleep(20 * time.Millisecond)
+	}
+	os.Exit(0)
+}
+
+func readMarksOrEmpty(path string) int {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
 }
