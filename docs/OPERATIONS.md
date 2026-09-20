@@ -121,12 +121,24 @@ Two things a token does **not** do:
   same-machine reverse proxy to add TLS**: every remote peer would arrive as
   `127.0.0.1` and bypass the gate entirely. Terminate TLS on a different host.
 
-## Recipe C — Tailscale / WireGuard
+## Recipe C — Tailscale / WireGuard **verified 2026-09-21**
 
-Equivalent to Recipe B but with the private network providing both
-reachability and encryption: bind `listen_remote` + token as above, then reach
-the peer's tunnel address. Not exercised in this repository's testing, so it is
-written as an option, not as a verified recipe.
+Bind `listen_remote` + token as in Recipe B and reach the peer's tunnel address:
+the private network supplies reachability and encryption, so the bearer token
+never crosses a wire an attacker can read, while the app layer stays cleartext.
+
+Driven for real against the published v0.1.8-alpha **arm64** binary on a Kylin
+V10 SP1 machine reached at its `100.111.136.x` address: no token → 401, wrong
+token → 401, correct token → 200 (`/api/v1/health`), `POST /api/v1/session` →
+201 with a 64-hex id, reads on the cookie alone → 200, a **write** with the
+cookie alone → 401 while the same write with the id echoed in `X-Cut-Session` →
+201, and the UI shell loaded unauthenticated (10241 bytes) so the sign-in panel
+could appear at all. That is D14's read/write asymmetry observed over a network
+path rather than an in-process test.
+
+What this does not change: a peer that can reach the port is inside your trust
+boundary by definition, so tailnet ACLs are the access control here, and the
+loopback exemption still applies on the serving host itself.
 
 ## Rotating and revoking **verified 2026-09-20**
 
