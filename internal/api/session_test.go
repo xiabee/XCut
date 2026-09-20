@@ -116,6 +116,11 @@ func TestSessionAuthorizeMethodAsymmetry(t *testing.T) {
 		{"uppercase hex rejected", http.MethodGet, strings.ToUpper(id), "", false},
 		{"short id rejected", http.MethodGet, id[:60], "", false},
 		{"long id rejected", http.MethodGet, id + "ab", "", false},
+		// This case makes net/http print one line to stderr — "invalid byte '"'
+		// in Cookie.Value; dropping invalid bytes" — because that is what the
+		// stdlib does while sanitizing a hostile cookie. It is this test doing
+		// its job, not a failure: the assertion below is that the value is
+		// rejected. Recorded so nobody re-investigates it as a session bug.
 		{"injection-ish value rejected", http.MethodGet, "x\" ; DROP TABLE", "", false},
 		{"empty cookie value", http.MethodGet, "", id, true},
 	}
