@@ -22,7 +22,7 @@ import (
 
 func init() {
 	register("eval", "score pipeline selection quality against an annotated manifest",
-		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3]"), cmdEval)
+		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]"), cmdEval)
 }
 
 // evalCaseResult is one case's outcome in the results document.
@@ -65,6 +65,7 @@ func cmdEval(a *App, args []string) error {
 	styleFlag := "" // "" = per-case style, else "generic_highlight"
 	outPath := ""
 	iouFlag := "0.3"
+	baselinePath := "" // results.json from a previous run, to diff against
 	// --check is a boolean-style flag; pull it out before parseCommandArgs
 	// (which requires values for its flags).
 	check := false
@@ -77,18 +78,22 @@ func cmdEval(a *App, args []string) error {
 		rest = append(rest, arg)
 	}
 	pos, err := parseCommandArgs(rest, map[string]*string{
-		"style": &styleFlag,
-		"out":   &outPath,
-		"iou":   &iouFlag,
+		"style":    &styleFlag,
+		"out":      &outPath,
+		"iou":      &iouFlag,
+		"baseline": &baselinePath,
 	})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3]", nil)
+			"usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]", nil)
 	}
 	if check {
+		if baselinePath != "" {
+			return xcerr.E(xcerr.CodeValidation, "--baseline has no effect with --check", nil)
+		}
 		if outPath != "" {
 			return xcerr.E(xcerr.CodeValidation, "--out has no effect with --check", nil)
 		}
@@ -122,6 +127,14 @@ func cmdEval(a *App, args []string) error {
 					"eval results would overwrite a case's source media — pick a different --out path", nil)
 			}
 		}
+	}
+
+	// Comparing against the file this run is about to overwrite would produce
+	// a diff against itself on the next invocation — a quiet way to make every
+	// change look like no change at all.
+	if baselinePath != "" && outPath != "" && pipeline.SameFileOrPath(baselinePath, outPath) {
+		return xcerr.E(xcerr.CodeValidation,
+			"--baseline and --out are the same file; write this run elsewhere to compare", nil)
 	}
 
 	// Run in an isolated throwaway workspace: eval never touches the user's
@@ -215,6 +228,14 @@ func cmdEval(a *App, args []string) error {
 			return werr
 		}
 		fmt.Fprintf(a.Stdout, "results: %s\n", outPath)
+	}
+
+	// After the write, deliberately: a bad --baseline must not throw away the
+	// minutes of ffmpeg work this run already produced.
+	if baselinePath != "" {
+		if err := reportEvalBaseline(a, &run, baselinePath); err != nil {
+			return err
+		}
 	}
 
 	for _, c := range run.Cases {
@@ -440,4 +461,76 @@ func userSafeMessage(err error) string {
 		return xe.Message
 	}
 	return err.Error()
+}
+
+// reportEvalBaseline prints this run against a previous results document.
+//
+// The point is honesty about comparability, not decoration: deltas between two
+// runs scored with different hit-IoU thresholds (or where a case errored, or
+// where the annotations changed underneath) are not measurements, so each of
+// those says so instead of printing a confident number.
+func reportEvalBaseline(a *App, run *evalResults, path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return xcerr.E(xcerr.CodeNotFound, "cannot read --baseline "+path, err)
+	}
+	var base evalResults
+	if err := json.Unmarshal(b, &base); err != nil || base.Version != 1 {
+		return xcerr.E(xcerr.CodeValidation,
+			"--baseline must be a results.json produced by xcut eval --out", nil)
+	}
+	// A manifest is also {"version":1,"cases":[...]}, so shape alone does not
+	// tell the two apart. Only a results document records when it was scored
+	// and against which IoU; require both rather than silently diffing against
+	// annotations.
+	if base.GeneratedAt == "" || base.HitIoU <= 0 {
+		return xcerr.E(xcerr.CodeValidation,
+			"--baseline is not a results document (no generated_at/hit_iou) — "+
+				"pass the file written by `xcut eval --out`, not the manifest", nil)
+	}
+	byName := map[string]evalCaseResult{}
+	for _, c := range base.Cases {
+		byName[c.Name] = c
+	}
+
+	fmt.Fprintf(a.Stdout, "\nvs baseline %s (%s)\n", path, base.GeneratedAt)
+	if base.HitIoU != run.HitIoU {
+		fmt.Fprintf(a.Stdout, "  WARN hit_iou differs (baseline %.2f, this run %.2f): "+
+			"the deltas below compare different yardsticks, not two algorithms\n",
+			base.HitIoU, run.HitIoU)
+	}
+	d := func(v float64) string { return fmt.Sprintf("%+.3f", v) }
+
+	seen := map[string]bool{}
+	for _, c := range run.Cases {
+		prev, ok := byName[c.Name]
+		if !ok {
+			fmt.Fprintf(a.Stdout, "  %-24s NEW (not in baseline)\n", c.Name)
+			continue
+		}
+		seen[c.Name] = true
+		switch {
+		case c.Error != "" || prev.Error != "":
+			fmt.Fprintf(a.Stdout, "  %-24s NOT COMPARABLE (a side errored)\n", c.Name)
+		case prev.Metrics == nil || c.Metrics == nil:
+			fmt.Fprintf(a.Stdout, "  %-24s NOT COMPARABLE (no metrics)\n", c.Name)
+		default:
+			p, m := prev.Metrics, c.Metrics
+			fmt.Fprintf(a.Stdout, "  %-24s P %s  R %s  F1 %s  ranges %+d  dup %s\n",
+				c.Name, d(m.Precision-p.Precision), d(m.Recall-p.Recall), d(m.F1-p.F1),
+				m.RangesHit-p.RangesHit, d(m.DuplicateRate-p.DuplicateRate))
+		}
+	}
+	for _, c := range base.Cases {
+		if !seen[c.Name] {
+			fmt.Fprintf(a.Stdout, "  %-24s DROPPED (no longer run)\n", c.Name)
+		}
+	}
+	if base.Macro.RangesTotal > 0 || base.Macro.Precision > 0 {
+		m, p := run.Macro, base.Macro
+		fmt.Fprintf(a.Stdout, "  %-24s P %s  R %s  F1 %s  ranges %+d\n",
+			"macro", d(m.Precision-p.Precision), d(m.Recall-p.Recall), d(m.F1-p.F1),
+			m.RangesHit-p.RangesHit)
+	}
+	return nil
 }

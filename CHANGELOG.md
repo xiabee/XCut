@@ -53,6 +53,16 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
 ### Added
+- **`xcut eval --baseline results.json`** — A/B an algorithm change against a
+  previous run in one command, instead of diffing two result files by hand. It
+  prints per-case and macro deltas (P/R/F1, ranges, dup) and refuses to lie:
+  a case that errored on either side is `NOT COMPARABLE`, cases new to or gone
+  from the manifest are labelled, and a different `--iou` prints
+  `WARN hit_iou differs` because those numbers compare two yardsticks, not two
+  algorithms. A manifest passed as a baseline is rejected (it shares
+  `{"version":1,"cases":[…]}` shape with a results document, so the check is on
+  `generated_at`/`hit_iou`, not shape), and `--baseline` cannot point at the
+  file `--out` is about to overwrite.
 - `event_config.rally_chunk` — the dense-span piece length (default 30 s,
   validated with a 4 s floor so a preset cannot flood the candidate set). It is
   the one place where a reel's coverage could in principle be widened, so it is

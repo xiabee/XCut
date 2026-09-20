@@ -74,7 +74,7 @@ remove temp files and evict analysis cache to budget
 
 ## xcut eval
 ```
-usage: xcut eval <manifest.json> [--style name] [--out results.json] [--iou 0.3]
+usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]
 
 score pipeline selection quality against an annotated manifest
 ```

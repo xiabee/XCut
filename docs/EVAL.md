@@ -175,6 +175,7 @@ an evening here.
 | `min_hits` 3 / 4 / 6 / 8 | 0.886 (all) | inert **in this range** — real segments here carry 61-115 hits, so any value below that never binds. 60 nudges ranges 6→7; 100 collapses the reel (P 0.647, 1 clip) |
 | `rally_gap` 0.2 | 0.851 | binds, and for the worse |
 | `rally_chunk` 20 / 14 / 10 / 8 / 6 | 0.810 / 0.799 / 0.823 / 0.766 / 0.706 | **the 30 s default is the best measured value.** Shorter chunks do not buy coverage — they cut mid-rally more often and promote neighbour-court density |
+| several scored windows per long segment (place each on its densest 8 s of a per-second hit profile) | 0.712, ranges 6→**2** | **much worse, reverted**: chunk boundaries snap to quiet valleys of the *omnidirectional* onset stream, so the densest stretch inside a chunk is frequently the neighbours' rally while ours is retrieving a shuttle. Start-anchoring worked precisely because the boundary, not the density, marks our rally's beginning |
 | clip anchored at median onset | 0.789 | loses to start-anchoring |
 | clip anchored at motion peak | 0.770 | loses — a rally's peak lands at the point's end, pushing the window over the boundary |
 | score onsets corroborated by ROI motion | 0.886, **bit-identical scores** | no effect: within a rally the players are continuously moving, so ROI motion rarely dips below `mean + 0.25·(peak−mean)` and corroboration degenerates to raw counting |
@@ -189,10 +190,19 @@ that is the vision sidecar's job (`frame_describe`), not a threshold.
 
 1. Annotate a small set of representative clips (a handful of ranges each is
    enough; consistency beats volume).
-2. Record baseline `results.json` at the current HEAD.
+2. Record a baseline at the current HEAD:
+   `xcut eval manifests/x.json --out /tmp/base.json`.
 3. Make the algorithm change.
-4. Re-run the same manifest; compare macro P/R/F1, range hits, duplicate rate.
-5. Record the delta in the milestone notes (docs/NIGHTLY_LOG.md).
+4. `xcut eval manifests/x.json --out /tmp/after.json --baseline /tmp/base.json`
+   — it prints per-case and macro deltas (P/R/F1, ranges, dup) instead of
+   leaving you to diff two JSON files by hand. It also refuses to pretend:
+   a case that errored on either side reports `NOT COMPARABLE`, a case new to
+   or gone from the manifest is labelled, and a different `--iou` prints
+   `WARN hit_iou differs` because those deltas compare two yardsticks rather
+   than two algorithms.
+5. Confirm the tool itself: re-running the unchanged HEAD against its own
+   baseline must print `+0.000` everywhere. Anything else is nondeterminism.
+6. Record the delta in the milestone notes (docs/NIGHTLY_LOG.md).
 
 Synthetic fixtures with construction-known ground truth (as used in the
 integration tests) validate harness correctness; real annotated media
