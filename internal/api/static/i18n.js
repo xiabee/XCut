@@ -43,6 +43,8 @@ window.XCUT_I18N = {
 
     "Pipeline": "流水线",
     "style": "风格",
+    "reel length (s)": "成片时长（秒）",
+    "style default": "沿用风格默认",
     "1 · Analyze": "1 · 分析",
     "2 · Timeline": "2 · 时间线",
     "3 · Render": "3 · 渲染",

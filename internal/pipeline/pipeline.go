@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -342,15 +343,50 @@ func firstErr(ch chan error) error {
 	return first
 }
 
+// TimelineRequest carries the knobs of one timeline generation. Style is
+// required; Duration overrides the preset's target_duration for this run only
+// (the preset file on disk is never rewritten), and 0 keeps the preset's own.
+//
+// Reel length is the lever that bounds highlight coverage — docs/EVAL.md
+// measures how far it bounds it — so it is settable per run rather than only
+// by editing JSON.
+type TimelineRequest struct {
+	Style    string
+	Duration float64
+}
+
+// Style returns a request that keeps the preset's own target duration.
+func Style(name string) TimelineRequest { return TimelineRequest{Style: name} }
+
+// MaxRequestDuration bounds an explicit override: a reel longer than this from
+// one command is a mistake, not a workflow (AGENTS.md rule 4).
+const MaxRequestDuration = 4 * 3600
+
+func (r TimelineRequest) validate() error {
+	if r.Duration == 0 {
+		return nil
+	}
+	if math.IsNaN(r.Duration) || math.IsInf(r.Duration, 0) ||
+		r.Duration < 1 || r.Duration > MaxRequestDuration {
+		return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+			"timeline duration must be between 1 and %d seconds (got %g), or 0 to keep the style's own target",
+			MaxRequestDuration, r.Duration), nil)
+	}
+	return nil
+}
+
 // BuildTimeline generates the project timeline with the given style and
 // writes it to the project directory atomically (recorded job, blocking).
 // onlyIDs scopes generation to those assets — auto passes the assets it
 // imported so a shared/default project's earlier imports never leak clips
 // into this run's cut.
-func (d Deps) BuildTimeline(project *storage.Project, styleName string, onlyIDs ...string) (*timeline.Timeline, error) {
+func (d Deps) BuildTimeline(project *storage.Project, req TimelineRequest, onlyIDs ...string) (*timeline.Timeline, error) {
+	if err := req.validate(); err != nil {
+		return nil, err
+	}
 	result := &timeline.Timeline{}
 	_, jerr := d.Queue.RunInline(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
-		map[string]any{"style": styleName}, d.timelineBody(project, styleName, onlyIDs, result))
+		map[string]any{"style": req.Style}, d.timelineBody(project, req, onlyIDs, result))
 	if jerr != nil {
 		return nil, jerr
 	}
@@ -358,12 +394,15 @@ func (d Deps) BuildTimeline(project *storage.Project, styleName string, onlyIDs 
 }
 
 // BuildTimelineAsync is the non-blocking variant.
-func (d Deps) BuildTimelineAsync(project *storage.Project, styleName string, onlyIDs ...string) (string, error) {
+func (d Deps) BuildTimelineAsync(project *storage.Project, req TimelineRequest, onlyIDs ...string) (string, error) {
+	if err := req.validate(); err != nil {
+		return "", err
+	}
 	return d.Queue.RunAsync(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
-		map[string]any{"style": styleName}, d.timelineBody(project, styleName, onlyIDs, &timeline.Timeline{}))
+		map[string]any{"style": req.Style}, d.timelineBody(project, req, onlyIDs, &timeline.Timeline{}))
 }
 
-func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs []string, result *timeline.Timeline) job.Runner {
+func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyIDs []string, result *timeline.Timeline) job.Runner {
 	return func(jctx context.Context, progress func(float64)) error {
 		assets, err := d.DB.ListAssets(jctx, project.ID)
 		if err != nil {
@@ -388,9 +427,12 @@ func (d Deps) timelineBody(project *storage.Project, styleName string, onlyIDs [
 		if len(assets) == 0 {
 			return xcerr.E(xcerr.CodeValidation, "project has no assets (import first)", nil)
 		}
-		preset, err := style.Load(styleName, filepath.Join(d.WS.Root, "styles"))
+		preset, err := style.Load(req.Style, filepath.Join(d.WS.Root, "styles"))
 		if err != nil {
 			return err
+		}
+		if req.Duration > 0 {
+			preset.TargetDuration = req.Duration
 		}
 		// Rally segmentation keys off audio transients: with no audio stream
 		// anywhere the run would burn a full analysis pass only to die later

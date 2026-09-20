@@ -2,17 +2,22 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/xiabee/XCut/internal/pipeline"
 
 	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func init() {
-	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup"), cmdTimeline)
+	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name] [--duration seconds] | xcut timeline <project> --restore-backup"), cmdTimeline)
 }
 
 func cmdTimeline(a *App, args []string) error {
 	styleName := "generic_highlight"
+	durationFlag := ""
 	restore := false
 	// --restore-backup is a boolean-style flag; pull it out before
 	// parseCommandArgs (which requires values for its flags).
@@ -24,13 +29,13 @@ func cmdTimeline(a *App, args []string) error {
 		}
 		rest = append(rest, arg)
 	}
-	pos, err := parseCommandArgs(rest, map[string]*string{"style": &styleName})
+	pos, err := parseCommandArgs(rest, map[string]*string{"style": &styleName, "duration": &durationFlag})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup", nil)
+			"usage: xcut timeline <project> [--style name] [--duration seconds] | xcut timeline <project> --restore-backup", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -57,11 +62,19 @@ func cmdTimeline(a *App, args []string) error {
 		return nil
 	}
 
-	tl, err := d.BuildTimeline(p, styleName)
+	duration, err := parseDurationFlag(durationFlag)
+	if err != nil {
+		return err
+	}
+	req := pipeline.TimelineRequest{Style: styleName, Duration: duration}
+	tl, err := d.BuildTimeline(p, req)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "style: %s\n", styleName)
+	if duration > 0 {
+		fmt.Fprintf(a.Stdout, "target duration: %.0fs (overriding the style's own)\n", duration)
+	}
 	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
 	outPath, err := d.TimelinePath(p.ID)
@@ -78,4 +91,21 @@ func countTimelineClips(tl *timeline.Timeline) int {
 		n += len(tr.Clips)
 	}
 	return n
+}
+
+// parseDurationFlag reads --duration: empty (or an explicit 0) means "use
+// the style's own target", and anything else must be a sane number of seconds. The bound is
+// the same one pipeline enforces, so the CLI never accepts a value the
+// pipeline will refuse.
+func parseDurationFlag(v string) (float64, error) {
+	if strings.TrimSpace(v) == "" {
+		return 0, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || (f != 0 && (f < 1 || f > pipeline.MaxRequestDuration)) {
+		return 0, xcerr.E(xcerr.CodeValidation,
+			"--duration must be between 1 and "+strconv.Itoa(pipeline.MaxRequestDuration)+
+				" seconds (got "+v+")", nil)
+	}
+	return f, nil
 }

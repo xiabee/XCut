@@ -22,7 +22,7 @@ import (
 
 func init() {
 	register("eval", "score pipeline selection quality against an annotated manifest",
-		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]"), cmdEval)
+		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--out results.json] [--iou 0.3] [--baseline results.json]"), cmdEval)
 }
 
 // evalCaseResult is one case's outcome in the results document.
@@ -65,6 +65,7 @@ func cmdEval(a *App, args []string) error {
 	styleFlag := "" // "" = per-case style, else "generic_highlight"
 	outPath := ""
 	iouFlag := "0.3"
+	durationFlag := "" // "" = each style's own target_duration
 	baselinePath := "" // results.json from a previous run, to diff against
 	// --check is a boolean-style flag; pull it out before parseCommandArgs
 	// (which requires values for its flags).
@@ -81,6 +82,7 @@ func cmdEval(a *App, args []string) error {
 		"style":    &styleFlag,
 		"out":      &outPath,
 		"iou":      &iouFlag,
+		"duration": &durationFlag,
 		"baseline": &baselinePath,
 	})
 	if err != nil {
@@ -88,7 +90,7 @@ func cmdEval(a *App, args []string) error {
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]", nil)
+			"usage: xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--out results.json] [--iou 0.3] [--baseline results.json]", nil)
 	}
 	if check {
 		if baselinePath != "" {
@@ -106,6 +108,11 @@ func cmdEval(a *App, args []string) error {
 	if err != nil || math.IsNaN(hitIoU) || hitIoU <= 0 || hitIoU > 1 {
 		return xcerr.E(xcerr.CodeValidation,
 			"--iou must be a number in (0,1] (got "+iouFlag+")", nil)
+	}
+
+	duration, err := parseDurationFlag(durationFlag)
+	if err != nil {
+		return err
 	}
 
 	manifest, err := eval.LoadManifest(pos[0])
@@ -186,7 +193,7 @@ func cmdEval(a *App, args []string) error {
 		fmt.Fprintf(a.Stdout, "  [%d/%d] %s  (%s)\n", i+1, len(manifest.Cases), c.Name, styleName)
 		res := evalCaseResult{Name: c.Name, Style: styleName, Media: c.Media}
 
-		clips, terr := evalRunCase(&ea, db, c, styleName)
+		clips, terr := evalRunCase(&ea, db, c, styleName, duration)
 		var cm *eval.CaseMetrics
 		if terr != nil {
 			res.Error = terr.Error()
@@ -250,7 +257,10 @@ func cmdEval(a *App, args []string) error {
 // eval workspace and returns the style-selected clips (source intervals plus
 // the per-clip score metadata). All clips reference the single imported asset,
 // so source times are comparable.
-func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]timeline.Clip, error) {
+// duration overrides each case's reel length for this run (0 = the style's own
+// target), which is what lets the harness measure the length/coverage trade-off
+// instead of arguing about it.
+func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duration float64) ([]timeline.Clip, error) {
 	if _, err := os.Stat(c.Media); err != nil {
 		return nil, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
 	}
@@ -294,7 +304,7 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string) ([]time
 			return nil, err
 		}
 	}
-	tl, err := d.BuildTimeline(p, styleName)
+	tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration})
 	if err != nil {
 		return nil, err
 	}

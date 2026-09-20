@@ -1426,9 +1426,22 @@ $("btn-timeline").addEventListener("click", async (e) => {
   }
   btn.dataset.armed = "";
   btn.textContent = t("2 · Timeline");
-  try { await trigger("/timeline", { style: $("style").value }); }
+  try { await trigger("/timeline", timelineRequest()); }
   catch (err) { banner(tf("Timeline failed: {msg}", { msg: err.message })); }
 });
+
+// timelineRequest carries the style plus an optional reel length. An empty or
+// out-of-range field means "ask the style", which is what the placeholder says.
+// The input's min/max mirror the server's accepted range, and the server still
+// owns the verdict: values the browser's validity UI would flag are dropped
+// here rather than round-tripped as a 400.
+function timelineRequest() {
+  const req = { style: $("style").value };
+  const raw = $("tl-duration").value.trim();
+  const secs = Number(raw);
+  if (raw !== "" && Number.isFinite(secs) && secs >= 1) req.duration = secs;
+  return req;
+}
 
 $("btn-render").addEventListener("click", async () => {
   try { await trigger("/render", { subs: $("burn-subs").checked }); showPlayerSoon(); }

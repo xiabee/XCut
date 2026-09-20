@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -169,7 +170,8 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Style string `json:"style"`
+		Style    string  `json:"style"`
+		Duration float64 `json:"duration"`
 	}
 	if !s.decodeBody(w, r, &body) {
 		return
@@ -177,7 +179,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	if body.Style == "" {
 		body.Style = "generic_highlight"
 	}
-	id, err := s.Pipe.BuildTimelineAsync(p, body.Style)
+	id, err := s.Pipe.BuildTimelineAsync(p, pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration})
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

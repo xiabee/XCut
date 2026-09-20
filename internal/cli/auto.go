@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--project name] [--out path]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -19,19 +20,25 @@ func init() {
 // default project name would silently compose a single cut from both files.
 func cmdAuto(a *App, args []string) error {
 	styleName := "generic_highlight"
+	durationFlag := ""
 	projectName := "auto"
 	outPath := ""
 	pos, err := parseCommandArgs(args, map[string]*string{
-		"style":   &styleName,
-		"project": &projectName,
-		"out":     &outPath,
+		"style":    &styleName,
+		"duration": &durationFlag,
+		"project":  &projectName,
+		"out":      &outPath,
 	})
+	if err != nil {
+		return err
+	}
+	duration, err := parseDurationFlag(durationFlag)
 	if err != nil {
 		return err
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--project name] [--out path]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path]", nil)
 	}
 	inputs := pos
 
@@ -102,7 +109,7 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		d := a.Pipeline(db)
-		tl, err := d.BuildTimeline(p, styleName, assetIDs...)
+		tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration}, assetIDs...)
 		if err != nil {
 			return err
 		}

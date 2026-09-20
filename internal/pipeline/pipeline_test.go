@@ -80,7 +80,7 @@ func TestAnalyzeProjectParallelMultiAsset(t *testing.T) {
 	}
 
 	// Timeline build over all three assets must succeed and stay valid.
-	tl, err := d.BuildTimeline(p, "generic_highlight")
+	tl, err := d.BuildTimeline(p, Style("generic_highlight"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestAnalyzeWithProxy(t *testing.T) {
 func TestTimelineBackupAndRestore(t *testing.T) {
 	d, p := analyzeSetup(t, 1)
 
-	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
 		t.Fatal(err)
 	}
 	cur, err := d.TimelinePath(p.ID)
@@ -176,7 +176,7 @@ func TestTimelineBackupAndRestore(t *testing.T) {
 	}
 
 	// Regeneration must push the manual version into the backup.
-	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
 		t.Fatal(err)
 	}
 	bak, err := d.TimelineBackupPath(p.ID)
@@ -255,7 +255,7 @@ func TestRenderCancelledCleansScratch(t *testing.T) {
 	if err := d.AnalyzeProject(p, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -345,7 +345,7 @@ func TestTimelineRallyStyleWithoutAudio(t *testing.T) {
 		t.Fatalf("fixture should import as video-only: hasAudio=%v err=%v", len(assets) > 0 && assets[0].HasAudio, err)
 	}
 
-	_, err = d.BuildTimeline(p, "badminton_highlight")
+	_, err = d.BuildTimeline(p, Style("badminton_highlight"))
 	if err == nil {
 		t.Fatal("rally style accepted silent media")
 	}
@@ -395,7 +395,7 @@ func TestRenderFailureKeepsScratch(t *testing.T) {
 	if err := d.AnalyzeProject(p, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -491,7 +491,7 @@ func TestTimelineWithProxySharesAnalyzeCache(t *testing.T) {
 		t.Fatalf("analysis cache after analyze: %d entries (%v), want 1", entries, err)
 	}
 
-	if _, err := d.BuildTimeline(p, "generic_highlight"); err != nil {
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
 		t.Fatal(err)
 	}
 	entries, _, err = d.analysisStore().Usage()
