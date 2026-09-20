@@ -433,6 +433,16 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		}
 		if req.Duration > 0 {
 			preset.TargetDuration = req.Duration
+			// A reel shorter than the style's smallest allowed clip cannot
+			// hold even one candidate: selection trims every segment below
+			// min_clip_duration and dies with "rejected all events" — after a
+			// full analysis pass, naming none of this. Refuse here where both
+			// numbers are at hand.
+			if preset.MinClipDuration > preset.TargetDuration {
+				return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+					"reel length %gs is shorter than style %q's minimum clip (%gs): no clip could fit",
+					req.Duration, preset.Name, preset.MinClipDuration), nil)
+			}
 		}
 		// Rally segmentation keys off audio transients: with no audio stream
 		// anywhere the run would burn a full analysis pass only to die later

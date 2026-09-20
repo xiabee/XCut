@@ -2,9 +2,11 @@ package pipeline
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/timeline"
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // The reel-length override is bounded by the pipeline, not by the caller that
@@ -41,6 +43,37 @@ func TestTimelineDurationValidation(t *testing.T) {
 func TestMaxRequestDurationIsOneHourMultiples(t *testing.T) {
 	if MaxRequestDuration != 4*3600 {
 		t.Fatalf("MaxRequestDuration = %d; the docs and USAGE quote 4 hours", MaxRequestDuration)
+	}
+}
+
+// A reel shorter than the style's minimum clip cannot hold a single candidate;
+// the run must refuse with both numbers instead of burning a full analysis pass
+// and failing with the generic "rejected all events". ktv_mv's floor is 2 s,
+// generic_highlight's is 1 s.
+func TestDurationShorterThanMinClipRefusedWithReason(t *testing.T) {
+	d, p := analyzeSetup(t, 2) // ~20 s of generated material
+
+	_, err := d.BuildTimeline(p, TimelineRequest{Style: "ktv_mv", Duration: 1})
+	if err == nil {
+		t.Fatal("1s reel on a 2s-floor style: want rejection, got a timeline")
+	}
+	if xcerr.CodeOf(err) != xcerr.CodeValidation {
+		t.Errorf("error code %v, want validation", xcerr.CodeOf(err))
+	}
+	for _, want := range []string{"1s", "ktv_mv", "2s"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q lost %q", err.Error(), want)
+		}
+	}
+
+	// The boundary itself still works: a reel exactly at the floor fits one
+	// minimum clip, and a style with a 1 s floor accepts a 1 s reel.
+	tl, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 1})
+	if err != nil {
+		t.Fatalf("1s reel on a 1s-floor style: %v", err)
+	}
+	if clipCount(tl) == 0 {
+		t.Error("boundary reel produced no clips")
 	}
 }
 
