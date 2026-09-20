@@ -143,7 +143,22 @@ func TestSetupStatusShapeWhileDownloading(t *testing.T) {
 		<-block
 		return setupTestFetch(t)(ctx, dst, progress)
 	}
-	t.Cleanup(func() { close(block) })
+	t.Cleanup(func() {
+		close(block)
+		// Let the install goroutine finish. It resumes with a real write into
+		// this test's TempDir, and Go removes that dir the moment the test
+		// returns — racing the write against the removal was a flaky
+		// "RemoveAll cleanup: directory is not empty".
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+			switch in.Status().Phase {
+			case setup.PhaseDownloading, setup.PhaseExtracting, setup.PhaseVerifying:
+				time.Sleep(5 * time.Millisecond)
+				continue
+			}
+			return
+		}
+		t.Errorf("install goroutine never reached a terminal phase: %v", in.Status().Phase)
+	})
 	do(t, s, "POST", "/api/v1/setup/ffmpeg", "{}")
 	_, out := do(t, s, "GET", "/api/v1/setup/ffmpeg", "")
 	if out["phase"] != "downloading" {
