@@ -23,6 +23,7 @@
       <button type="submit" title="create project" data-i18n-title="create project">＋</button>
     </form>
     <button id="delete-project" class="icon-danger" hidden title="delete this project" data-i18n-title="delete this project">🗑</button>
+    <button id="sign-out" class="ghost" hidden data-i18n="Sign out">Sign out</button>
   </div>
 
   <span id="banner" class="banner" hidden></span>
@@ -153,6 +154,25 @@
     <div id="insp-clip" hidden></div>
   </aside>
 </main>
+
+<!-- Shown when the server answers 401: only a serve reachable from another
+     machine does that (a local one trusts the local user). The token types
+     into nothing persistent — it becomes a session id, and the token itself is
+     never stored, so a reload does not ask again while the session lives. -->
+<div id="login-modal" class="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <h2 id="login-title" data-i18n="Sign in to this XCut server">Sign in to this XCut server</h2>
+    <p class="hint" data-i18n="This server runs on another machine and requires its access token. Set server.auth_token there, or read it from that machine's config.">This server runs on another machine and requires its
+      access token. Set server.auth_token there, or read it from that
+      machine's config.</p>
+    <input id="login-token" type="password" autocomplete="off" spellcheck="false"
+           data-i18n-placeholder="Access token" placeholder="Access token">
+    <p id="login-error" class="hint error-text" hidden></p>
+    <div class="modal-actions">
+      <button id="login-submit" class="primary" data-i18n="Sign in">Sign in</button>
+    </div>
+  </div>
+</div>
 
 <script src="i18n.js"></script>
 <script src="app.js"></script>

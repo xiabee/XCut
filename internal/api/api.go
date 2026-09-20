@@ -46,6 +46,12 @@ type Server struct {
 	// network, because config.Resolve refuses a remote bind without a token.
 	AuthToken string
 
+	// sessions holds the remote-UI login sessions (D12 follow-up). Lazily
+	// created behind sessMu so a Server built as a struct literal needs no
+	// new wiring; in-memory by design, so a restart signs remote UIs out.
+	sessMu   sync.Mutex
+	sessions *sessionStore
+
 	// TimelineMu serializes timeline document writes (revision-guarded
 	// PUTs, backup restores, and regeneration via Pipe.TimelineWriteLock)
 	// across concurrent request and job goroutines in this process; the
@@ -151,10 +157,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/setup/ffmpeg", s.handleSetupFFmpegStatus)
 	mux.HandleFunc("POST /api/v1/setup/ffmpeg", s.handleSetupFFmpegStart)
 
+	// Remote UI sessions: a browser proves the bearer token once here, then the
+	// HttpOnly cookie carries it for media URLs (`POST`/`DELETE` are gated
+	// themselves: a mutation needs the id echoed in a header).
+	mux.HandleFunc("POST /api/v1/session", s.handleSessionStart)
+	mux.HandleFunc("DELETE /api/v1/session", s.handleSessionEnd)
+
 	s.RegisterExtensionEndpoints(mux)
 	registerStatic(mux)
 
-	return newAuthGate(s.AuthToken, s.Log).authenticate(mux)
+	return newAuthGate(s.AuthToken, s.Log, s.Sessions()).authenticate(mux)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

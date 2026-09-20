@@ -67,7 +67,7 @@ func TestAuthGatePeerTrust(t *testing.T) {
 }
 
 func TestAuthGateDecisions(t *testing.T) {
-	gate := newAuthGate(testToken, nil)
+	gate := newAuthGate(testToken, nil, nil)
 	cases := []struct {
 		name    string
 		gate    *authGate
@@ -117,7 +117,7 @@ func TestAuthGateDecisions(t *testing.T) {
 }
 
 func TestAuthGateChallengeHeader(t *testing.T) {
-	rec := gateCall(newAuthGate(testToken, nil), remotePeer, "")
+	rec := gateCall(newAuthGate(testToken, nil, nil), remotePeer, "")
 	if got := rec.Header().Get("WWW-Authenticate"); got != `Bearer realm="xcut"` {
 		t.Errorf("WWW-Authenticate %q, want the bearer challenge", got)
 	}
@@ -184,7 +184,7 @@ func TestHandlerGatesAPIButNotShell(t *testing.T) {
 }
 
 func TestAuthGateRateLimitsBruteForce(t *testing.T) {
-	g := newAuthGate(testToken, nil)
+	g := newAuthGate(testToken, nil, nil)
 	now := time.Unix(1700000000, 0)
 	g.now = func() time.Time { return now }
 
@@ -220,7 +220,7 @@ func TestAuthGateRateLimitsBruteForce(t *testing.T) {
 // A successful request must not be charged against the caller's own budget, or
 // a locked-out-but-valid client could never dig itself out.
 func TestAuthGateSuccessDoesNotConsumeBudget(t *testing.T) {
-	g := newAuthGate(testToken, nil)
+	g := newAuthGate(testToken, nil, nil)
 	for i := 0; i < authMaxFailures*2; i++ {
 		if rec := gateCall(g, remotePeer, "Bearer "+testToken); rec.Code != http.StatusOK {
 			t.Fatalf("authenticated request %d: %d, want 200", i, rec.Code)
@@ -231,7 +231,7 @@ func TestAuthGateSuccessDoesNotConsumeBudget(t *testing.T) {
 // The failure tracker is per-peer state in a long-running process: it needs the
 // same budgeted-growth discipline as the cache (AGENTS.md rule 4).
 func TestAuthGateFailureTrackerStaysBounded(t *testing.T) {
-	g := newAuthGate(testToken, nil)
+	g := newAuthGate(testToken, nil, nil)
 	now := time.Unix(1700000000, 0)
 	g.now = func() time.Time { return now }
 
@@ -253,7 +253,7 @@ func TestAuthGateFailureTrackerStaysBounded(t *testing.T) {
 
 func TestAuthGateNeverLogsTheToken(t *testing.T) {
 	var buf bytes.Buffer
-	g := newAuthGate(testToken, slog.New(slog.NewTextHandler(&buf, nil)))
+	g := newAuthGate(testToken, slog.New(slog.NewTextHandler(&buf, nil)), nil)
 	rec := gateCall(g, remotePeer, "Bearer supplied-secret-lookalike-0000")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status %d, want 401", rec.Code)

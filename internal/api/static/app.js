@@ -43,8 +43,109 @@ function setLang(l) {
   refreshROIStatus();
 }
 
+/* ---------- remote sessions (D12 follow-up) ----------
+ * A serve reachable from another machine answers 401 until it holds proof.
+ * The token is typed once, exchanged for a session id, and then dropped: the
+ * browser sends the id in a header for changes and the server's HttpOnly
+ * cookie carries it for media URLs (<video>, thumbnails, downloads), which a
+ * page cannot give a header. That is why the token never lands in
+ * localStorage — only the session id does, and it cannot read or change
+ * anything on its own over a GET. */
+let sessionId = "";
+try { sessionId = sessionStorage.getItem("xcut-session") || ""; } catch (_) { /* storage off */ }
+
+function authed(opts) {
+  opts = opts || {};
+  if (sessionId) {
+    opts.headers = Object.assign({}, opts.headers, { "X-Cut-Session": sessionId });
+  }
+  return opts;
+}
+
+function setSession(id) {
+  sessionId = id || "";
+  try {
+    if (sessionId) sessionStorage.setItem("xcut-session", sessionId);
+    else sessionStorage.removeItem("xcut-session");
+  } catch (_) { /* storage off — the session lives for this page only */ }
+  const btn = $("sign-out");
+  if (btn) btn.hidden = !sessionId;
+}
+
+let signInOpen = null; // one prompt at a time: parallel 401s must not stack
+
+// askSignIn shows the token panel and resolves true once a session exists,
+// false if the caller should give up. Multiple concurrent 401s share one
+// prompt — a modal per in-flight request would be unwinnable.
+function askSignIn() {
+  if (signInOpen) return signInOpen;
+  const modal = $("login-modal");
+  if (!modal) return Promise.resolve(false);
+  const input = $("login-token"), err = $("login-error"), btn = $("login-submit");
+  modal.hidden = false;
+  err.hidden = true;
+  input.value = "";
+  setTimeout(() => input.focus(), 0);
+
+  signInOpen = new Promise((resolve) => {
+    const finish = (ok) => {
+      modal.hidden = true;
+      btn.removeEventListener("click", submit);
+      input.removeEventListener("keydown", onKey);
+      signInOpen = null;
+      resolve(ok);
+    };
+    async function submit() {
+      const token = input.value.trim();
+      if (!token) return;
+      btn.disabled = true;
+      try {
+        const resp = await fetch("/api/v1/session", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + token },
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          // A wrong token is a fact about the keystrokes, not a stack trace.
+          err.textContent = body.error === "unauthorized"
+            ? t("That token is not valid here.")
+            : (body.message || resp.status + "");
+          err.hidden = false;
+          input.select();
+        } else {
+          const doc = await resp.json();
+          setSession(doc.session || "");
+          finish(true);
+        }
+      } catch (e) {
+        err.textContent = t("Cannot reach this server.");
+        err.hidden = false;
+      }
+      btn.disabled = false;
+    }
+    function onKey(ev) { if (ev.key === "Enter") submit(); }
+    btn.addEventListener("click", submit);
+    input.addEventListener("keydown", onKey);
+  });
+  return signInOpen;
+}
+
+async function signOut() {
+  try {
+    await fetch("/api/v1/session", { method: "DELETE", headers: sessionId ? { "X-Cut-Session": sessionId } : {} });
+  } catch (_) { /* the local state is what the button promises */ }
+  setSession("");
+  refreshProjects();
+}
+
 async function api(path, opts) {
-  const resp = await fetch(path, opts);
+  let resp = await fetch(path, authed(opts));
+  if (resp.status === 401) {
+    if (!(await askSignIn())) {
+      throw new Error("401: " + t("sign-in required"));
+    }
+    resp = await fetch(path, authed(opts)); // one retry, now with the session
+  }
   let body = {};
   try { body = await resp.json(); } catch (_) { /* non-JSON */ }
   if (!resp.ok) {
@@ -250,6 +351,9 @@ function uploadFile(pid, file, onProgress) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/v1/projects/${pid}/assets/upload?filename=` +
       encodeURIComponent(file.name));
+    // Uploads are mutations, so the session id has to ride in the header; a
+    // cookie alone would be refused by design.
+    if (sessionId) xhr.setRequestHeader("X-Cut-Session", sessionId);
     xhr.responseType = "json";
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {
@@ -965,11 +1069,11 @@ async function saveTimeline() {
   });
   doc.tracks[0].clips = outs;
   try {
-    const resp = await fetch(`/api/v1/projects/${currentProject.id}/timeline`, {
+    const resp = await fetch(`/api/v1/projects/${currentProject.id}/timeline`, authed({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(doc),
-    });
+    }));
     const body = await resp.json();
     if (!resp.ok) {
       banner(resp.status === 409
@@ -1285,6 +1389,10 @@ async function loadStyles() {
 refreshHealth();
 setInterval(refreshHealth, 15000);
 $("lang").addEventListener("change", (e) => setLang(e.target.value));
+$("sign-out").addEventListener("click", signOut);
+// A session restored from sessionStorage means the sign-out affordance has to
+// appear on this page load, not only after the next successful sign-in.
+setSession(sessionId);
 applyI18n();
 refreshProjects();
 loadStyles();

@@ -40,8 +40,9 @@ const (
 // loopback peers are trusted and everyone else is refused — the same posture as
 // before authentication existed, now explicit in the code that implements it.
 type authGate struct {
-	token []byte
-	log   *slog.Logger
+	token    []byte
+	log      *slog.Logger
+	sessions *sessionStore
 
 	mu       sync.Mutex
 	failures map[string]*failureWindow
@@ -54,13 +55,14 @@ type failureWindow struct {
 	first time.Time
 }
 
-func newAuthGate(token string, log *slog.Logger) *authGate {
+func newAuthGate(token string, log *slog.Logger, sessions *sessionStore) *authGate {
 	if token == "" {
 		return nil
 	}
 	return &authGate{
 		token:    []byte(token),
 		log:      log,
+		sessions: sessions,
 		failures: map[string]*failureWindow{},
 		now:      time.Now,
 	}
@@ -97,13 +99,20 @@ func (g *authGate) authenticate(next http.Handler) http.Handler {
 				"too many failed authentication attempts", "")
 			return
 		}
-		if !g.validToken(r.Header.Get("Authorization")) {
-			g.noteFailure(peer)
-			g.reject(w, r, peer, http.StatusUnauthorized,
-				"missing or invalid bearer token", `Bearer realm="xcut"`)
+		if g.validToken(r.Header.Get("Authorization")) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		// No bearer token: a browser session may still authorize it, within the
+		// method limits sessionStore.authorize enforces (a cookie alone never
+		// covers a mutation).
+		if g.sessions != nil && g.sessions.authorize(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		g.noteFailure(peer)
+		g.reject(w, r, peer, http.StatusUnauthorized,
+			"missing or invalid bearer token", `Bearer realm="xcut"`)
 	})
 }
 
