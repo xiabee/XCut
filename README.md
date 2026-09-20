@@ -90,6 +90,10 @@ go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 ./xcut project create badminton-2026          # 新建工程
 ./xcut import badminton-2026 match.mp4        # 探测 + 指纹入库
 ./xcut analyze badminton-2026                 # 运动/音频特征 → 事件
+./xcut roi badminton-2026 --asset <id> --set 0.1,0.1,0.5,0.6
+#   可选：为单个素材框定球场运动区域（0..1 归一化坐标）；羽毛球风格
+#   生成时间线时按它裁掉场外干扰。`xcut roi <project>` 列出、`--clear`
+#   清除；UI 侧栏"框选球场 ROI…"保存的是同一份数据
 ./xcut timeline badminton-2026 --style badminton_highlight
 #   重新生成会覆盖手动编辑——上一版文档保留为 timeline.backup.json；
 #   `--restore-backup` 可以换回来

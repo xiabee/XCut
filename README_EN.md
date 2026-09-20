@@ -96,6 +96,11 @@ Verify the result with any player or `ffprobe`.
 ./xcut project create badminton-2026          # new project
 ./xcut import badminton-2026 match.mp4        # probe + fingerprint assets
 ./xcut analyze badminton-2026                 # motion/audio features → events
+./xcut roi badminton-2026 --asset <id> --set 0.1,0.1,0.5,0.6
+#   optional: frame a per-asset court motion region (0..1 normalized coords);
+#   the badminton style uses it to cut out-of-court noise when the timeline
+#   is built. `xcut roi <project>` lists, `--clear` clears; the UI's
+#   "draw court ROI…" saves the same data
 ./xcut timeline badminton-2026 --style badminton_highlight
 #   regenerating overwrites manual edits — the previous document is kept
 #   as timeline.backup.json; `--restore-backup` swaps it back
