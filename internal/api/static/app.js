@@ -409,6 +409,22 @@ $("import-file").addEventListener("change", (e) => {
   });
 }
 
+// The path form sits beside pick/drop for files that already live on this
+// machine (pick/drop cannot see a local path — the browser hides it). Without
+// this handler the submit button performs a native form submission: the page
+// reloads, the selected project is lost, and nothing is imported — a
+// regression the workspace redesign shipped and no id-existence test can see.
+$("import-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!currentProject) return;
+  const path = $("import-path").value.trim();
+  if (!path) return;
+  try {
+    await trigger("/assets", { path });
+    $("import-path").value = "";
+  } catch (err) { banner(tf("Import failed: {msg}", { msg: err.message })); busy(false); }
+});
+
 function fmtDur(s) {
   return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 }

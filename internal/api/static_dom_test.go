@@ -121,6 +121,27 @@ func TestSignInOutElementsExist(t *testing.T) {
 	}
 }
 
+// Every form that carries a submit button must be wired to a submit listener.
+// A form without one performs a native submission — the page navigates away,
+// UI state is lost, and nothing the user asked for happens. That is not
+// hypothetical: the workspace redesign deleted the import-form handler while
+// keeping the form, and the path-import button silently reloaded the page for
+// three sessions until a real browser drive hit it. Existence of an id (the
+// check above) cannot see an unwired form; this can.
+func TestEverySubmitFormHasAHandler(t *testing.T) {
+	html := staticFile(t, "static/index.html")
+	js := staticFile(t, "static/app.js")
+
+	formIDRe := regexp.MustCompile(`<form[^>]*id="([a-zA-Z0-9_-]+)"`)
+	for _, m := range formIDRe.FindAllStringSubmatch(html, -1) {
+		id := m[1]
+		wired := strings.Contains(js, `$("`+id+`").addEventListener("submit"`)
+		if !wired {
+			t.Errorf("form #%s has a submit button in index.html but app.js never listens for its submit event: clicking it would navigate the page away instead of doing the work", id)
+		}
+	}
+}
+
 func dedupe(in []string) []string {
 	seen := map[string]bool{}
 	var out []string

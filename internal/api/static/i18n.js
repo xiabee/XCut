@@ -88,6 +88,7 @@ window.XCUT_I18N = {
 
     "Create failed: {msg}": "创建失败：{msg}",
     "Delete failed: {msg}": "删除失败：{msg}",
+    "Import failed: {msg}": "导入失败：{msg}",
     "really delete \"{name}\"? click again": "真的删除“{name}”？再点一次确认",
     "Cancel failed: {msg}": "取消失败：{msg}",
     "Analyze failed: {msg}": "分析失败：{msg}",
