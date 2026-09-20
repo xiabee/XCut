@@ -3,23 +3,9 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [Unreleased] — 2026-09-20 night session #16 (sign-in visual pass, budget fix)
+## [Unreleased] — 2026-09-21 early session #17 (secret-scan honesty, tailnet recipe, reel cost)
 
-### Fixed
-- **The sign-in page could lock its own address out.** The remote UI's
-  background health poll runs without a token, and every credentialless 401
-  was charged against the per-peer brute-force budget: leaving the sign-in
-  dialog open for five minutes (measured, in a real browser over a real LAN
-  bind) spent all 20 rejections, and then the *correct* token got 429 too.
-  The budget now charges only requests that presented a credential — a wrong
-  bearer token, a wrong scheme, a stale session cookie or echo header. A
-  credentialless request cannot authenticate and learns nothing per attempt,
-  so it keeps its plain 401 forever without spending anything; the guessing
-  budget keeps punishing exactly what it punished before (verified at the
-  binary level: 25 credentialless polls → 401, correct token → 200; 20 wrong
-  tokens → 429).
-
-### Measured
+### Security
 - **Gate hardening (from the control plane's secret-scan blind-spot audit).**
   `scripts/check.ps1` now *fails* when gitleaks cannot be found instead of
   warning and continuing to `gate: PASS`; both gates print the scan scope as a
@@ -40,6 +26,41 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   (verified: a force-added file is named and the gate exits 1; the `check.sh`
   logic verified on the Linux node), and the scope comment states what the
   reported number actually measures.
+
+### Measured
+- **Tailscale remote access is now a measured recipe, not an option**: the
+  published arm64 binary on a tailnet peer, driven from this machine — token
+  gate 401/401/200, session 201, cookie reads pass, a cookie-only **write** is
+  refused while the echoed header is accepted, UI shell unauthenticated. First
+  time D14's asymmetry was observed over a real network path rather than
+  loopback or httptest. Node cleaned afterwards (listener gone, token file
+  removed).
+- **Cost of a longer reel** (docs/PERFORMANCE.md): 2.4x the duration costs 8%
+  more core memory (20.2 → 21.9 MB) and a flat ffmpeg peak (~323 MB, set by the
+  encoder canvas), wall time roughly linear. Over-asking is material-bound, not
+  budget-bound: a 4 h target on a 10-minute match returns the same 21 clips /
+  168 s as 240 s, so the new knob opens no unbounded growth axis.
+
+
+
+## [Unreleased] — 2026-09-20 night session #16 (sign-in visual pass, budget fix)
+
+### Fixed
+- **The sign-in page could lock its own address out.** The remote UI's
+  background health poll runs without a token, and every credentialless 401
+  was charged against the per-peer brute-force budget: leaving the sign-in
+  dialog open for five minutes (measured, in a real browser over a real LAN
+  bind) spent all 20 rejections, and then the *correct* token got 429 too.
+  The budget now charges only requests that presented a credential — a wrong
+  bearer token, a wrong scheme, a stale session cookie or echo header. A
+  credentialless request cannot authenticate and learns nothing per attempt,
+  so it keeps its plain 401 forever without spending anything; the guessing
+  budget keeps punishing exactly what it punished before (verified at the
+  binary level: 25 credentialless polls → 401, correct token → 200; 20 wrong
+  tokens → 429).
+
+### Measured
+
 - **The sign-in panel's visual pass is done** (the last item of the
   remote-access roadmap entry that a 0×0 harness viewport could not close):
   a real browser at 1280×800 and 390×844 over a non-loopback bind with a
@@ -49,7 +70,6 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   succeeds to the full three-pane UI, and the narrow viewport wraps without
   horizontal scroll. The browser drive itself found the budget defect above —
   which is what the pass was for.
-
 ## [Unreleased] — 2026-09-20 night session #15 (reel length, ops runbook)
 
 ### Added
