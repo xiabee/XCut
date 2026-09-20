@@ -32,6 +32,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   logic verified on the Linux node), and the scope comment states what the
   reported number actually measures.
 
+### Added
+- **`resource.ffmpeg_max_memory_mb` — a per-ffmpeg memory cap** (phase-4
+  "sandbox options for FFmpeg", second rung). The kill-on-close job object
+  every child already joins now also enforces `JOB_OBJECT_LIMIT_PROCESS_MEMORY`
+  when the knob is set, so a runaway encoder dies of allocation failure
+  instead of eating the machine, and the render fails with ffmpeg's own
+  error. Opt-in and 0 (uncapped) by default: a tight cap fails real
+  high-resolution renders, not just runaway ones, so the default keeps every
+  workload that worked before working. Windows-effective; other platforms
+  ignore it (the context-kill path stays the cleanup mechanism there).
+
 ### Fixed
 - **`phase=done` used to be published before the scratch archive was removed.**
   The installer's cleanup sat in a `defer` on the enclosing function, so a

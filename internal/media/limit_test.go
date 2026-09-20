@@ -50,6 +50,24 @@ func TestAcquireRespectsLimitAndCancellation(t *testing.T) {
 	}
 }
 
+// The memory cap travels as MB through config and lands in the media layer
+// byte-exact; negatives clamp to uncapped rather than wrap around when the
+// MB→bytes conversion happens in the job-object layer.
+func TestProcessMemoryLimitClampsNegatives(t *testing.T) {
+	SetProcessMemoryLimitMB(0)
+	if got := processMemoryLimitMB(); got != 0 {
+		t.Fatalf("default memory limit = %d, want 0 (uncapped)", got)
+	}
+	SetProcessMemoryLimitMB(1024)
+	if got := processMemoryLimitMB(); got != 1024 {
+		t.Fatalf("memory limit = %d, want 1024", got)
+	}
+	SetProcessMemoryLimitMB(-5)
+	if got := processMemoryLimitMB(); got != 0 {
+		t.Fatalf("negative memory limit = %d, want clamped to 0", got)
+	}
+}
+
 // TestRunSerializesUnderLimit proves Run honors the process cap with real
 // processes: with a limit of 1, two helper invocations must not overlap in
 // time. The helper (this same test binary, re-executed by Run) records its

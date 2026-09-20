@@ -140,6 +140,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	log := newLogger(stderr, level)
 	media.SetProcessLimit(cfg.Resource.MaxFFmpegProcesses)
+	// Must land before the first exec: the job object reads the cap once,
+	// when the kernel handle is created.
+	media.SetProcessMemoryLimitMB(cfg.Resource.FFmpegMaxMemoryMB)
 
 	a := &App{
 		Ctx:     ctx,

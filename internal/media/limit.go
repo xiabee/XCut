@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -17,7 +18,30 @@ import (
 var (
 	limiterMu sync.Mutex
 	limiter   chan struct{}
+
+	// ffmpegMemoryLimitMB is the per-process memory cap handed to the Windows
+	// job object (0 = uncapped). Stored before any child can start: the CLI
+	// wires it from config before the first exec, and ensureJob reads it once
+	// when the job object is created.
+	ffmpegMemoryLimitMB atomic.Int64
 )
+
+// SetProcessMemoryLimitMB configures the per-ffmpeg memory cap applied by the
+// Windows job object (see jobobject_windows.go). 0 or less means uncapped,
+// which is the default: a cap that is too tight fails real renders with
+// allocation errors, so capping is opt-in. On other platforms this is a
+// no-op — the cap surfaces only where the OS backstop exists.
+func SetProcessMemoryLimitMB(mb int) {
+	if mb < 0 {
+		mb = 0
+	}
+	ffmpegMemoryLimitMB.Store(int64(mb))
+}
+
+// processMemoryLimitMB reports the configured per-process cap in MB.
+func processMemoryLimitMB() int64 {
+	return ffmpegMemoryLimitMB.Load()
+}
 
 // SetProcessLimit configures the global external-process concurrency cap.
 // Values < 1 disable limiting (not recommended; tests use this).

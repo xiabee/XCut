@@ -62,7 +62,25 @@ type jobObjectExtendedLimit struct {
 const (
 	jobObjectExtendedLimitInformation = 9
 	jobObjectLimitKillOnJobClose      = 0x2000
+	jobObjectLimitProcessMemory       = 0x100
 )
+
+// buildJobLimits assembles the extended limit information for the job. The
+// kill-on-close flag is always set (the cleanup backstop is the job's whole
+// point); a positive memoryCapMB additionally sets JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+// so a runaway encoder dies of allocation failure instead of eating the
+// machine — phase-4 "sandbox options for FFmpeg" (ROADMAP), second rung. The
+// cap is opt-in (config resource.ffmpeg_max_memory_mb, 0 = uncapped) because
+// a tight cap fails real high-resolution renders, not just runaway ones.
+func buildJobLimits(memoryCapMB int64) *jobObjectExtendedLimit {
+	info := &jobObjectExtendedLimit{}
+	info.Basic.LimitFlags = jobObjectLimitKillOnJobClose
+	if memoryCapMB > 0 {
+		info.Basic.LimitFlags |= jobObjectLimitProcessMemory
+		info.ProcessMemoryLimit = uintptr(memoryCapMB) * 1024 * 1024
+	}
+	return info
+}
 
 func ensureJob() (syscall.Handle, error) {
 	jobOnce.Do(func() {
@@ -71,11 +89,10 @@ func ensureJob() (syscall.Handle, error) {
 			jobInitErr = errors.New("CreateJobObjectW failed")
 			return
 		}
-		info := jobObjectExtendedLimit{}
-		info.Basic.LimitFlags = jobObjectLimitKillOnJobClose
+		info := buildJobLimits(processMemoryLimitMB())
 		r, _, _ := procSetInformationJobObject.Call(
 			h, jobObjectExtendedLimitInformation,
-			uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info))
+			uintptr(unsafe.Pointer(info)), unsafe.Sizeof(*info))
 		// LazyProc's error is noise on success; the boolean return (r) is
 		// the real verdict.
 		if r == 0 {

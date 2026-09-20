@@ -57,8 +57,9 @@ type Resource struct {
 	MaxFFmpegProcesses  int      `json:"max_ffmpeg_processes"`
 	MaxAnalysisWorkers  int      `json:"max_analysis_workers"`
 	MaxRenderWorkers    int      `json:"max_render_workers"`
-	FFmpegThreads       int      `json:"ffmpeg_threads"` // per ffmpeg/ffprobe process; 0 = default (2)
-	ProxyThreads        int      `json:"proxy_threads"`  // one-shot proxy encode; 0 = inherit ffmpeg_threads
+	FFmpegThreads       int      `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
+	FFmpegMaxMemoryMB   int      `json:"ffmpeg_max_memory_mb"` // per-process memory cap via the Windows job object; 0 = uncapped
+	ProxyThreads        int      `json:"proxy_threads"`        // one-shot proxy encode; 0 = inherit ffmpeg_threads
 	MaxCacheGB          float64  `json:"max_cache_gb"`
 	MaxTempGB           float64  `json:"max_temp_gb"`
 	MaxProxyGB          float64  `json:"max_proxy_gb"`          // analysis-proxy disk budget
@@ -270,6 +271,11 @@ func Resolve(cfg *Config) error {
 	r.MaxRenderWorkers = floor(r.MaxRenderWorkers, 1, 1)
 	if r.FFmpegThreads < 0 {
 		r.FFmpegThreads = 2
+	}
+	// A negative memory cap is a typo (the user meant "uncapped" or meant a
+	// real number), not a wish for one — 0 is the documented off switch.
+	if r.FFmpegMaxMemoryMB < 0 {
+		r.FFmpegMaxMemoryMB = 0
 	}
 	if r.ProxyThreads < 0 {
 		r.ProxyThreads = 0 // 0 = inherit ffmpeg_threads

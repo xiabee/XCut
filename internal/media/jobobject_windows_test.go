@@ -57,3 +57,32 @@ func TestEnsureJobKillOnCloseFlag(t *testing.T) {
 		t.Fatalf("ensureJob not idempotent: %v/%v %v/%v", h1, h2, err1, err2)
 	}
 }
+
+// The memory cap must switch the flag on and carry the byte-exact limit —
+// a MB/bytes slip here would cap at the wrong scale, and a forgotten flag
+// would silently keep encoders uncapped. Zero stays uncapped: the default
+// must not start failing high-resolution renders that never asked for a cap.
+func TestBuildJobLimitsMemoryCap(t *testing.T) {
+	info := buildJobLimits(0)
+	if info.Basic.LimitFlags&jobObjectLimitProcessMemory != 0 {
+		t.Error("cap 0 must leave the process-memory flag off")
+	}
+	if info.Basic.LimitFlags&jobObjectLimitKillOnJobClose == 0 {
+		t.Error("cap 0 lost the kill-on-close flag")
+	}
+
+	info = buildJobLimits(2048)
+	if info.Basic.LimitFlags&jobObjectLimitProcessMemory == 0 {
+		t.Fatal("positive cap did not set the process-memory flag")
+	}
+	if info.Basic.LimitFlags&jobObjectLimitKillOnJobClose == 0 {
+		t.Error("memory cap lost the kill-on-close flag")
+	}
+	const mb = 1024 * 1024
+	if info.ProcessMemoryLimit != 2048*mb {
+		t.Errorf("ProcessMemoryLimit = %d, want %d", info.ProcessMemoryLimit, 2048*mb)
+	}
+	if info.JobMemoryLimit != 0 {
+		t.Error("per-job limit set unintentionally; the cap is per process")
+	}
+}

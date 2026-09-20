@@ -73,6 +73,30 @@ func TestResolveRepairsBadResource(t *testing.T) {
 	}
 }
 
+// The memory cap is opt-in: 0 stays off, a real cap passes through untouched
+// (the media layer owns the byte math), and a negative value is a typo —
+// repaired to off rather than misread as "unlimited" by a later bound check.
+func TestResolveFFmpegMemoryCap(t *testing.T) {
+	cfg := Default()
+	if cfg.Resource.FFmpegMaxMemoryMB != 0 {
+		t.Fatalf("default FFmpegMaxMemoryMB = %d, want 0 (uncapped)", cfg.Resource.FFmpegMaxMemoryMB)
+	}
+	cfg.Resource.FFmpegMaxMemoryMB = 4096
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.FFmpegMaxMemoryMB != 4096 {
+		t.Fatalf("FFmpegMaxMemoryMB = %d, want 4096 preserved", cfg.Resource.FFmpegMaxMemoryMB)
+	}
+	cfg.Resource.FFmpegMaxMemoryMB = -1
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.FFmpegMaxMemoryMB != 0 {
+		t.Fatalf("negative cap = %d, want repaired to 0", cfg.Resource.FFmpegMaxMemoryMB)
+	}
+}
+
 func TestLoadInvalidFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
