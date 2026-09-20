@@ -28,10 +28,19 @@ Then skim `docs/DECISIONS.md` (why the architecture looks like this) and
    editing decisions materialize as a validated `timeline.Timeline`.
 6. **`xcut serve` idle CPU ≈ 0 and idle RAM < 100 MB** are product goals —
    no background scanning loops, no eager work.
+7. **No visible windows from tests or smoke steps.** Console children inherit the
+   parent console; anything that needs a real window or a browser hides or skips
+   under `CI` / `XNIGHTOPS_CI`.
+8. **CI goes through the control plane**: `xnightops ci run XCut` locally and
+   `--node win-devops` for remote acceptance (the laptop stays on the fast
+   gate). Running `scripts/check.ps1` directly bypasses the secret gate, the
+   silent scan and the commit-level acceptance record — if it is used at all,
+   label its result as a self-run channel, never as the control plane's.
 
 ## Commands
 
 ```sh
+# CI entry (rule 8): xnightops ci run XCut  |  --node win-devops for acceptance
 go build ./... && go vet ./... && go test ./...     # Go (CI runs with -race)
 cd crates/xcut-worker-media && cargo clippy --all-targets -- -D warnings \
   && cargo fmt --check && cargo test                # Rust
