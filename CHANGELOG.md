@@ -20,6 +20,18 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   tokens → 429).
 
 ### Measured
+- **Gate hardening (from the control plane's secret-scan blind-spot audit).**
+  `scripts/check.ps1` now *fails* when gitleaks cannot be found instead of
+  warning and continuing to `gate: PASS`; both gates print the scan scope as a
+  path count and refuse a zero-file scope; a failing working-tree scan names the
+  offending file (JSON report on stdout) rather than only "leaks found: 1".
+  Measured on a `.git`-less snapshot — before: the scan ran but reported no
+  scope (284 paths present, count not shown); after: `gitleaks (working tree,
+  233 paths under .)`, and a planted PEM key is named as
+  `docs/planted.pem:private-key:1`. `scripts/check.sh` (the Linux leg) used to
+  print `gate: PASS` having never scanned for secrets; its verdict line now
+  carries the scan status, verified on the node as
+  `PASS (secret scan: NOT RUN (gitleaks absent …))`.
 - **The sign-in panel's visual pass is done** (the last item of the
   remote-access roadmap entry that a 0×0 harness viewport could not close):
   a real browser at 1280×800 and 390×844 over a non-loopback bind with a

@@ -51,6 +51,18 @@ function Invoke-Step([string]$Name, [scriptblock]$Body) {
 }
 
 if ($gitleaks) {
+    # Scope is reported with a file count rather than a bare "clean": a scan
+    # that silently covered nothing looks identical to one that found nothing,
+    # and that is exactly the failure mode found in a sibling project's gate
+    # (an empty file list still printed "secret scan clean (0 tracked files)").
+    # .git and .tools are excluded because gitleaks honours .gitignore, so they
+    # are not what it reads; a zero scope is refused rather than called clean.
+    $scanPaths = (Get-ChildItem -Recurse -File -Force . -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '\\\.git\\' -and $_.FullName -notmatch '\\\.tools\\' } |
+        Measure-Object).Count
+    if ($scanPaths -eq 0) {
+        throw "gitleaks: scan scope is empty — refusing to call that clean"
+    }
     if (Test-Path ".git") {
         Invoke-Step "gitleaks (git history)" { & $gitleaks git . --no-banner --redact }
     }
@@ -58,9 +70,16 @@ if ($gitleaks) {
     # uncommitted edit is invisible to a git scan and is exactly what a
     # pre-commit gate must catch. CI snapshots carry no .git dir, so on
     # nodes this is the only scan — still a real gate.
-    Invoke-Step "gitleaks (working tree)" { & $gitleaks dir . --no-banner --redact }
+    # The JSON report goes to stdout so a failing scan names the offending file in
+# the gate log; a clean run prints nothing extra. Without it the gate says
+# "leaks found: 1" and leaves everyone to hunt.
+Invoke-Step "gitleaks (working tree, $scanPaths paths under .)" {
+    & $gitleaks dir . --no-banner --redact --report-format json --report-path -
+}
 } else {
-    Write-Host "== gitleaks: NOT FOUND on PATH or .tools/bin — secret scan SKIPPED (install it: https://github.com/zricethezav/gitleaks)"
+    # A security step that cannot run is a failed gate, not a warning: the run
+    # would otherwise continue to "== gate: PASS" with nothing scanned.
+    throw "gitleaks not found on PATH or .tools/bin — refusing to claim the tree is secret-clean. Install it: https://github.com/zricethezav/gitleaks"
 }
 
 Invoke-Step "gofmt" {

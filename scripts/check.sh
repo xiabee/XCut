@@ -37,6 +37,38 @@ else
     echo "== ffmpeg: not on PATH (integration tests will skip)"
 fi
 
+# Secret scanning. This leg used to say nothing about secrets while still
+# printing "gate: PASS" — a reader could not tell that no scan had run.
+# gitleaks is optional here (the control plane scans commits before dispatch),
+# but its absence is now stated in the same breath as the verdict.
+GK=""
+if command -v gitleaks >/dev/null 2>&1; then
+    GK=gitleaks
+elif [ -x ".tools/bin/gitleaks" ]; then
+    GK="$(pwd)/.tools/bin/gitleaks"
+elif [ -x ".tools/bin/gitleaks.exe" ]; then
+    GK="$(pwd)/.tools/bin/gitleaks.exe"
+fi
+SECRET_STATUS="NOT RUN (gitleaks absent — commits are scanned by the control plane, this script does not)"
+if [ -n "$GK" ]; then
+    # Scope count excludes .git and .tools: gitleaks honours .gitignore, so
+    # those are not what it reads. The number is a floor on coverage, and a
+    # zero here would mean the scan silently covered nothing.
+    scan_paths=$(find . -type f -not -path './.git/*' -not -path './.tools/*' 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$scan_paths" -eq 0 ]; then
+        echo "gitleaks: scan scope is empty — refusing to call that clean" >&2
+        exit 1
+    fi
+    if [ -d .git ]; then
+        echo "== gitleaks (git history)"
+        "$GK" git . --no-banner --redact
+    fi
+    echo "== gitleaks (working tree, $scan_paths paths under .)"
+    # JSON report on stdout: a failing scan must name the file in the gate log.
+    "$GK" dir . --no-banner --redact --report-format json --report-path -
+    SECRET_STATUS="ran over $scan_paths paths"
+fi
+
 echo "== gofmt"
 unformatted=$(gofmt -l internal cmd)
 if [ -n "$unformatted" ]; then
@@ -103,4 +135,4 @@ if [ "$mode" = "full" ]; then
     fi
 fi
 
-echo "== gate ($mode): PASS"
+echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS)"
