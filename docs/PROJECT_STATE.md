@@ -380,6 +380,15 @@ checkpoint
   as a default-preserving, validated, floored knob — a tuning surface for other
   sources (a broadcast with shorter dense spans), not an improvement here.
   The court ROI is per-asset (UI picker, assets.motion_roi).
+- **End-to-end reel acceptance (session #14, real match)**: `import → roi →
+  analyze (29.0 s) → timeline (8 clips, 60.0 s) → render (14.2 MB in 9.3 s)`,
+  output probed back at 60.02 s. The reel was then inspected frame-by-frame
+  (one frame per 2 s, scoreboard crop) rather than trusted from the metric:
+  every clip sits inside a single score state, the score advances only across
+  clip boundaries, and the reel traverses 0:0 → 20:19 — first point to match
+  point. A suspected defect (the final clip truncated to 4 s) turned out to be
+  the lowest-scoring of the eight, i.e. intended budget behavior, so nothing
+  was changed for it.
 - Render publish vs holds: a client streaming the previous output no
   longer blocks a re-render (share-all downloads + POSIX delete + rename,
   session #7). An EXTERNAL program that opens without the Windows
