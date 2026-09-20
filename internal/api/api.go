@@ -46,6 +46,16 @@ type Server struct {
 	// network, because config.Resolve refuses a remote bind without a token.
 	AuthToken string
 
+	// gate is the process-lifetime authentication state: the brute-force
+	// failure budget and (via Sessions) the remote-UI sessions. It is built
+	// once per Server rather than per Handler() call, because a gate rebuilt
+	// for each request would forget every failed attempt and every session —
+	// silently, with all the security properties still looking implemented in
+	// a unit test. Handler() is called once by serve today; this makes that
+	// an invariant instead of a habit.
+	gateOnce sync.Once
+	gateInst *authGate
+
 	// sessions holds the remote-UI login sessions (D12 follow-up). Lazily
 	// created behind sessMu so a Server built as a struct literal needs no
 	// new wiring; in-memory by design, so a restart signs remote UIs out.
@@ -166,7 +176,16 @@ func (s *Server) Handler() http.Handler {
 	s.RegisterExtensionEndpoints(mux)
 	registerStatic(mux)
 
-	return newAuthGate(s.AuthToken, s.Log, s.Sessions()).authenticate(mux)
+	return s.gate().authenticate(mux)
+}
+
+// gate builds the authentication gate once, on first use, so its failure
+// budget and session table outlive any single request.
+func (s *Server) gate() *authGate {
+	s.gateOnce.Do(func() {
+		s.gateInst = newAuthGate(s.AuthToken, s.Log, s.Sessions())
+	})
+	return s.gateInst
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

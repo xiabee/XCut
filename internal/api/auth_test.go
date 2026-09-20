@@ -271,3 +271,51 @@ func TestAuthGateNeverLogsTheToken(t *testing.T) {
 		t.Errorf("log lost the peer address an operator needs: %s", logged)
 	}
 }
+
+// The gate must be per-process, not per-Handler(). A gate rebuilt for each
+// request would forget every failed attempt (no brute-force budget) and every
+// signed-in session — and every unit test would still pass, because each test
+// builds one handler. This asserts the state is shared across Handler() calls.
+func TestAuthGateStateSurvivesHandlerRebuilds(t *testing.T) {
+	s := testServer(t)
+	s.AuthToken = testToken
+	peer := "203.0.113.77:41077"
+
+	call := func(h http.Handler, auth string) int {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+		req.RemoteAddr = peer
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	h1 := s.Handler()
+	for i := 0; i < authMaxFailures; i++ {
+		if got := call(h1, "Bearer wrong-wrong-wrong-wrong-wrong"); got != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: %d, want 401", i, got)
+		}
+	}
+	// A freshly built handler must inherit the budget the first one spent.
+	h2 := s.Handler()
+	if got := call(h2, "Bearer "+testToken); got != http.StatusTooManyRequests {
+		t.Fatalf("rebuilt handler forgot the failure budget: %d, want 429", got)
+	}
+	// ...and the sessions it issued.
+	st := s.Sessions()
+	id, ok := st.issue()
+	if !ok {
+		t.Fatal("session issue refused with room left")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req.RemoteAddr = "203.0.113.78:41078"
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: id})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a session issued through the server was not honored by a rebuilt handler: %d", rec.Code)
+	}
+}
