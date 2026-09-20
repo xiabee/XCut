@@ -3,9 +3,12 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-20 (night) — session #16: the sign-in panel's visual pass is
-done (real browser, real viewports), and the drive found and fixed a budget
-defect that let the sign-in page lock its own address out
+Updated: 2026-09-21 (early) — session #17: the secret-scan gate now says what
+it actually scanned (and fails rather than warning), the Tailscale recipe is
+measured on a real tailnet peer with the published arm64 binary, and a
+`phase=done`-before-cleanup race in the FFmpeg installer was found by running
+the gate on a host without FFmpeg. Session #16 (sign-in visual pass + the budget
+defect it caught) is unchanged below.
 
 ## Version / HEAD
 
