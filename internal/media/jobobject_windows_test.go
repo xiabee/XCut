@@ -125,14 +125,30 @@ func TestJobObjectMemoryCapKillsRunawayChild(t *testing.T) {
 	}
 	attachTo(h, cmd.Process)
 
-	waitErr := cmd.Wait()
+	// The wait is hard-bounded: how a Go runtime behaves at the commit limit
+	// is OS- and machine-dependent (locally it dies instantly; a node with a
+	// different pagefile story may stall instead), and a hung child must
+	// become a fast, named failure — not a 10-minute go-test timeout that
+	// took down a remote gate (measured, win-devops 2026-09-21).
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	select {
+	case waitErr = <-done:
+	case <-time.After(60 * time.Second):
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		marks := readMarksOrEmpty(markFile)
+		t.Fatalf("child hung past 60 s under the cap and had to be killed; "+
+			"treat as an OS-level cap anomaly (marks=%d)", marks)
+	}
 	marks := readMarksOrEmpty(markFile)
 	switch {
 	case marks == 0:
 		t.Fatalf("child died before its first 32 MB block landed — it never ran, so the test proves nothing (waitErr=%v)", waitErr)
 	case waitErr == nil:
-		t.Fatalf("child completed all %d allocations (~1 GB) past a 128 MB cap; the cap did not bind", marks)
-	case marks > 28:
+		t.Fatalf("child completed all %d allocations (~320 MB) past a 128 MB cap; the cap did not bind", marks)
+	case marks > 8:
 		t.Fatalf("child survived %d × 32 MB allocations past a 128 MB cap; the cap did not bind", marks)
 	}
 }
@@ -149,17 +165,18 @@ func attachTo(h syscall.Handle, p *os.Process) {
 	procAssignToJobObject.Call(uintptr(h), ph)
 }
 
-// TestHelperAllocChild allocates in 8 MB steps, marking each step, until
-// killed (expected under the capped job) or done (failure signal to the
-// parent). Only runs when the parent re-executes this binary with the env
-// var set.
+// TestHelperAllocChild allocates 32 MB blocks (10 × 32 MB ≈ 320 MB), marking
+// each step, until killed (expected under the capped job) or done (failure
+// signal to the parent — 320 MB is far past the 128 MB cap, so a clean exit
+// means the cap never bound). Only runs when the parent re-executes this
+// binary with the env var set.
 func TestHelperAllocChild(t *testing.T) {
 	if os.Getenv("XCUT_TEST_ALLOC_CHILD") == "" {
 		return
 	}
 	markFile := os.Getenv("XCUT_TEST_MARK_FILE")
 	var live [][]byte
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		block := make([]byte, 32*1024*1024)
 		for j := 0; j < len(block); j += 4096 {
 			block[j] = byte(j) // touch every page: reserves do not fail, commits do
