@@ -541,12 +541,25 @@ choice, which exposed and fixed a diversity quota that silently truncated it
    shipped binary: a session issued before a restart returns 200, the same id
    returns 401 after it. What is left here is (b): the panel's *pixel* layout,
    which the 0×0 harness still cannot show anyone.
-2. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
-   has the badminton worked example — the burned-in scoreboard makes
-   rally annotation mechanical (~41 rallies), a manifest template sits in
-   the gitignored /eval/, and every provisional rally constant
-   (floor ratio, P75, snap range) plus the climax-guarantee question is
-   waiting on exactly these numbers.
+2. Real-footage evaluation — **one match is done, and that is the limit of what
+   can be concluded.** 43 rallies were derived from the burned-in scoreboard and
+   the provisional constants swept against them (docs/EVAL.md carries the
+   negatives). What remains is not more tuning on this footage: every
+   audio-driven idea dies on the same wall (shared six-court hall), and the
+   ceiling arithmetic says the 60 s default is already at 88% of what its budget
+   allows. The next useful measurement needs a *different* input — ideally a
+   single-court recording, so "our strokes" and "the hall's strokes" stop being
+   the same signal. Owner-supplied footage, or the vision sidecar.
+3. Two decisions that are the owner's, not mine, and both block work:
+   **(a) arm64 in CI** — Kylin's distro FFmpeg cannot run the suite (ffprobe JSON
+   corruption + no `xfade`), so arm64 is compile-verified and artifact-smoke-
+   tested only. Fixing it means pinning a stock arm64 build the way the Windows
+   one-click pins Gyan.dev with a SHA256; that was not done unilaterally.
+   **(b) release cadence** — v0.1.8-alpha shipped tonight, and the reel-length
+   override plus the quota fix that makes it work are already on `main`. Whether
+   that becomes v0.1.9-alpha now or rides along with the next batch is a
+   packaging call (and packaging is laptop load the control plane asked to keep
+   down).
 3. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
