@@ -179,10 +179,27 @@ an evening here.
 | clip anchored at median onset | 0.789 | loses to start-anchoring |
 | clip anchored at motion peak | 0.770 | loses — a rally's peak lands at the point's end, pushing the window over the boundary |
 | score onsets corroborated by ROI motion | 0.886, **bit-identical scores** | no effect: within a rally the players are continuously moving, so ROI motion rarely dips below `mean + 0.25·(peak−mean)` and corroboration degenerates to raw counting |
+| `max_clip_duration` 11 s | P 0.836, R 0.106, ranges 6 | worse: longer windows cannot fit a 10.5 s median rally, so every clip spills past its boundary — and the 60 s budget then holds 6 clips instead of 8 |
+| `max_clip_duration` 14 s | P 0.822, R 0.104, ranges **4** | worse again, and it loses distinct rallies. **8 s remains the measured optimum**, like `rally_chunk`'s 30 s default |
+
+**Where the committed selection's remaining error actually is** (decomposing the
+60 s reel into "inside an annotated rally" / "adjacent to its own rally" / "far
+from any rally"): 53.2 s inside, 6.8 s adjacent, **0.0 s far**. Every clip is
+anchored in a real rally; the loss is entirely the few seconds a detected
+segment carries past the point it came from. That also bounds what is left to
+win: with 473 s of rally time in the match, a 60 s reel can reach at most
+recall 60/473 = **0.127**, and the committed state measures **0.112** — 88% of
+the budget ceiling. Raising recall is therefore a *duration* decision
+(`target_duration`, overridable per workspace style), not an algorithm one.
+Trimming the 6.8 s of adjacency would need onset timestamps inside the segment,
+which `event.Segment` does not carry (only aggregates) — and the one signal
+that could substitute for it inside a chunk, local density, was already
+measured above and picks the neighbouring court's rally instead.
 
 Read together: **the remaining error is not reachable by re-weighting these
-signals.** Precision is limited by clip windows crossing a point boundary, and
-coverage is limited by the budget (8 clips × 8 s against 41 rallies of ~10 s).
+signals.** Precision is limited by clip windows crossing a point boundary (the
+decomposition above: 11% adjacent, 0% wrongly picked), and coverage is limited
+by the reel budget, not by selection quality.
 Separating our strokes from the hall's needs to know *which* strokes are ours —
 that is the vision sidecar's job (`frame_describe`), not a threshold.
 

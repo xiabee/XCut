@@ -402,10 +402,19 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
   budget (8 clips × 8 s cannot represent 41 rallies of ~10 s), so representing
   more of a match means either a longer reel or splitting long segments into
   several scored windows — the latter needs a per-window activity profile on
-  `event.Segment`, which does not exist yet; (c) the PROVISIONAL constants were
+  `event.Segment`, which does not exist yet; **and the arithmetic now says how
+  little is left there**: 473 s of rally time in the match against a 60 s reel
+  bounds recall at 0.127, and the committed state measures 0.112, i.e. 88% of
+  what the budget allows. Decomposing the reel (inside a rally / adjacent to
+  its own rally / far from any) gives 53.2 s / 6.8 s / **0.0 s** — no clip is a
+  wrong pick, so what remains is boundary coarseness, which is a
+  segmentation-resolution problem (vision), not a scoring one; (c) the PROVISIONAL constants were
   then swept against this manifest and **none of them binds usefully** —
   rally_pad and merge_gap are inert in rally mode, min_hits never binds below
-  ~60 on this footage, `rally_chunk` measures best at its 30 s default, and
+  ~60 on this footage, `rally_chunk` measures best at its 30 s default,
+  `max_clip_duration` best at its 8 s default (11 s and 14 s lose precision *and*
+  distinct rallies — a longer window cannot fit a 10.5 s median rally, so it
+  spills, and the budget then holds fewer clips), and
   scoring onsets corroborated by ROI motion is bit-for-bit a no-op because
   players move continuously inside a rally. The sweep and its null results are
   recorded in docs/EVAL.md so nobody re-spends the evening; the remaining error
