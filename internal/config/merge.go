@@ -43,6 +43,9 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Resource.FFmpegThreads != 0 {
 		out.Resource.FFmpegThreads = layer.Resource.FFmpegThreads
 	}
+	if layer.Resource.FFmpegMaxMemoryMB != 0 {
+		out.Resource.FFmpegMaxMemoryMB = layer.Resource.FFmpegMaxMemoryMB
+	}
 	if layer.Resource.MaxCacheGB != 0 {
 		out.Resource.MaxCacheGB = layer.Resource.MaxCacheGB
 	}
