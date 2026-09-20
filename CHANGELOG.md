@@ -44,6 +44,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   ignore it (the context-kill path stays the cleanup mechanism there).
 
 ### Fixed
+- **A reel length below the style's minimum clip fails with the real reason.**
+  `--duration` under the style's `min_clip_duration` could not hold a single
+  candidate, so the run burned a full analysis pass and died with the generic
+  "style constraints rejected all events"; the check now fires where both
+  numbers are at hand ("reel length 1s is shorter than style "ktv_mv" minimum
+  clip (2s)") and covers every entry point through the pipeline.
 - **`phase=done` used to be published before the scratch archive was removed.**
   The installer's cleanup sat in a `defer` on the enclosing function, so a
   client polling status could observe a finished install with
