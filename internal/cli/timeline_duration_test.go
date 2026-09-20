@@ -1,10 +1,9 @@
 package cli
 
 import (
-	"strconv"
+	"bytes"
+	"strings"
 	"testing"
-
-	"github.com/xiabee/XCut/internal/pipeline"
 )
 
 // --duration is accepted in exactly the range the pipeline accepts, and empty
@@ -42,23 +41,39 @@ func TestParseDurationFlag(t *testing.T) {
 	}
 }
 
-// The CLI must not promise a range the pipeline then refuses, nor refuse one the
-// pipeline would have accepted — the two bounds live in different packages, so
-// agreement is a contract that can drift silently. This is the behavior the
-// removed "is the constant 4 hours?" test only pretended to protect.
-func TestCLIDurationAgreesWithPipelineBound(t *testing.T) {
-	for _, v := range []string{
-		"0", "1", "5", "60", "3600", "10800", "14400", "14401", "20000", "86400",
-	} {
-		f, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			t.Fatalf("fixture %q should parse: %v", v, err)
-		}
-		_, cliErr := parseDurationFlag(v)
-		pipeErr := pipeline.TimelineRequest{Style: "generic_highlight", Duration: f}.Validate()
-		if (cliErr == nil) != (pipeErr == nil) {
-			t.Errorf("--duration %s: CLI accepted=%v but pipeline accepted=%v — the two bounds disagree",
-				v, cliErr == nil, pipeErr == nil)
-		}
+// The CLI and the pipeline must refuse the same durations. Drift shows up as a
+// different *author* of the error: the CLI quoting --duration for a value the
+// pipeline would have accepted, or staying silent about one the pipeline
+// refuses. Both are caught by running the real command, so nothing about
+// validation is exported just to be comparable.
+func TestDurationBoundRefusedByCLIWithItsOwnMessage(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	var stdout, stderr bytes.Buffer
+	drive := func(args ...string) int {
+		stdout.Reset()
+		stderr.Reset()
+		return Run(args, &stdout, &stderr)
+	}
+	if code := drive("project", "create", "bound"); code != 0 {
+		t.Fatalf("project create: %s%s", stdout.String(), stderr.String())
+	}
+
+	// Above the ceiling: the CLI itself must stop it, before any job is queued.
+	if code := drive("timeline", "bound", "--duration", "14401"); code == 0 {
+		t.Fatal("--duration 14401 accepted; the bound is not enforced on the way in")
+	} else if !strings.Contains(stderr.String(), "--duration") {
+		t.Fatalf(`14401 was refused by someone other than the CLI (the pipeline would accept it): %s`, stderr.String())
+	}
+
+	// At the ceiling: the CLI must forward it. An empty project then fails on
+	// material, which is the proof the value travelled rather than being
+	// rejected at the door.
+	if code := drive("timeline", "bound", "--duration", "14400"); code == 0 {
+		t.Fatal("expected the empty project to fail on material, not to succeed")
+	} else if msg := stderr.String(); strings.Contains(msg, "--duration") {
+		t.Fatalf("CLI refused a duration the pipeline supports: %s", msg)
+	} else if !strings.Contains(msg, "no assets") {
+		t.Fatalf("unexpected failure for an in-range duration: %s", msg)
 	}
 }

@@ -34,7 +34,7 @@ func TestTimelineDurationValidation(t *testing.T) {
 		{"NaN rejected", TimelineRequest{Style: "generic_highlight", Duration: math.NaN()}, false},
 		{"Inf rejected", TimelineRequest{Style: "generic_highlight", Duration: math.Inf(1)}, false},
 	} {
-		err := tc.req.Validate()
+		err := tc.req.validate()
 		if tc.ok && err != nil {
 			t.Errorf("%s: got %v, want accepted", tc.name, err)
 		}
