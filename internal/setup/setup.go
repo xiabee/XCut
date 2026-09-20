@@ -264,6 +264,14 @@ func (in *Installer) runErr(ctx context.Context) error {
 	if err := in.Verify(ffprobePath); err != nil {
 		return xcerr.E(xcerr.CodeFFmpegFailure, "installed ffprobe did not verify", err)
 	}
+	// Remove the scratch archive *before* publishing success. The deferred
+	// cleanup below still covers the error paths, but leaving it to the return
+	// meant a client polling status could see phase=done while the zip was
+	// still on disk — the UI's "finished, nothing left behind" claim was
+	// briefly false, and a test that polls exactly that window caught it.
+	if in.ScratchDir != "" {
+		_ = os.Remove(zipPath)
+	}
 	in.succeed(ffmpegPath, ffprobePath)
 	return nil
 }
