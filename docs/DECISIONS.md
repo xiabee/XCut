@@ -181,7 +181,11 @@ the double-clicked exe keep working with zero setup.
   an attempt was) and are logged without the token or the supplied header.
 - Failed attempts are rate limited per peer (20 per 5 min) with a bounded
   tracker, because the gate is a new growth axis and AGENTS.md rule 4 has no
-  exceptions.
+  exceptions. (Refined 2026-09-21, session #16: a "failed attempt" is a
+  request that *presented* a credential — a wrong token, a wrong scheme, a
+  stale session id. A credentialless request cannot be a guess, so it is not
+  charged; otherwise the sign-in page's own background health poll locked its
+  peer out, and the correct token got 429 afterwards — measured live.)
 - `/api/v1/*` is gated; the embedded UI shell is not, since it carries no user
   data and a remote operator must be able to load it in order to be asked.
 
