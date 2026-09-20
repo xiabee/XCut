@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -248,6 +249,19 @@ func cmdDoctor(a *App, args []string) error {
 		add("API auth", "OPTIONAL", "token configured but listen is loopback; local clients stay unauthenticated by design")
 	default:
 		add("API auth", "OPTIONAL", "no token; loopback only, remote bind refused")
+	}
+
+	// Process sandbox posture: what bounds a runaway ffmpeg child. The
+	// kill-on-close job is Windows-only; the memory cap is opt-in, so its
+	// absence is the configured default, reported as OPTIONAL.
+	if runtime.GOOS == "windows" {
+		if mb := a.Cfg.Resource.FFmpegMaxMemoryMB; mb > 0 {
+			add("Process sandbox", "OK", fmt.Sprintf("ffmpeg children join a kill-on-close job with a %d MB per-process memory cap (resource.ffmpeg_max_memory_mb)", mb))
+		} else {
+			add("Process sandbox", "OPTIONAL", "ffmpeg children join a kill-on-close job; memory uncapped — set resource.ffmpeg_max_memory_mb to bound runaway encoders")
+		}
+	} else {
+		add("Process sandbox", "OPTIONAL", "job-object sandbox is Windows-only; cleanup relies on the context-kill path")
 	}
 
 	// Cache usage: informational (OPTIONAL) — eviction is enforced elsewhere.
