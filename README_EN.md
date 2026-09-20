@@ -185,6 +185,9 @@ curl -H "Authorization: Bearer $tok" http://<host-ip>:8619/api/v1/health
   never persisted, so reloading does not ask again.
 - Sessions are in-memory: 12 h TTL, capped at 256, all gone on restart;
   `DELETE /api/v1/session` or the topbar "Sign out" revokes one immediately.
+- The runbook — the SSH-tunnel recipe that was actually driven end to end (and
+  who it hands authentication to), what 401/403/429 each mean, backup scope,
+  rotation and revocation: **docs/OPERATIONS.md**.
 
 </details>
 

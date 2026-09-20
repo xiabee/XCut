@@ -453,7 +453,13 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
   asserted in a real browser (modal appears, sign-in succeeds, media loads on
   the cookie, mutations refused without the echo, reload stays signed in), but
   the harness viewport was 0×0 so no screenshot could be taken. Nobody has
-  looked at how it renders.
+  looked at how it renders. Session #14 closed the parts that do not need
+  pixels: the token field now has a translated accessible name (a placeholder
+  is not one), `document.cookie` cannot see the session id (the HttpOnly claim
+  measured from the browser side), sign-out revokes server-side rather than
+  just forgetting the id locally (200 → 401 with the same id), and
+  `static_dom_test.go` refuses any future `$("id")` that points at markup that
+  does not exist — the failure mode that shipped twice already.
 - Manual timeline edits are overwritten by style regeneration (by design;
   the UI two-step confirm warns, a backup keeps one level of undo, and the
   document revision gives stale editors a loud 409 instead of silent loss).
@@ -477,17 +483,17 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
 
 ## Next Priorities
 
-1. Remote-access hardening, in the order the risk suggests (the remote web UI
-   itself shipped as D14): (a) put the SSH-tunnel recipe into an OPERATIONS
-   doc — the recipe was driven end to end in session #14 (loopback bind on the
-   node + local forward + unauthenticated UI/API through it), but it is not
-   written down anywhere yet, and the doc must say out loud that a tunnel
-   hands authentication to SSH, so anyone who can log into that host can drive
-   XCut; (b) actually look at the sign-in panel (see the unverified-layout
-   note above); (c) token rotation as an operator action rather than
-   edit-config-restart — undecided, because a hot-swappable token fights the
-   process-level gate that D12 chose on purpose, so the alternative may just
-   be "short session TTL plus a restart", which needs writing down either way.
+1. Remote-access hardening. (a) is **done** in session #14: `docs/OPERATIONS.md`
+   now carries the runbook, including the SSH-tunnel recipe driven end to end
+   and the sentence the docs used to dance around — a tunnel makes the server
+   see `127.0.0.1`, so it hands authentication to SSH, and anyone who can log
+   into that host can drive XCut. (c) is **decided, not implemented**: rotation
+   stays "edit the config, restart", recorded in D12 with the reason (a
+   hot-swappable token fights the process-level gate that keeps the failure
+   budget and the session store honest) and with revocation measured on the
+   shipped binary: a session issued before a restart returns 200, the same id
+   returns 401 after it. What is left here is (b): the panel's *pixel* layout,
+   which the 0×0 harness still cannot show anyone.
 2. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
    has the badminton worked example — the burned-in scoreboard makes
    rally annotation mechanical (~41 rallies), a manifest template sits in

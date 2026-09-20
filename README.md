@@ -168,6 +168,8 @@ curl -H "Authorization: Bearer $tok" http://<主机IP>:8619/api/v1/health
   结构上不成立（D14）。令牌本身不落盘，刷新页面不会重复索要。
 - 会话是内存态：TTL 12 小时、上限 256 个、重启即全部失效，`DELETE
   /api/v1/session` 或界面右上角的"退出登录"可立即撤销。
+- 运行手册（实测过的 SSH 隧道配方与它把鉴权交给了谁、401/403/429 各代表什么、
+  备份范围、轮换与撤销步骤）：**docs/OPERATIONS.md**。
 
 </details>
 

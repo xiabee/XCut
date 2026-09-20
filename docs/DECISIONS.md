@@ -193,6 +193,19 @@ D14, and explicitly NOT by accepting tokens in query strings (they land in
 logs, history, and Referer). Configured tokens are masked
 in `xcut config show` and never written into the `xcut init` starter file.
 
+**Rotation is "edit the config and restart", and that stayed a decision rather
+than an oversight.** A hot-swap endpoint is the shape an operator expects, and
+it was rejected: the gate is process-level on purpose (rebuilding it per
+request silently disables the failure budget and the session store while every
+test stays green), so a swap would need an atomic pointer plus a
+revocation-list for old tokens — machinery guarding a credential that is
+already guarded by "restart and the old value stops being read". Revocation
+comes for free from the same property (D14 keeps sessions in memory): verified
+on the shipped binary, a session issued before a restart returns 200 and the
+same id returns 401 after it. The runbook in OPERATIONS.md states the
+procedure; if remote use ever grows enough for a restart to be an actual
+outage, that is the trigger to revisit this — not a hypothetical leaked token, which restart already answers.
+
 ## D14: Remote UI reads ride a cookie; writes need the id echoed
 
 Context: D12 made the API reachable remotely, but the web UI still was not —

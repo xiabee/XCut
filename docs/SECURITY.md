@@ -101,7 +101,8 @@ every peer that reaches the API from off-box.
   bind therefore belongs on a trusted network or inside a tunnel (Tailscale,
   WireGuard, SSH), never on a raw untrusted LAN: the bearer token crosses the
   wire in plaintext and is the only thing between a passive attacker and the
-  whole workspace.
+  whole workspace. The concrete runbook — including what a tunnel does and does
+  not authenticate — is in [OPERATIONS.md](OPERATIONS.md).
 - **Do not front `serve` with a same-machine reverse proxy.** Loopback peers
   are trusted by design, so a TLS terminator on 127.0.0.1 would present every
   remote client as local and silence the gate entirely. Terminating TLS in
