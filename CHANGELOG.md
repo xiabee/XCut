@@ -11,7 +11,8 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   `not run: govulncheck`), and `check.sh` — which never scanned for secrets at
   all while printing `gate: PASS` — now carries the scan status in the same
   line. Verified both ways: a no-FFmpeg snapshot reports the skip, the normal
-  full run reports `none`.- **Gate hardening (from the control plane's secret-scan blind-spot audit).**
+  full run reports `none`.
+- **Gate hardening (from the control plane's secret-scan blind-spot audit).**
   `scripts/check.ps1` now *fails* when gitleaks cannot be found instead of
   warning and continuing to `gate: PASS`; both gates print the scan scope as a
   path count and refuse a zero-file scope; a failing working-tree scan names the
@@ -42,6 +43,8 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   high-resolution renders, not just runaway ones, so the default keeps every
   workload that worked before working. Windows-effective; other platforms
   ignore it (the context-kill path stays the cleanup mechanism there).
+  `xcut doctor` reports the sandbox posture so an operator can see whether
+  runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
 - **A reel length below the style's minimum clip fails with the real reason.**
