@@ -32,6 +32,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   print `gate: PASS` having never scanned for secrets; its verdict line now
   carries the scan status, verified on the node as
   `PASS (secret scan: NOT RUN (gitleaks absent …))`.
+- **The `.gotmp/` secret exemption made honest.** The allowlist is load-bearing
+  (without it `gitleaks dir` reads 304 MB instead of 13 MB and reports 157
+  shape-matches — gitleaks does *not* honour `.gitignore`), but the same config
+  excuses history too, so a force-added file under `.gotmp/` would be excused
+  from the commit gate. Both gates now refuse any tracked `.gotmp/` path
+  (verified: a force-added file is named and the gate exits 1; the `check.sh`
+  logic verified on the Linux node), and the scope comment states what the
+  reported number actually measures.
 - **The sign-in panel's visual pass is done** (the last item of the
   remote-access roadmap entry that a 0×0 harness viewport could not close):
   a real browser at 1280×800 and 390×844 over a non-loopback bind with a
