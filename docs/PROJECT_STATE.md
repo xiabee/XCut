@@ -444,6 +444,19 @@ choice, which exposed and fixed a diversity quota that silently truncated it
   point. A suspected defect (the final clip truncated to 4 s) turned out to be
   the lowest-scoring of the eight, i.e. intended budget behavior, so nothing
   was changed for it.
+- **Same acceptance, longer reel (session #15)**: `xcut auto --duration 240` on
+  the real match produced 18 clips / 144.0 s (rendered 34.5 MB in 16.7 s, probed
+  144.02 s). Scoreboard crops at 0.3 s inside each clip's start and end read as
+  a montage: the score is non-decreasing across the reel and traverses
+  0:0 → 21:19, 14 clips sit inside a single score state, and the 4 that change
+  do so *within the final third of a second* — the clip ends right where the
+  point is decided (the final one is match point). That is the shape a highlight
+  should have; a flip in a clip's middle would mean a cut through a rally, and
+  none was found — with points ~10-20 s apart, an 8 s clip cannot change and
+  change back. The eval harness reported 21 clips for the same 240 s request:
+  that manifest case sets a court ROI per asset and this `auto` run did not, so
+  the two score different motion signals. Stated rather than smoothed over —
+  the numbers are not comparable across the two entry points.
 - Render publish vs holds: a client streaming the previous output no
   longer blocks a re-render (share-all downloads + POSIX delete + rename,
   session #7). An EXTERNAL program that opens without the Windows

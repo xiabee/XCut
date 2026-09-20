@@ -71,6 +71,12 @@ type Diversity struct {
 	// length is derived from the asset's own duration, so the rule behaves the
 	// same on a 47-second clip and a 10-minute match). Both must be set
 	// (Phases >= 2) to enable it; MaxPerWindow 0 disables the rule.
+	//
+	// Phases is a *floor*, not a ceiling on the reel: when target_duration
+	// could hold more clips than Phases x MaxPerWindow, the source is divided
+	// into more, finer windows rather than allowing more picks per window. The
+	// rule keeps doing its job (spread) instead of quietly deciding how long
+	// the reel may be — see docs/EVAL.md for the measurement that found this.
 	MaxPerWindow int `json:"max_per_window,omitempty"`
 	Phases       int `json:"phases,omitempty"`
 }
