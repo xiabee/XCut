@@ -13,39 +13,34 @@ defect it caught) is unchanged below.
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
-  tagged from this session
-- HEAD: session #15 (reel length override + the phase-quota fix it exposed,
-  `docs/OPERATIONS.md`, UI id-resolution gate) on top of session #14 shipped as
-  **v0.1.8-alpha** (API authentication — D12, remote UI sessions — D14):
-  a static bearer token gates
-  every non-loopback peer of `/api/v1`; loopback stays trusted so the desktop
-  client and the double-clicked exe need zero setup. `listen_remote` is now a
-  usable option instead of a refusal, but only when paired with a
-  >=24-character token (config.Resolve refuses the pair apart, and serveAddr
-  re-checks it before binding); constant-time compare, per-peer failure budget
-  (20 per 5 min -> 429) with a bounded tracker, rejections logged without the
-  token, `config show` masks it as `<set>`, `xcut init` never writes it to
-  disk, doctor reports the posture; error model gained unauthorized/forbidden
-  -> 401/403) on top of session #13 (owner-directive night: UI v2 visual
-  refresh; one-
-  click FFmpeg install — pinned Gyan.dev 9.0.1 artifact, size+SHA256 in
-  code, zip-slip-guarded extract into <exe>/bin, ffprobe -version gate,
-  live neighbor re-probe so no restart is needed; true Windows installer
-  via Inno Setup (installer/xcut.iss + scripts/make-setup.ps1) with an
-  InfoBefore policy page and real uninstaller; /health ai_sidecar probe;
-  CLI output guards refusing subtitles/eval --out onto their own inputs)
-  on top of session #12 (eval workflow tooling: `--check` fast manifest
-  validation, self-diagnosing results with per-clip score/reason,
-  per-case liveness lines, faithful style resolution; the startup
-  sweep now reclaims upload staging inside per-project imports dirs —
-  it previously never did; soak.sh rebuilds its binary when sources
-  move past it and its busy-delete asserts the gate invariant, not the
-  timing; proxy finalize uses the retrying rename; stray .tmp debris
-  removed) on top of session #11 (streaming download write-idle
-  heartbeat, adaptive rally motion floor, within-set relative scoring,
-  chunk-boundary snapping, segmentation gate stats, atomic delete gate,
-  upload landing mutex, SRT newline fix, semantic AI seam in the
-  sidecar — details in CHANGELOG), all pushed
+  tagged from an earlier session
+- HEAD: session #16/#17 (2026-09-20 night) — the auth-gate failure budget
+  charges only requests that presented a credential (the sign-in page's own
+  health poll could previously lock its address out and then 429 the correct
+  token); a reel length shorter than the style's minimum clip is refused
+  where both numbers are at hand instead of "rejected all events" after a
+  full analysis pass; the path-import submit handler the workspace redesign
+  dropped is restored (clicking Import used to navigate the page away),
+  with a form-wiring completeness gate; `resource.ffmpeg_max_memory_mb` caps
+  each ffmpeg child through the Windows job object (opt-in, uncapped
+  default; verified kernel-side and against real ffmpeg, dies cleanly);
+  doctor reports the sandbox posture; MergeLayer carries the new knob (plus
+  a reflection completeness gate over every Config field) — all on top of
+  the session #15 work (reel length override + the phase-quota fix it
+  exposed, `docs/OPERATIONS.md`, UI id-resolution gate) and session #14
+  shipped as **v0.1.8-alpha** (API authentication — D12, remote UI sessions
+  — D14): a static bearer token gates every non-loopback peer of `/api/v1`;
+  loopback stays trusted so the desktop client and the double-clicked exe
+  need zero setup. `listen_remote` is a usable option only when paired with
+  a >=24-character token (config.Resolve refuses the pair apart, and
+  serveAddr re-checks it before binding); constant-time compare, per-peer
+  failure budget (20 presented-credential rejections per 5 min -> 429) with
+  a bounded tracker, rejections logged without the token, `config show`
+  masks it as `<set>`, `xcut init` never writes it to disk, doctor reports
+  the posture; error model gained unauthorized/forbidden -> 401/403. Earlier
+  layers (session #13 installer + one-click FFmpeg install, session #12 eval
+  tooling, session #11 streaming/heartbeats) — details in CHANGELOG, all
+  pushed
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
   entry; a remote CI node re-runs the same gate after every milestone. Since
