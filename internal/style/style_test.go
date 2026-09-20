@@ -204,11 +204,13 @@ func TestBuildTargetDurationRespected(t *testing.T) {
 
 func TestBuildSourceRangeWithinMedia(t *testing.T) {
 	p := testPreset()
-	// Pathological: segment far beyond the media. After center-trim and
-	// end-clamping nothing usable remains ⇒ Build must reject loudly.
+	// Pathological: the segment starts past the end of the media, so no
+	// placement of any clip window leaves anything usable ⇒ Build must reject
+	// loudly. (A segment that merely *overruns* the end is the mild case below
+	// and is legitimately salvaged, so it cannot stand in for this one.)
 	items := []AssetEvents{
 		{Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 5}, Segments: []event.Segment{
-			seg(0, 20, 0.3, -12),
+			seg(8, 20, 0.3, -12),
 		}},
 	}
 	if _, err := Build(p, "prj", items); err == nil {
@@ -505,5 +507,84 @@ func TestNamesSortedAndHonest(t *testing.T) {
 	}
 	if !embeddedSeen {
 		t.Errorf("embedded presets missing from names: %v", names)
+	}
+}
+
+// The clip window sits at the start of its segment, not its middle: rally
+// chunks are cut on quiet valleys, so the beginning of a segment is where the
+// action is, while the middle of a long chunk can be the pause after a point.
+func TestBuildAnchorsClipAtSegmentStart(t *testing.T) {
+	p := testPreset()
+	p.TargetDuration = 5
+	p.MaxClipDuration = 5
+	items := []AssetEvents{
+		{Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 120}, Segments: []event.Segment{
+			seg(10, 40, 0.5, -12),
+		}},
+	}
+	tl, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := tl.Tracks[0].Clips[0]
+	if c.SourceStart != 10 {
+		t.Fatalf("source start = %v, want the segment start 10 (middle-trim would give 27.5)", c.SourceStart)
+	}
+	if c.SourceEnd-c.SourceStart > p.MaxClipDuration+0.001 {
+		t.Fatalf("clip %v exceeds max duration", c.SourceEnd-c.SourceStart)
+	}
+}
+
+// diversity.max_per_window is what keeps a highlight covering the match: the
+// local rules (min_gap / overlap) only push picks apart, so one loud stretch can
+// still take the whole reel.
+func TestBuildWindowCapSpreadsPicks(t *testing.T) {
+	items := []AssetEvents{
+		{Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 120}, Segments: []event.Segment{
+			seg(2, 12, 0.90, -5),   // phase 0 (0-20s of 120s/6): the two best
+			seg(6, 16, 0.85, -6),   // window 0
+			seg(80, 90, 0.30, -25), // window 4: clearly weaker
+		}},
+	}
+	build := func(capN int) []timeline.Clip {
+		t.Helper()
+		p := testPreset()
+		p.TargetDuration = 10
+		p.MaxClipDuration = 5
+		p.Diversity = Diversity{MaxPerWindow: capN, Phases: 6}
+		tl, err := Build(p, "prj", items)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tl.Tracks[0].Clips
+	}
+
+	uncapped := build(0)
+	inW0 := 0
+	for _, c := range uncapped {
+		if c.SourceStart < 20 {
+			inW0++
+		}
+	}
+	if inW0 < 2 {
+		t.Fatalf("expected the cap-less reel to concentrate in window 0, got %d of %d clips", inW0, len(uncapped))
+	}
+
+	capped := build(1)
+	perWindow := map[int]int{}
+	for _, c := range capped {
+		perWindow[int(c.SourceStart/20)]++
+	}
+	for w, n := range perWindow {
+		if n > 1 {
+			t.Fatalf("window %d holds %d clips, cap is 1", w, n)
+		}
+	}
+	if len(perWindow) < 2 {
+		t.Fatalf("cap did not spread the picks: windows %v", perWindow)
+	}
+	// The weaker late moment must now be present: that is the point of the rule.
+	if perWindow[4] != 1 {
+		t.Errorf("window 4 not represented (windows %v) — a capped reel should reach the closing phase", perWindow)
 	}
 }

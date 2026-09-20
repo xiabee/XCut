@@ -63,6 +63,16 @@ type Diversity struct {
 	// MaxOverlapIoU rejects a candidate whose temporal IoU with an
 	// already-selected clip exceeds this (0..1). 0 = rule disabled.
 	MaxOverlapIoU float64 `json:"max_overlap_iou,omitempty"`
+	// MaxPerWindow caps how many clips may come from any one time region of the
+	// source. MinGap and MaxOverlapIoU only push picks apart locally, so a loud
+	// stretch can still take the whole reel and leave the closing phase
+	// unrepresented; this rule is what makes a highlight cover the match.
+	// Phases says how many such regions the source is divided into (window
+	// length is derived from the asset's own duration, so the rule behaves the
+	// same on a 47-second clip and a 10-minute match). Both must be set
+	// (Phases >= 2) to enable it; MaxPerWindow 0 disables the rule.
+	MaxPerWindow int `json:"max_per_window,omitempty"`
+	Phases       int `json:"phases,omitempty"`
 }
 
 // MotionROI is a normalized region of interest (0..1) for motion analysis
@@ -157,6 +167,15 @@ func (p *Preset) Validate() error {
 	if math.IsNaN(p.Diversity.MaxOverlapIoU) ||
 		p.Diversity.MaxOverlapIoU < 0 || p.Diversity.MaxOverlapIoU > 1 {
 		add("diversity.max_overlap_iou must be in [0,1]")
+	}
+	if p.Diversity.MaxPerWindow < 0 {
+		add("diversity.max_per_window must be >= 0")
+	}
+	if p.Diversity.MaxPerWindow > 0 && p.Diversity.Phases < 2 {
+		add("diversity.phases must be >= 2 when max_per_window is set")
+	}
+	if p.Diversity.MaxPerWindow == 0 && p.Diversity.Phases < 0 {
+		add("diversity.phases must be >= 0")
 	}
 	if err := p.EventConfig.Validate(); err != nil {
 		add("event_config: %v", err)

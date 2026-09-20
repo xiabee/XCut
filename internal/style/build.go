@@ -200,7 +200,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		// Diversity operates on the trimmed window — what the reel will
 		// actually show — not on the wider source segment.
 		cand := selInterval{assetID: c.asset.ID, start: srcStart, end: srcEnd}
-		if !diverse(preset, chosen, cand) {
+		if !diverse(preset, chosen, cand, durations[c.asset.ID]) {
 			continue
 		}
 		n++
@@ -288,7 +288,25 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 
 // diverse reports whether a candidate respects the preset's diversity rules
 // against everything selected so far. Disabled rules (zero values) pass.
-func diverse(p *Preset, chosen []selInterval, cand selInterval) bool {
+func diverse(p *Preset, chosen []selInterval, cand selInterval, assetDur float64) bool {
+	if p.Diversity.MaxPerWindow > 0 && p.Diversity.Phases >= 2 && assetDur > 0 {
+		// The window is a slice of *this* asset's own duration, so the rule
+		// means "at most N clips per phase" on a 47-second drill clip just as
+		// it does on a 10-minute match. An absolute window length would
+		// silently truncate short sources into a single phase and drop the
+		// reel's tail — which is exactly what this rule exists to prevent.
+		win := assetDur / float64(p.Diversity.Phases)
+		phase := int(cand.start / win)
+		inPhase := 0
+		for _, c := range chosen {
+			if c.assetID == cand.assetID && int(c.start/win) == phase {
+				inPhase++
+			}
+		}
+		if inPhase >= p.Diversity.MaxPerWindow {
+			return false
+		}
+	}
 	for _, c := range chosen {
 		if c.assetID != cand.assetID {
 			continue
@@ -397,7 +415,7 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64) (start, end fl
 	if length < p.MinClipDuration {
 		return 0, 0, false
 	}
-	start = round4(seg.Start + (seg.Duration()-length)/2)
+	start = round4(seg.Start)
 	end = round4(start + length)
 	return start, end, true
 }

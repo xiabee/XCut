@@ -28,5 +28,5 @@
 	},
 	"transition": { "type": "cut", "duration": 0 },
 	"audio": { "gain": 1.0 },
-	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4 }
+	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4, "max_per_window": 2, "phases": 5 }
 }
