@@ -196,6 +196,33 @@ which `event.Segment` does not carry (only aggregates) — and the one signal
 that could substitute for it inside a chunk, local density, was already
 measured above and picks the neighbouring court's rally instead.
 
+### Reel length: the one lever that was not at its optimum
+
+The budget arithmetic above says coverage is capped by reel *length*, so length
+became a per-run override (`--duration`, the UI's "reel length (s)" field). The
+first measurement of it exposed a second bug: a 240 s request returned exactly
+the same 10 clips / 80 s as a 120 s request. The diversity phase quota
+(`phases: 5` × `max_per_window: 2`) was a **fixed ceiling on clip count**,
+independent of the budget it was asked to fill.
+
+The fix scales the number of *windows* with the budget rather than loosening
+the per-window discipline, so the spread rule that the quota exists for still
+holds inside every window. Measured on the same match, same style:
+
+| target | clips | P | R | F1 | rallies covered |
+|---|---|---|---|---|---|
+| 60 s (shipped default) | 8 | **0.886** | 0.112 | 0.199 | 6/43 |
+| 120 s, before the fix | 10 | 0.827 | 0.140 | 0.239 | 8/43 |
+| 120 s, after | **15** | 0.817 | 0.207 | 0.330 | 12/43 |
+| 240 s, before the fix | 10 | 0.827 | 0.140 | 0.239 | 8/43 |
+| 240 s, after | **21** | 0.813 | **0.289** | **0.426** | **18/43** |
+
+The 60 s row is bit-identical to the committed state (the quota does not bind
+there yet), which is what makes the change safe to ship. Precision falls about
+7 points as more marginal rallies enter the cut — that is the trade, stated
+rather than hidden: a longer reel covers more of the match, each clip is
+slightly less sure of itself.
+
 Read together: **the remaining error is not reachable by re-weighting these
 signals.** Precision is limited by clip windows crossing a point boundary (the
 decomposition above: 11% adjacent, 0% wrongly picked), and coverage is limited

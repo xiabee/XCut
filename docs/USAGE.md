@@ -25,7 +25,7 @@ open the desktop editing client (native window over the local server)
 
 ## xcut auto
 ```
-usage: xcut auto <file...> [--style name] [--project name] [--out path]
+usage: xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path]
 
 one-shot: import → analyze → timeline → render
 ```
@@ -74,7 +74,7 @@ remove temp files and evict analysis cache to budget
 
 ## xcut eval
 ```
-usage: xcut eval <manifest.json> [--check] [--style name] [--out results.json] [--iou 0.3] [--baseline results.json]
+usage: xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--out results.json] [--iou 0.3] [--baseline results.json]
 
 score pipeline selection quality against an annotated manifest
 ```
@@ -123,8 +123,17 @@ speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)
 
 ## xcut timeline
 ```
-usage: xcut timeline <project> [--style name] | xcut timeline <project> --restore-backup
+usage: xcut timeline <project> [--style name] [--duration seconds] | xcut timeline <project> --restore-backup
 
 generate a timeline for a project
 ```
+
+`--duration` overrides the style's `target_duration` for this run only; the
+preset file on disk is untouched, so an experiment never mutates a shipped
+style. The web UI has the same knob as the "reel length (s)" field beside the
+style picker (empty = the style's own target). Accepted range: 1–14400 seconds.
+Worth knowing why length matters more than tuning: on a real 43-rally match the
+committed style already reaches 0.112 of a recall ceiling of 0.127 imposed by a
+60 s budget over 473 s of rallies (docs/EVAL.md), so wanting *more of the
+match* in the reel is a duration decision, not a parameter one.
 

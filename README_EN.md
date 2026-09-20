@@ -207,6 +207,15 @@ Styles are data, not code — validated JSON presets in
   detector firing through every break), hit-driven scoring, court-ROI motion
   analysis
 
+A style's `target_duration` is only the **default**: one run can override it
+with `xcut timeline/auto --duration <seconds>` (or the "reel length (s)" field
+beside the style picker), and the preset file is never rewritten. That knob is
+worth turning where further parameter tuning is not — measured against
+annotated rallies from a real match, a 60 s reel can show at most 12.7% of the
+473 s of rally time that exists, while a 240 s target reaches 18 of 43 rallies
+(recall 0.112 → 0.289) for about 7 points of precision
+([docs/EVAL.md](docs/EVAL.md)).
+
 For court-confined motion analysis, the web UI can draw the region of
 interest directly on a frame of the project's asset ("draw court
 ROI…" in the sidebar); the rect is saved per SOURCE

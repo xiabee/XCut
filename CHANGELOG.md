@@ -3,6 +3,46 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-20 night session #15 (reel length, ops runbook)
+
+### Added
+- **Reel length is a per-run choice, not a preset edit**: `--duration` on
+  `xcut timeline`, `xcut auto` and `xcut eval`, a `duration` field on the
+  timeline API, and a "reel length (s)" number field beside the style picker in
+  the web UI. Empty/absent keeps the style's own `target_duration`; the preset
+  file is never rewritten by an override. Accepted range 1–14400 s, enforced in
+  `pipeline` so CLI, UI and scripts cannot disagree about the bound.
+- **`docs/OPERATIONS.md`** — the remote-serving runbook: what the server binds
+  and why, how to make a token, the SSH-tunnel recipe driven end to end (with
+  the consequence stated: a forward makes the peer look loopback, so the tunnel
+  hands authentication to SSH), rotation and revocation, and a 401/403/429
+  troubleshooting table.
+- `internal/api/static_dom_test.go`: every `$("id")` / `querySelector("#id")` in
+  the UI must resolve to markup that exists, `for=`/`aria-labelledby=` targets
+  must exist, and the sign-in panel's five elements are pinned in both
+  directions. Falsified by renaming one id.
+
+### Fixed
+- **A longer reel used to be silently truncated.** The diversity phase quota
+  (`phases × max_per_window`) was an absolute ceiling on clip count regardless
+  of budget: a 240 s request on the measured match returned exactly the same
+  10 clips / 80 s as a 120 s request. The quota now buys more *windows* instead
+  of a looser per-window discipline, keeping the spread rule the quota exists
+  for. Measured (docs/EVAL.md): 240 s goes from 10 clips / R 0.140 / F1 0.239 to
+  **21 clips / R 0.289 / F1 0.426**, covering 18 of 43 rallies rather than 8,
+  while the shipped 60 s default stays **bit-identical** (P 0.886, R 0.112).
+- The remote sign-in field had only a placeholder, which is not an accessible
+  name; it now carries a translated `aria-label` through a new `data-i18n-aria`
+  channel (the i18n drift gate covers the attribute in both directions).
+
+### Measured
+- `max_clip_duration` is at its optimum: 11 s and 14 s both lose precision *and*
+  distinct rallies (a longer window cannot fit a 10.5 s median rally, so it
+  spills and the budget holds fewer clips). Recorded as a negative result.
+- Decomposing the committed 60 s reel: 53.2 s inside an annotated rally, 6.8 s
+  adjacent to its own, **0.0 s wrongly picked** — the remaining error is
+  boundary coarseness, not selection.
+
 ## [0.1.8-alpha] — 2026-09-20 session #14 (API authentication — D12/D13/D14)
 
 ### Security

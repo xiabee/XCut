@@ -187,6 +187,13 @@ curl -H "Authorization: Bearer $tok" http://<主机IP>:8619/api/v1/health
   （真实球场音频从不安静——环境声会让检测器在每个间隙持续触发）、
   击球驱动打分、球场 ROI 运动分析
 
+风格里的 `target_duration` 只是**默认**：单次生成可以用
+`xcut timeline/auto --duration <秒>`（或界面风格旁的"成片时长（秒）"）临时
+覆盖，绝不回写预设文件。之所以值得调这个而不是继续调参数——在真实比赛的
+标注上量过：60s 成片最多只能覆盖 473s 回合时间里的 12.7%，把目标放到 240s
+能覆盖 18/43 个回合（召回 0.112→0.289），精度只降约 7 个点（详见
+[docs/EVAL.md](docs/EVAL.md)）。
+
 针对球场区域运动分析，Web UI 可以直接在工程素材的某一帧上框选感兴趣
 区域（侧栏"框选球场 ROI…"）；保存为该素材自己的区域
 （`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/roi`），时间线生成

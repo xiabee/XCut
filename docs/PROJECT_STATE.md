@@ -3,15 +3,17 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
-(API authentication D12, remote UI sessions D14, refuse-don't-repair probes D13)
+Updated: 2026-09-20 (night) — session #15: reel length became a per-run
+choice, which exposed and fixed a diversity quota that silently truncated it
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from this session
-- HEAD: session #14 shipped as **v0.1.8-alpha** (API authentication — D12,
-  remote UI sessions — D14): a static bearer token gates
+- HEAD: session #15 (reel length override + the phase-quota fix it exposed,
+  `docs/OPERATIONS.md`, UI id-resolution gate) on top of session #14 shipped as
+  **v0.1.8-alpha** (API authentication — D12, remote UI sessions — D14):
+  a static bearer token gates
   every non-loopback peer of `/api/v1`; loopback stays trusted so the desktop
   client and the double-clicked exe need zero setup. `listen_remote` is now a
   usable option instead of a refusal, but only when paired with a
@@ -422,6 +424,17 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
   as a default-preserving, validated, floored knob — a tuning surface for other
   sources (a broadcast with shorter dense spans), not an improvement here.
   The court ROI is per-asset (UI picker, assets.motion_roi).
+- **Reel length is now a per-run choice, and that is where the coverage was
+  hiding (session #15)**: `--duration` (CLI: timeline/auto/eval; API:
+  `duration`; UI: "reel length (s)") overrides the style's target without
+  touching the preset file, bounded 1–14400 s in `pipeline` so no client can
+  disagree about the limit. Measuring it found the real defect: the diversity
+  phase quota was a *fixed clip ceiling*, so a 240 s request returned the same
+  10 clips / 80 s as 120 s. Windows now scale with the budget instead of the
+  per-window discipline loosening, and on the same match a 240 s reel becomes
+  21 clips covering 18 of 43 rallies (R 0.140 → **0.289**, F1 0.239 → **0.426**,
+  P 0.886 → 0.813) while the shipped 60 s default is bit-identical. Precision
+  falling with length is the trade, not an accident to tune away.
 - **End-to-end reel acceptance (session #14, real match)**: `import → roi →
   analyze (29.0 s) → timeline (8 clips, 60.0 s) → render (14.2 MB in 9.3 s)`,
   output probed back at 60.02 s. The reel was then inspected frame-by-frame
