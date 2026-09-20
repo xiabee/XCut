@@ -25,6 +25,7 @@ const (
 const (
 	defaultRallyGap = 2.5  // s the onset rate must stay at/below exit before a rally closes
 	defaultRallyPad = 1.2  // s padded before/after the first/last hit
+	minRallyChunk   = 4.0  // s floor for a configured rally_chunk: shorter pieces flood the candidate set
 	defaultMinHits  = 4    // transients required inside one rally
 	defaultMaxRally = 30.0 // s — longer dense spans chunk into pieces of this size
 
@@ -132,7 +133,7 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 		if end > duration {
 			end = duration
 		}
-		chunks := snapChunkBounds(chunkBounds(start, end, defaultMaxRally), spanHits)
+		chunks := snapChunkBounds(chunkBounds(start, end, firstNonZero(cfg.RallyChunk, defaultMaxRally)), spanHits)
 		for _, ch := range chunks {
 			loC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[0] })
 			hiC := sort.Search(len(spanHits), func(i int) bool { return spanHits[i].T >= ch[1] })
@@ -363,6 +364,26 @@ func onsetSamples(onsets *analysis.FeatureTrack) []analysis.Sample {
 }
 
 // intervalMean is the mean frame_diff value within [start, end].
+// intervalMax returns the largest sample value in [start,end] (0 when empty).
+func intervalMax(t *analysis.FeatureTrack, start, end float64) float64 {
+	if t == nil {
+		return 0
+	}
+	best := 0.0
+	for _, s := range t.Samples {
+		if s.T < start {
+			continue
+		}
+		if s.T > end {
+			break
+		}
+		if s.V > best {
+			best = s.V
+		}
+	}
+	return best
+}
+
 func intervalMean(t *analysis.FeatureTrack, start, end float64) float64 {
 	if t == nil || len(t.Samples) == 0 {
 		return 0

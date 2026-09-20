@@ -11,6 +11,7 @@
 package event
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -67,6 +68,14 @@ type Config struct {
 	MinHits        int     `json:"min_hits,omitempty"`         // transients required per rally
 	RallyEnterRate float64 `json:"rally_enter_rate,omitempty"` // hits/sec that open a rally
 	RallyExitRate  float64 `json:"rally_exit_rate,omitempty"`  // hits/sec at/below which a rally is ending
+	// RallyChunk is the target length of one piece when a dense span is
+	// longer than a single rally. It matters more than it looks: a segment
+	// yields exactly one clip candidate, so a 30-second piece can only ever
+	// contribute its first ~8 seconds to the reel and the rallies after it are
+	// unreachable. Measured on a real match, no threshold in its plausible
+	// range moved the reel, while this length is what bounds coverage.
+	// Zero = defaultMaxRally (30 s), which is the historical behavior.
+	RallyChunk float64 `json:"rally_chunk,omitempty"`
 }
 
 // DefaultConfig is a conservative generic baseline.
@@ -100,6 +109,13 @@ func (c Config) Validate() error {
 	if c.RallyGap < 0 || c.RallyPad < 0 || c.MinHits < 0 ||
 		math.IsNaN(c.RallyGap) || math.IsNaN(c.RallyPad) {
 		return xcerr.E(xcerr.CodeValidation, "invalid rally parameters", nil)
+	}
+	// A chunk shorter than the smallest usable clip would turn every dense
+	// span into a flood of near-identical candidates: the ceiling on candidate
+	// count is this floor, so it is enforced rather than left to the preset.
+	if c.RallyChunk < 0 || math.IsNaN(c.RallyChunk) || (c.RallyChunk > 0 && c.RallyChunk < minRallyChunk) {
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("invalid rally_chunk: 0 (default) or >= %gs", minRallyChunk), nil)
 	}
 	if (c.RallyEnterRate < 0 || c.RallyExitRate < 0 ||
 		math.IsNaN(c.RallyEnterRate) || math.IsNaN(c.RallyExitRate)) ||

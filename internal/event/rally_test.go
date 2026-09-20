@@ -461,3 +461,71 @@ func TestSnapChunkBoundsFindsTheValley(t *testing.T) {
 		t.Fatalf("degenerate snapped pieces: %v", chunks)
 	}
 }
+
+// A dense span longer than one rally is split into pieces, and one piece is one
+// clip candidate — so rally_chunk is what bounds how much of a match the reel
+// can represent. Default (0) must keep the historical 30-second behavior.
+func TestRallyChunkControlsPieceCount(t *testing.T) {
+	const dur = 90.0
+	var hits []float64
+	for t := 0.0; t < dur; t += 0.4 { // dense throughout: one long rally span
+		hits = append(hits, t)
+	}
+	onsets := hitsAt(hits...)
+
+	pieces := func(chunk float64) int {
+		cfg := rallyConfig()
+		cfg.RallyChunk = chunk
+		tracks := []analysis.FeatureTrack{*flatMotion(dur, 0.4), *onsets}
+		segs, _, err := Build(tracks, dur, cfg)
+		if err != nil {
+			t.Fatalf("chunk %v: %v", chunk, err)
+		}
+		n := 0
+		for _, s := range segs {
+			if s.Kind == ModeRally {
+				n++
+			}
+		}
+		return n
+	}
+
+	def := pieces(0)
+	if def < 2 {
+		t.Fatalf("default chunking produced %d pieces from a 90s dense span; expected it to split", def)
+	}
+	fine := pieces(10)
+	if fine <= def {
+		t.Fatalf("rally_chunk=10 produced %d pieces vs default %d: a shorter chunk must yield more", fine, def)
+	}
+	// Snapping may slide a boundary by up to chunkSnapRange, so the piece count
+	// is bounded rather than exactly dur/chunk.
+	if max := int(dur/10) + 3; fine > max {
+		t.Fatalf("rally_chunk=10 produced %d pieces, more than the span can hold (%d)", fine, max)
+	}
+}
+
+func TestRallyChunkValidation(t *testing.T) {
+	cases := []struct {
+		chunk float64
+		ok    bool
+	}{
+		{0, true},    // unset = documented default
+		{30, true},   // historical size
+		{4, true},    // the floor itself
+		{3.9, false}, // below the floor: would flood candidates
+		{-1, false},
+		{math.NaN(), false},
+	}
+	for _, c := range cases {
+		cfg := rallyConfig()
+		cfg.RallyChunk = c.chunk
+		err := cfg.Validate()
+		if c.ok && err != nil {
+			t.Errorf("rally_chunk %v rejected: %v", c.chunk, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("rally_chunk %v accepted, want rejection", c.chunk)
+		}
+	}
+}

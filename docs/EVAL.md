@@ -161,6 +161,30 @@ The PROVISIONAL constants in `internal/event/rally.go` (0.4 adaptive-floor
 ratio, P75 baseline, 4x cap, ±6s chunk-snap) are awaiting exactly these
 annotations.
 
+### What tuning was tried on this footage, and what it measured
+
+Session #14 swept the rally parameters against the derived manifest. Recording
+the null results is the point: they are what tells the next reader not to spend
+an evening here.
+
+| change | P | verdict |
+|---|---|---|
+| committed state (start-anchored + phase cap) | **0.886** | baseline to beat |
+| `rally_pad` 0.4 / 0.8 / 1.2 / 2.0 | 0.886 (all) | **inert** — the density walk and chunk snapping absorb it; do not "tune" this expecting an effect |
+| `merge_gap` 0.6 / 1.2 / 2.0 | 0.886 (all) | **inert in rally mode** — it is an activity-mode parameter; the preset carries it for historical reasons |
+| `min_hits` 3 / 4 / 6 / 8 | 0.886 (all) | inert **in this range** — real segments here carry 61-115 hits, so any value below that never binds. 60 nudges ranges 6→7; 100 collapses the reel (P 0.647, 1 clip) |
+| `rally_gap` 0.2 | 0.851 | binds, and for the worse |
+| `rally_chunk` 20 / 14 / 10 / 8 / 6 | 0.810 / 0.799 / 0.823 / 0.766 / 0.706 | **the 30 s default is the best measured value.** Shorter chunks do not buy coverage — they cut mid-rally more often and promote neighbour-court density |
+| clip anchored at median onset | 0.789 | loses to start-anchoring |
+| clip anchored at motion peak | 0.770 | loses — a rally's peak lands at the point's end, pushing the window over the boundary |
+| score onsets corroborated by ROI motion | 0.886, **bit-identical scores** | no effect: within a rally the players are continuously moving, so ROI motion rarely dips below `mean + 0.25·(peak−mean)` and corroboration degenerates to raw counting |
+
+Read together: **the remaining error is not reachable by re-weighting these
+signals.** Precision is limited by clip windows crossing a point boundary, and
+coverage is limited by the budget (8 clips × 8 s against 41 rallies of ~10 s).
+Separating our strokes from the hall's needs to know *which* strokes are ours —
+that is the vision sidecar's job (`frame_describe`), not a threshold.
+
 ## Workflow for algorithm changes
 
 1. Annotate a small set of representative clips (a handful of ranges each is

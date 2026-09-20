@@ -369,10 +369,17 @@ checkpoint
   budget (8 clips × 8 s cannot represent 41 rallies of ~10 s), so representing
   more of a match means either a longer reel or splitting long segments into
   several scored windows — the latter needs a per-window activity profile on
-  `event.Segment`, which does not exist yet; (c) the remaining PROVISIONAL
-  constants (0.4 floor ratio, P75 baseline, 4x cap, ±6s snap) are still untuned
-  against this manifest. The court ROI is per-asset (UI picker,
-  assets.motion_roi).
+  `event.Segment`, which does not exist yet; (c) the PROVISIONAL constants were
+  then swept against this manifest and **none of them binds usefully** —
+  rally_pad and merge_gap are inert in rally mode, min_hits never binds below
+  ~60 on this footage, `rally_chunk` measures best at its 30 s default, and
+  scoring onsets corroborated by ROI motion is bit-for-bit a no-op because
+  players move continuously inside a rally. The sweep and its null results are
+  recorded in docs/EVAL.md so nobody re-spends the evening; the remaining error
+  is not reachable by re-weighting these signals. `rally_chunk` shipped anyway
+  as a default-preserving, validated, floored knob — a tuning surface for other
+  sources (a broadcast with shorter dense spans), not an improvement here.
+  The court ROI is per-asset (UI picker, assets.motion_roi).
 - Render publish vs holds: a client streaming the previous output no
   longer blocks a re-render (share-all downloads + POSIX delete + rename,
   session #7). An EXTERNAL program that opens without the Windows

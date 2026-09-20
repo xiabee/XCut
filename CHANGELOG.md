@@ -52,6 +52,15 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   serve startup line states which posture it started in.
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
+### Added
+- `event_config.rally_chunk` — the dense-span piece length (default 30 s,
+  validated with a 4 s floor so a preset cannot flood the candidate set). It is
+  the one place where a reel's coverage could in principle be widened, so it is
+  now tunable per source; measured on the real match, **the existing default is
+  the best value found** (20/14/10/8/6 s give P 0.810/0.799/0.823/0.766/0.706
+  against 0.886), so this is a tuning surface for other footage, not an
+  improvement here.
+
 ### Improved — badminton highlight quality, measured on real footage
 - Ground truth derived automatically instead of by scrubbing: a burned-in
   scoreboard only changes when a point ends, so a scene-difference detector
