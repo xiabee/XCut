@@ -279,7 +279,7 @@ button.warn:disabled { background: var(--warn-soft); color: var(--warn); }
   background: #000; position: relative;
   box-shadow: inset 0 0 0 1px var(--line-soft);
 }
-.asset-thumb canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
+.asset-thumb canvas, .asset-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .asset-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; justify-content: center; }
 .asset-name {
   font-weight: 600; font-size: 12px; overflow: hidden;

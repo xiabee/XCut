@@ -414,6 +414,64 @@ function fmtDur(s) {
 // client-side frame grab and reused by the timeline strip blocks.
 const thumbCache = new Map();
 
+// Capturing a frame means pulling real media bytes through a hidden <video>
+// and spinning up a decoder — per asset, per reload. Since serve can be
+// reached from another machine (D14) those bytes cross a network, so the
+// result is kept between loads, keyed by asset id and invalidated by the
+// content fingerprint a re-imported file changes.
+const THUMB_PREFIX = "xcut-thumb:";
+const THUMB_MAX = 400; // ~4 KB each; the cap bounds localStorage growth
+
+function cachedThumb(a) {
+  try {
+    const raw = localStorage.getItem(THUMB_PREFIX + a.id);
+    if (!raw) return "";
+    const t = JSON.parse(raw);
+    return (t && t.fp === a.fingerprint) ? t.url : "";
+  } catch (_) { return ""; } // storage off or a torn write: re-capture
+}
+
+function storeThumb(a, url) {
+  try {
+    localStorage.setItem(THUMB_PREFIX + a.id, JSON.stringify({ fp: a.fingerprint, url }));
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(THUMB_PREFIX)) keys.push(k);
+    }
+    for (const k of keys.slice(0, Math.max(0, keys.length - THUMB_MAX))) {
+      localStorage.removeItem(k);
+    }
+  } catch (_) {
+    // Out of quota: thumbnails are decoration, so drop the whole set rather
+    // than let a full localStorage break the media panel.
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(THUMB_PREFIX)) keys.push(k);
+      }
+      for (const k of keys) localStorage.removeItem(k);
+    } catch (__) { /* nothing left to do */ }
+  }
+}
+
+function paintThumb(el, url) {
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = "";
+  el.appendChild(img);
+}
+
+// One repaint per batch: with N assets each landing at its own time, an
+// unguarded renderTimeline() meant up to N full timeline redraws per refresh.
+let thumbRepaintTimer = null;
+function scheduleThumbRepaint() {
+  if (!timelineDoc) return;
+  clearTimeout(thumbRepaintTimer);
+  thumbRepaintTimer = setTimeout(() => { renderTimeline(); }, 120);
+}
+
 async function refreshAssets() {
   if (!currentProject) return;
   const pid = currentProject.id;
@@ -440,6 +498,12 @@ async function refreshAssets() {
     meta.append(name, sub);
     card.append(thumb, meta);
     grid.appendChild(card);
+    const held = cachedThumb(a);
+    if (held) {
+      thumbCache.set(a.id, held);
+      paintThumb(thumb, held);
+      continue; // no media fetch, no decoder
+    }
     // Real thumbnail: seek a client-side video to 1s and paint a frame.
     const v = document.createElement("video");
     v.muted = true;
@@ -452,11 +516,13 @@ async function refreshAssets() {
         c.width = 184; c.height = 104;
         c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
         thumb.appendChild(c);
-        thumbCache.set(a.id, c.toDataURL("image/jpeg", 0.6));
+        const url = c.toDataURL("image/jpeg", 0.6);
+        thumbCache.set(a.id, url);
+        storeThumb(a, url);
         v.src = ""; // release the decoder
         // The timeline may have rendered before this capture landed (its
         // blocks read the same cache); repaint once so blocks are not dark.
-        if (timelineDoc) renderTimeline();
+        scheduleThumbRepaint();
       } catch (_) { /* frame capture is best-effort */ }
     }, { once: true });
     grid.appendChild(v);

@@ -201,7 +201,10 @@ checkpoint
   the startup sweep reclaims `.upload-*` staging debris **inside the
   per-project directories too** — session #12 fixed the sweep that only
   covered the imports root); the path-import form stays alongside. **Modern editing workspace** (2026-09-13): three-pane editor —
-  media pool with client-captured thumbnails, visual timeline (clip
+  media pool with client-captured thumbnails (kept across reloads in
+  localStorage, keyed by asset id and invalidated by the content fingerprint —
+  a cached frame is painted without touching the media, measured 3 requests per
+  view → 0 after reload), visual timeline (clip
   blocks sized by duration, editable transition badges, drag reorder,
   edge-handle trimming, time ruler seeking the preview, playhead), and an
   inspector for the selected clip (trim/speed/volume/transition, score +

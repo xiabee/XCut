@@ -52,6 +52,20 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   serve startup line states which posture it started in.
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
+### Improved — media pool performance
+- **Thumbnails survive a reload.** Capturing one meant pulling real media
+  bytes through a hidden `<video>` and spinning up a decoder — per asset, per
+  project view. D14 made that cross a network. Captured frames are now kept in
+  `localStorage` keyed by asset id and invalidated by the content fingerprint,
+  and a cached one is painted as an `<img>` without touching the media at all.
+  Measured in a real browser on a 3-asset project: **3 media requests per view
+  → 0 after reload**, and corrupting one stored fingerprint re-fetched exactly
+  that one asset. Storage growth is capped (400 entries) and a quota error
+  drops the thumbnail set rather than breaking the panel — they are decoration.
+- One timeline repaint per batch instead of one per arriving thumbnail: with N
+  assets each landing at its own moment, the unguarded redraw cost up to N
+  full timeline renders per refresh.
+
 ### Added
 - **`xcut eval --baseline results.json`** — A/B an algorithm change against a
   previous run in one command, instead of diffing two result files by hand. It
