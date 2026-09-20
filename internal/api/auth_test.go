@@ -228,6 +228,89 @@ func TestAuthGateSuccessDoesNotConsumeBudget(t *testing.T) {
 	}
 }
 
+// A request with no credential at all cannot be a guess — there is nothing to
+// compare — so it must not spend the brute-force budget. The remote UI's sign-in
+// page polls /api/v1/health without a token every 15 s; charging those rejections
+// meant a human who left the sign-in dialog open for five minutes locked their
+// own address out, and then the correct token got 429 too (found by driving the
+// real page in a browser, night of 2026-09-20).
+func TestAuthGateCredentiallessPollingDoesNotBurnBudget(t *testing.T) {
+	g := newAuthGate(testToken, nil, nil)
+	for i := 0; i < authMaxFailures*3; i++ {
+		if rec := gateCall(g, remotePeer, ""); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("credentialless request %d: %d, want 401", i, rec.Code)
+		}
+	}
+	if rec := gateCall(g, remotePeer, "Bearer "+testToken); rec.Code != http.StatusOK {
+		t.Fatalf("correct token after credentialless polling: %d, want 200", rec.Code)
+	}
+}
+
+// The inverse edge of the same rule: a cookie that is present but empty carries
+// no guessable material, so it is not a presented credential either.
+func TestAuthGateEmptySessionCookieDoesNotBurnBudget(t *testing.T) {
+	g := newAuthGate(testToken, nil, nil)
+	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req.RemoteAddr = remotePeer
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ""})
+	for i := 0; i < authMaxFailures*2; i++ {
+		rec := httptest.NewRecorder()
+		g.authenticate(passHandler()).ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("empty-cookie request %d: %d, want 401", i, rec.Code)
+		}
+	}
+	if rec := gateCall(g, remotePeer, "Bearer "+testToken); rec.Code != http.StatusOK {
+		t.Fatalf("correct token after empty-cookie polling: %d, want 200", rec.Code)
+	}
+}
+
+// Everything that *claims* to authenticate still spends the budget when it
+// fails — a malformed or stale credential is exactly the guessing the budget
+// exists to punish. Each row gets a fresh gate; the loop walks one peer to the
+// 429 line.
+func TestAuthGatePresentedCredentialsStillBurnBudget(t *testing.T) {
+	cases := []struct {
+		name   string
+		attach func(*http.Request)
+	}{
+		{"wrong bearer token", func(r *http.Request) {
+			r.Header.Set("Authorization", "Bearer wrong-wrong-wrong-wrong-wrong")
+		}},
+		{"wrong scheme", func(r *http.Request) {
+			r.Header.Set("Authorization", "Basic "+testToken)
+		}},
+		{"bearer with empty value", func(r *http.Request) {
+			r.Header.Set("Authorization", "Bearer ")
+		}},
+		{"invalid session echo header", func(r *http.Request) {
+			r.Header.Set(sessionHeaderName, strings.Repeat("ab", 32))
+		}},
+		{"invalid session cookie", func(r *http.Request) {
+			r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: strings.Repeat("cd", 32)})
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			g := newAuthGate(testToken, nil, nil)
+			req := httptest.NewRequest("GET", "/api/v1/health", nil)
+			req.RemoteAddr = remotePeer
+			c.attach(req)
+			for i := 0; i < authMaxFailures; i++ {
+				rec := httptest.NewRecorder()
+				g.authenticate(passHandler()).ServeHTTP(rec, req)
+				if rec.Code != http.StatusUnauthorized {
+					t.Fatalf("failed-credential attempt %d: %d, want 401", i, rec.Code)
+				}
+			}
+			rec := gateCall(g, remotePeer, "Bearer "+testToken)
+			if rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("correct token after budget spent: %d, want 429", rec.Code)
+			}
+		})
+	}
+}
+
 // The failure tracker is per-peer state in a long-running process: it needs the
 // same budgeted-growth discipline as the cache (AGENTS.md rule 4).
 func TestAuthGateFailureTrackerStaysBounded(t *testing.T) {

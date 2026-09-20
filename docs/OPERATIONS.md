@@ -100,7 +100,12 @@ Observed against the shipped installer binary from a non-loopback address:
 no `Authorization` header → 401; wrong token → 401 (identical wording, no hint
 of how close the attempt was); correct token → 200; `POST /api/v1/session` →
 201 with a 64-hex session id and `expires_in: 43200`. Rejections are budgeted
-per peer: 20 in 5 minutes, then 429 for the rest of that window.
+per peer: 20 in 5 minutes, then 429 for the rest of that window — and only
+requests that *presented* a credential are charged. A request carrying no
+token, session header or session cookie cannot be a guess (there is nothing to
+compare), so an idle sign-in page or an unconfigured poller keeps its own 401s
+without spending the budget; every wrong token, wrong scheme and stale session
+id still counts.
 
 `config show` prints the token as `<set>` and `xcut init` writes an empty one,
 so an `XCUT_AUTH_TOKEN` from the environment cannot silently land in a 0644
@@ -148,7 +153,7 @@ See DECISIONS.md D12 (rotation) and D14 (sessions).
 |---|---|
 | `refusing a non-loopback bind: remote listening requires ...` | `listen_remote`/`auth_token` pair incomplete, or `--addr` names a non-loopback interface. Fix the config, or use `--addr 127.0.0.1:8619` and tunnel. |
 | `401` from the API | Missing/wrong `Authorization: Bearer`. The web UI shows the sign-in panel instead — it cannot attach a header to `<video>`, thumbnail or download requests, so it exchanges the token for a session cookie once (D14). |
-| `429` | That peer hit 20 rejections in 5 minutes. Wait, or fix the client that is retrying with a bad token. |
+| `429` | That peer presented a bad credential 20 times in 5 minutes (a request with no credential at all is not charged). Wait out the window, or fix the client that is retrying with a bad token. |
 | `403` | A remote peer appeared while the server had no token configured — the server is telling you it will not serve unauthenticated remote traffic. |
 | UI works, `curl` 401 | Expected: the browser is riding a session cookie; `curl` must send the bearer token or the `X-Cut-Session` header. |
 | Import fails on Kylin V10 with "cannot parse probe output" | The vendor FFmpeg writes decoder-plugin logs into ffprobe's stdout. Point `XCUT_FFPROBE`/`XCUT_FFMPEG` at a stock build. The product refuses rather than repairing, because a heuristic filter recovers a *parseable but wrong* document (D13). |

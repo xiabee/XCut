@@ -39,9 +39,14 @@ Living document. Near-term milestones are concrete; far-term is directional.
       URLs, so login mints an HttpOnly session cookie for reads while writes
       must echo the id — the asymmetry is the CSRF defence. Verified in a real
       browser over a LAN peer.
-- [ ] Remote-access finishing: a documented TLS/tunnel recipe (the token and
-      media cross a cleartext wire today), a visual pass over the sign-in
-      panel, and token rotation as an operator action.
+- [x] Remote-access finishing (closed across sessions #14–16): the TLS/tunnel
+      runbook (`docs/OPERATIONS.md` — SSH tunnel driven end to end, plus the
+      Tailscale/WireGuard option), the sign-in panel's visual pass (real
+      browser, 1280×800 + 390×844 — which caught the credentialless-poll
+      budget defect, fixed), and token rotation decided as "edit config +
+      restart" with the reason recorded in D12. The open question that remains
+      is owner-level, not engineering: the token still crosses a cleartext
+      wire by design, so remote binds stay trusted-network/tunnel-only.
 
 - [x] Platform legs of the quality gate (session #14): the same gate now runs
       green on a Linux node (Go incl. `-race`, Rust incl. clippy) and the

@@ -3,6 +3,33 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-20 night session #16 (sign-in visual pass, budget fix)
+
+### Fixed
+- **The sign-in page could lock its own address out.** The remote UI's
+  background health poll runs without a token, and every credentialless 401
+  was charged against the per-peer brute-force budget: leaving the sign-in
+  dialog open for five minutes (measured, in a real browser over a real LAN
+  bind) spent all 20 rejections, and then the *correct* token got 429 too.
+  The budget now charges only requests that presented a credential — a wrong
+  bearer token, a wrong scheme, a stale session cookie or echo header. A
+  credentialless request cannot authenticate and learns nothing per attempt,
+  so it keeps its plain 401 forever without spending anything; the guessing
+  budget keeps punishing exactly what it punished before (verified at the
+  binary level: 25 credentialless polls → 401, correct token → 200; 20 wrong
+  tokens → 429).
+
+### Measured
+- **The sign-in panel's visual pass is done** (the last item of the
+  remote-access roadmap entry that a 0×0 harness viewport could not close):
+  a real browser at 1280×800 and 390×844 over a non-loopback bind with a
+  48-char token — sign-in modal centered and unclipped in English and
+  中文, the wrong-token error state ("That token is not valid here." / 该令牌
+  在这台服务上无效。) renders inside the dialog with no overflow, sign-in
+  succeeds to the full three-pane UI, and the narrow viewport wraps without
+  horizontal scroll. The browser drive itself found the budget defect above —
+  which is what the pass was for.
+
 ## [Unreleased] — 2026-09-20 night session #15 (reel length, ops runbook)
 
 ### Added

@@ -110,10 +110,40 @@ func (g *authGate) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		g.noteFailure(peer)
+		// Only a presented credential can be a guess, so only a presented
+		// credential that failed is charged against the brute-force budget. A
+		// request with no credential at all — the sign-in page's background
+		// health poll, a client that has not been configured yet — cannot
+		// authenticate and learns nothing per attempt; charging it would let a
+		// human lock themselves out by merely leaving the sign-in dialog open
+		// (measured: the UI's 15 s health poll spends the whole 20-failure
+		// budget in 5 minutes, and then the correct token gets 429 too).
+		if requestPresentedCredential(r) {
+			g.noteFailure(peer)
+		}
 		g.reject(w, r, peer, http.StatusUnauthorized,
 			"missing or invalid bearer token", `Bearer realm="xcut"`)
 	})
+}
+
+// requestPresentedCredential reports whether the request carries something
+// that claims to authenticate it: any Authorization header (even a malformed
+// one — attempting to authenticate is what the budget punishes), a session id
+// echoed in the header, or a session cookie. An empty cookie value carries no
+// guessable material and does not count.
+func requestPresentedCredential(r *http.Request) bool {
+	if r.Header.Get("Authorization") != "" {
+		return true
+	}
+	if r.Header.Get(sessionHeaderName) != "" {
+		return true
+	}
+	for _, c := range r.Cookies() {
+		if c.Name == sessionCookieName && c.Value != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // validToken checks an `Authorization: Bearer <token>` header. The scheme name

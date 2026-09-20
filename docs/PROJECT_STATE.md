@@ -3,8 +3,9 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-20 (night) — session #15: reel length became a per-run
-choice, which exposed and fixed a diversity quota that silently truncated it
+Updated: 2026-09-20 (night) — session #16: the sign-in panel's visual pass is
+done (real browser, real viewports), and the drive found and fixed a budget
+defect that let the sign-in page lock its own address out
 
 ## Version / HEAD
 
@@ -496,17 +497,22 @@ choice, which exposed and fixed a diversity quota that silently truncated it
   work remotely (D14 sessions), but its media is served unencrypted, and a
   same-origin XSS would still read data through a session — the
   textContent-only rendering rule is what holds that line.
-- The remote sign-in panel's **visual layout is unverified**: it was driven and
-  asserted in a real browser (modal appears, sign-in succeeds, media loads on
-  the cookie, mutations refused without the echo, reload stays signed in), but
-  the harness viewport was 0×0 so no screenshot could be taken. Nobody has
-  looked at how it renders. Session #14 closed the parts that do not need
-  pixels: the token field now has a translated accessible name (a placeholder
-  is not one), `document.cookie` cannot see the session id (the HttpOnly claim
-  measured from the browser side), sign-out revokes server-side rather than
-  just forgetting the id locally (200 → 401 with the same id), and
-  `static_dom_test.go` refuses any future `$("id")` that points at markup that
-  does not exist — the failure mode that shipped twice already.
+- The remote sign-in panel **passed its visual verification** (session #16,
+  closing the item every earlier session could not because the harness viewport
+  was 0×0): a real browser over a non-loopback bind with a real token, at
+  1280×800 and 390×844. The modal is centered and unclipped in English and
+  中文; the wrong-token error renders inside the dialog without overflow;
+  sign-in proceeds to the full three-pane UI; the narrow viewport wraps without
+  horizontal scroll. The pass also caught a real defect (next bullet).
+- **The sign-in page could lock its own address out — fixed in session #16.**
+  The UI's background health poll runs without a token, and every
+  credentialless 401 used to be charged against the per-peer brute-force
+  budget: leave the sign-in dialog open for five minutes and the *correct*
+  token got 429 afterwards (measured live, serve.log showed the 15 s poll
+  spending the budget). The budget now charges only requests that presented a
+  credential; a credentialless request keeps its plain 401 without spending
+  anything. Verified at the binary level: 25 credentialless polls → still 401,
+  correct token → 200; 20 wrong tokens → 429 as before.
 - Manual timeline edits are overwritten by style regeneration (by design;
   the UI two-step confirm warns, a backup keeps one level of undo, and the
   document revision gives stale editors a loud 409 instead of silent loss).
@@ -530,17 +536,11 @@ choice, which exposed and fixed a diversity quota that silently truncated it
 
 ## Next Priorities
 
-1. Remote-access hardening. (a) is **done** in session #14: `docs/OPERATIONS.md`
-   now carries the runbook, including the SSH-tunnel recipe driven end to end
-   and the sentence the docs used to dance around — a tunnel makes the server
-   see `127.0.0.1`, so it hands authentication to SSH, and anyone who can log
-   into that host can drive XCut. (c) is **decided, not implemented**: rotation
-   stays "edit the config, restart", recorded in D12 with the reason (a
-   hot-swappable token fights the process-level gate that keeps the failure
-   budget and the session store honest) and with revocation measured on the
-   shipped binary: a session issued before a restart returns 200, the same id
-   returns 401 after it. What is left here is (b): the panel's *pixel* layout,
-   which the 0×0 harness still cannot show anyone.
+1. Remote-access hardening: **(a) and (b) are both done** — the runbook with
+   the SSH-tunnel recipe in `docs/OPERATIONS.md`, and the sign-in panel's
+   visual pass with the budget defect it caught (session #16). What remains of
+   this thread is the owner-level TLS question: D12's bearer token crosses the
+   wire in plaintext, so remote binds stay trusted-network/tunnel-only.
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
    the provisional constants swept against them (docs/EVAL.md carries the
