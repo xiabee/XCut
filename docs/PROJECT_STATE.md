@@ -3,13 +3,23 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-18 (late night) — nightly session #13 (owner directive:
-UI v2 + one-click setup) checkpoint
+Updated: 2026-09-20 (morning) — session #14 (API authentication, D12)
+checkpoint
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #13 (owner-directive night: UI v2 visual refresh; one-
+- HEAD: session #14 (API authentication — D12): a static bearer token gates
+  every non-loopback peer of `/api/v1`; loopback stays trusted so the desktop
+  client and the double-clicked exe need zero setup. `listen_remote` is now a
+  usable option instead of a refusal, but only when paired with a
+  >=24-character token (config.Resolve refuses the pair apart, and serveAddr
+  re-checks it before binding); constant-time compare, per-peer failure budget
+  (20 per 5 min -> 429) with a bounded tracker, rejections logged without the
+  token, `config show` masks it as `<set>`, `xcut init` never writes it to
+  disk, doctor reports the posture; error model gained unauthorized/forbidden
+  -> 401/403) on top of session #13 (owner-directive night: UI v2 visual
+  refresh; one-
   click FFmpeg install — pinned Gyan.dev 9.0.1 artifact, size+SHA256 in
   code, zip-slip-guarded extract into <exe>/bin, ffprobe -version gate,
   live neighbor re-probe so no restart is needed; true Windows installer
@@ -25,9 +35,9 @@ UI v2 + one-click setup) checkpoint
   timing; proxy finalize uses the retrying rename; stray .tmp debris
   removed) on top of session #11 (streaming download write-idle
   heartbeat, adaptive rally motion floor, within-set relative scoring,
-  chunk-boundary snapping; segmentation gate stats; atomic delete gate;
-  upload landing mutex; SRT newline fix; semantic AI seam in the
-  sidecar), all pushed
+  chunk-boundary snapping, segmentation gate stats, atomic delete gate,
+  upload landing mutex, SRT newline fix, semantic AI seam in the
+  sidecar — details in CHANGELOG), all pushed
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
   entry; a remote CI node re-runs the same gate after every milestone
@@ -35,7 +45,8 @@ UI v2 + one-click setup) checkpoint
 ## Working Architecture
 
 - **Go core** (`cmd/xcut`): CLI + localhost web UI + HTTP API; typed error
-  model (11 codes incl. conflict → 409); two-layer config; loopback-forced
+  model (13 codes incl. conflict → 409, unauthorized → 401, forbidden → 403);
+  two-layer config; loopback-forced
   listen; resource budgets (jobs/ffmpeg/threads/cache/temp/log rotation/
   job-history retention) — all enforced, see config.json defaults.
 - **Workspace lock** (`xcut.lock`, O_EXCL): writer commands serialize;
@@ -54,6 +65,18 @@ UI v2 + one-click setup) checkpoint
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
   Render outputs are guarded against overwriting source media, timeline-
   referenced clip sources, or the timeline document.
+- **API authentication** (session #14, D12): `/api/v1/*` requires
+  `Authorization: Bearer <server.auth_token>` from any peer whose socket
+  address is not loopback; loopback peers are trusted, so local clients stay
+  zero-config. The token comes from workspace config or `XCUT_AUTH_TOKEN`
+  (never a CLI flag), must be ≥24 chars, and `listen_remote` without it is a
+  startup error — re-checked in `serveAddr` so no path reaches `net.Listen` on
+  a weak pair. Comparison is `crypto/subtle`; rejections carry no detail, are
+  logged without token or supplied header, and a per-peer budget (20 failures
+  per 5 min → 429, tracker capped at 4096 peers) stops brute force. The UI
+  shell (no user data) is deliberately outside the gate. Cleartext transport:
+  remote binds belong on a trusted network or a tunnel, and a same-machine
+  reverse proxy would bypass the gate by making peers loopback (SECURITY.md).
 - **Media/API**: uploads stream with a read-deadline heartbeat and the
   three streaming routes (render download, asset preview, subtitle
   download) with a write-idle heartbeat — neither the server's total-time
@@ -190,7 +213,10 @@ UI v2 + one-click setup) checkpoint
   analyze [assetIDs]|timeline|render|auto|serve|eval|subtitles`
 - HTTP `/api/v1`: health, projects CRUD (delete guarded while jobs are
   active → 409), jobs (+ `POST /jobs/{id}/cancel`: 202 / 404 / 409
-  terminal-or-orphan), async triggers (one active analyze/timeline/render
+  terminal-or-orphan), every route reachable from a non-loopback peer
+  requiring `Authorization: Bearer` (401, 429 once the failure budget is
+  spent; loopback peers and the UI shell need neither),
+  async triggers (one active analyze/timeline/render
   per project — duplicates → 409; subtitles jobs are not deduplicated),
   timeline GET/PUT (revision-guarded saves; stale revision → 409; restore
   endpoint), subtitles trigger/status/download, styles list, render
@@ -229,6 +255,25 @@ UI v2 + one-click setup) checkpoint
 - Remote acceptance: an independent CI node re-runs the project gate PASS
   after every milestone (38 consecutive passes cumulative through session
   #5); the node caught one real concurrency bug local runs had missed (M37)
+- Authentication (session #14): a 14-case gate matrix (loopback trusted with a
+  bad token, remote no-header/wrong/prefix/extended → 401, correct +
+  case-insensitive scheme → 200, no-token-configured → 403 for remote),
+  per-peer brute-force budget with window expiry and per-peer isolation, a
+  capped failure tracker (2× the cap in distinct peers never grows it past
+  4096), a log assertion that neither the configured nor the supplied token
+  reaches serve.log, a 7-case config policy table (remote without/short/
+  whitespace token refused; token alone never lifts the loopback pin), and
+  `serveAddr` refusal/accept tests. **Real socket E2E** on the built binary:
+  bound `0.0.0.0:8777` with a 48-char token in a throwaway workspace — loopback
+  health 200 without a token, LAN peer 401 (no header, wrong token), 200 with
+  the token, UI shell 200 from the LAN peer, 20 failures then 429 (`resource_limit`)
+  with the correct token still refused while locked out, loopback unaffected;
+  `netstat` confirmed those peer connections carried the LAN source address.
+  Startup refusals verified on the binary too (no token; short token).
+- Pre-existing test flake fixed: `TestSetupStatusShapeWhileDownloading` let the
+  install goroutine write into its TempDir after the test returned, racing Go's
+  cleanup ("directory is not empty", 1 of 4 runs); cleanup now waits for a
+  terminal phase — 5 consecutive `-count=1` runs green.
 - `cargo fmt --check`/`clippy -D warnings`/`cargo test` green (windows-gnu
   toolchain fallback — no MSVC Build Tools on this machine)
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
@@ -275,7 +320,13 @@ UI v2 + one-click setup) checkpoint
   runs it when one is present and skips loudly otherwise (docker runner
   remains the fallback). This machine's windows-gnu gcc satisfies it since
   session #3.
-- serve has no auth: loopback-only by construction; remote bind refused.
+- serve authentication is a **static shared bearer token over cleartext HTTP**
+  (D12): no TLS, no per-client identity, no rotation/revocation surface
+  (revoke = edit config + restart), the failure budget resets with the process,
+  and the loopback exemption means any local process can still reach the API.
+  Remote binds are for API clients on a trusted network or inside a tunnel —
+  the web UI cannot use one yet, because a browser cannot attach a header to
+  `<video src>`, thumbnails or download links (needs signed capability URLs).
 - Manual timeline edits are overwritten by style regeneration (by design;
   the UI two-step confirm warns, a backup keeps one level of undo, and the
   document revision gives stale editors a loud 409 instead of silent loss).
@@ -294,21 +345,30 @@ UI v2 + one-click setup) checkpoint
 
 ## Next Priorities
 
-1. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
+1. Remote web UI (follow-up to session #14, tracked as the next milestone):
+   signed, expiring capability URLs for the media/preview/download routes so a
+   browser can use a remote bind at all — today `listen_remote` serves the API
+   to authenticated *clients*, while the UI stays a local surface. Query-string
+   tokens are the wrong answer (logs, history, Referer) and were rejected in
+   D12 for that reason.
+2. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
    has the badminton worked example — the burned-in scoreboard makes
    rally annotation mechanical (~41 rallies), a manifest template sits in
    the gitignored /eval/, and every provisional rally constant
    (floor ratio, P75, snap range) plus the climax-guarantee question is
    waiting on exactly these numbers.
-2. Subtitles with a real Whisper: install faster-whisper locally and run
+3. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
-3. (done, session #8) Per-source court ROI — per-asset override shipped
+4. (done, session #8) Per-source court ROI — per-asset override shipped
    (assets.motion_roi, v4) with the UI picker saving per asset; measured
    4x signal vs full-frame dilution (NIGHTLY_PROGRESS M100).
-4. Re-enable push/PR + tag CI when the GitHub account billing issue is
+5. Re-enable push/PR + tag CI when the GitHub account billing issue is
    resolved (Actions jobs are refused at start; restore notes in
    ci.yml/release.yml unchanged — the files are fine).
-5. Phase 4 leftovers: tray/auto-update and model registry — need
+6. Phase 4 leftovers: tray/auto-update and model registry — need
    maintainer decisions; desktop packaging itself (zip, icons) shipped
-   in session #8.
+   in session #8 and the true installer in session #13.
+7. TLS for the API (or a documented tunnel recipe in an OPERATIONS doc):
+   D12's bearer token crosses the wire in plaintext, which is why remote
+   binds are documented as trusted-network/tunnel-only today.

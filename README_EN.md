@@ -140,8 +140,39 @@ Only one analyze/timeline/render job may be queued or running per project — a
 duplicate trigger returns `409` (imports are never deduplicated). Active jobs
 show a Cancel button in the web UI; CLI runs (sync in your own terminal) are
 cancelled with Ctrl+C.
-Loopback-only by design: `xcut serve` **refuses** non-loopback addresses until
-authentication exists (see `docs/SECURITY.md`).
+Loopback-only by design: `xcut serve` **refuses** any non-loopback address
+unless you both opt in (`server.listen_remote`) and configure a bearer token
+(`server.auth_token`) — see `docs/SECURITY.md` and `docs/DECISIONS.md` D12.
+
+<details>
+<summary><b>Remote access (optional)</b>: a bearer token for non-local peers</summary>
+
+```powershell
+# 1. generate a token strong enough (< 24 chars is refused at startup)
+$tok = (openssl rand -hex 24)
+# 2. put it in <workspace>/config.json (or set XCUT_AUTH_TOKEN)
+#    {"server":{"listen":"0.0.0.0:8619","listen_remote":true,"auth_token":"..."}}
+./xcut serve   # the startup line states the posture: loopback only / remote bind, authentication required
+curl -H "Authorization: Bearer $tok" http://<host-ip>:8619/api/v1/health
+```
+
+- Loopback peers are always trusted: the desktop client, the double-clicked exe
+  and `xcut client` need no token.
+- The token comes from config or env only — **never a CLI flag**, which would
+  leak it into process listings and shell history.
+- `xcut config show` prints it as `<set>`; the starter file written by
+  `xcut init` never contains it.
+- Constant-time comparison; failures counted per peer (20 per 5 min, then `429`).
+- Trust is decided from the socket address. `Host`/`X-Forwarded-For` never count.
+- The transport is plaintext HTTP: keep it on a trusted network or inside a
+  Tailscale/SSH tunnel, and **do not** front it with a same-machine TLS reverse
+  proxy — that would make every remote peer "loopback" and bypass the gate
+  (SECURITY.md explains).
+- The web UI is still a local surface: a browser cannot attach a header to
+  `<video src>`, thumbnails or download links, so remote UI needs signed
+  capability URLs, which are not built yet.
+
+</details>
 
 </details>
 
@@ -260,6 +291,8 @@ defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
 | `job.stale_running_after` | `2h` | age-gate for CLI startup orphan reconciliation |
 | `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve log file rotation |
 | `server.listen` | `127.0.0.1:8619` | loopback-forced unless `listen_remote` |
+| `server.listen_remote` | false | allow a non-loopback bind; requires `auth_token` (D12) |
+| `server.auth_token` | (empty) | bearer token for non-local peers, min 24 chars (or `XCUT_AUTH_TOKEN`) |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` audio analyzer |
 | `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar binary (capability-detected) |
 | `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | toolchain override (or `XCUT_FFMPEG`/`XCUT_FFPROBE`) |

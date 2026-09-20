@@ -31,6 +31,13 @@ Living document. Near-term milestones are concrete; far-term is directional.
   node" ops item stays tracked in the night backlog — that node's
   transport is `local` and cannot be driven remotely)
 
+- [x] API authentication (D12, session #14): a bearer token gates every
+      non-loopback peer of `/api/v1`, loopback stays trusted, and
+      `listen_remote` became a usable option (with a token) instead of a
+      refusal. Remote **web UI** use remains open — a browser cannot attach a
+      header to media/thumbnail/download URLs, so it needs signed capability
+      URLs (next candidate).
+
 ## Phase 3 — Rust worker & vertical depth
 
 - [x] `xcut-worker-media` (Rust): protocol v1 + audio RMS shipped (benchmark parity with ffmpeg — kept as optionality); frame diff / onset pending real need

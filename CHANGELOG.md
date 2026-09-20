@@ -3,6 +3,52 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-20 session #14 (API authentication — D12)
+
+### Security
+- **Bearer-token authentication gates a remote bind.** The API had refused
+  every non-loopback address because there was nothing to authenticate a peer
+  with (D8); that precondition now exists. `/api/v1/*` requires
+  `Authorization: Bearer <token>` from any peer whose socket address is not
+  loopback; loopback peers stay trusted so the desktop client, `xcut client`
+  and the double-clicked exe need no setup and no token.
+- **The invariant is enforced twice, on purpose**: `config.Resolve` rejects
+  `listen_remote: true` without a token of at least 24 characters, and
+  `serveAddr` re-checks the pair at the last moment before `net.Listen` — a
+  socket opening on the network must not depend on one call site having run.
+- Token comes from `server.auth_token` or `XCUT_AUTH_TOKEN`, never a CLI flag
+  (argv lands in process listings and shell history). `xcut config show`
+  reports it as `<set>`; the starter config written by `xcut init` blanks it,
+  so an environment secret cannot silently land in a 0644 file.
+- Comparison is constant-time (`crypto/subtle`); a rejection says only that
+  authentication failed — no hint of how close the attempt was — and serve.log
+  records method/path/peer/status, never the configured or supplied token.
+- **Brute force is budgeted**: 20 rejections per peer per 5 minutes, then 429;
+  the tracker itself is capped at 4096 peers and prunes expired windows rather
+  than growing (AGENTS.md rule 4 applies to new growth axes).
+- Trust is decided from `r.RemoteAddr` alone. `Host` and forwarding headers
+  are attacker-chosen and are never consulted.
+- Documented limits, stated where they can be acted on (SECURITY.md):
+  cleartext transport (trusted network or tunnel), a static shared token with
+  no rotation surface, and a warning that a same-machine TLS reverse proxy
+  would bypass the gate by presenting every peer as loopback.
+
+### Added
+- `xcut doctor` reports the API posture (remote + token required / token set
+  but loopback / no token, remote refused) without printing the token.
+- The serve startup line states the posture, and `server started` logs whether
+  authentication is on.
+- Error model: `unauthorized` → 401 and `forbidden` → 403.
+
+### Fixed
+- `TestSetupStatusShapeWhileDownloading` raced the installer goroutine against
+  Go's TempDir cleanup (a write landing after removal started), which made the
+  gate fail roughly one run in four with "directory is not empty"; cleanup now
+  waits for a terminal install phase.
+- SECURITY.md still described the HTTP API as unbuilt ("when it exists", "no
+  HTTP API yet") several sessions after it shipped; its controls section now
+  matches what the code does.
+
 ## [Unreleased] — 2026-09-18 night session #13 (owner directive: UI + installer)
 
 ### Added

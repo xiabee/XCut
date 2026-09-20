@@ -132,8 +132,33 @@ curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<aid>/roi -d '{"x
 每个工程同时只允许一个 analyze/timeline/render 任务排队或运行——重复
 触发返回 `409`（导入永不去重）。活动任务在 Web UI 里有取消按钮；
 CLI 运行（在你自己的终端里同步执行）用 Ctrl+C 取消。
-仅监听本机回环是设计决定：在认证机制出现之前，`xcut serve` **拒绝**
-非回环地址（见 `docs/SECURITY.md`）。
+仅监听本机回环是设计决定：`xcut serve` **拒绝**任何非回环地址，除非你
+同时显式开启 `server.listen_remote` 并配置 `server.auth_token`（见
+`docs/SECURITY.md` 与 `docs/DECISIONS.md` D12）。
+
+<details>
+<summary><b>远程访问（可选）</b>：给非本机对端加一道 bearer token</summary>
+
+```powershell
+# 1. 生成一个足够强的 token（≥24 字符，太短会被直接拒绝启动）
+$tok = (openssl rand -hex 24)
+# 2. 写进 <workspace>/config.json（或设环境变量 XCUT_AUTH_TOKEN）
+#    {"server":{"listen":"0.0.0.0:8619","listen_remote":true,"auth_token":"..."}}
+./xcut serve   # 启动行会写明当前姿态：loopback only / remote bind, authentication required
+curl -H "Authorization: Bearer $tok" http://<主机IP>:8619/api/v1/health
+```
+
+- 本机回环对端始终可信：桌面客户端、双击启动的 exe、`xcut client` 都不需要 token。
+- token 只能来自配置文件或环境变量，**不是命令行参数**（否则进入进程列表与 shell 历史）。
+- `xcut config show` 里 token 显示为 `<set>`，`xcut init` 写出的默认配置也不落盘它。
+- 密码学上是常量时间比较；失败按对端计数（5 分钟 20 次后转 `429`）。
+- 判定只看 socket 地址，`Host`/`X-Forwarded-For` 一律不参与。
+- 传输是明文 HTTP：请放在可信内网或 Tailscale/SSH 隧道里，**不要**用同机反向代理
+  套一层 TLS——那会让所有远端都变成"本机回环"从而绕过鉴权（SECURITY.md 有详细说明）。
+- Web UI 目前仍是本机界面：浏览器给 `<video src>`、缩略图和下载链接挂不上请求头，
+  远程 UI 需要签名能力 URL，尚未实现。
+
+</details>
 
 </details>
 
@@ -237,6 +262,8 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 | `job.stale_running_after` | `2h` | CLI 启动孤儿任务对账的年龄门槛 |
 | `log.level` / `log.max_size_mb` / `log.max_files` | info / 50 / 3 | serve 日志轮转 |
 | `server.listen` | `127.0.0.1:8619` | 除 `listen_remote` 外强制本机回环 |
+| `server.listen_remote` | false | 允许非回环绑定；必须同时配 `auth_token`（D12） |
+| `server.auth_token` | （空） | 非本机对端的 bearer token，≥24 字符（或 `XCUT_AUTH_TOKEN`） |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` 音频分析器 |
 | `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar 二进制（能力自动探测） |
 | `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | 工具链覆盖（或 `XCUT_FFMPEG`/`XCUT_FFPROBE`） |

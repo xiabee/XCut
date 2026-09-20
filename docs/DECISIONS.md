@@ -82,6 +82,7 @@ Context: local-first privacy tool; network exposure is a risk, not a feature.
 Decision: the API server binds 127.0.0.1 unless `listen_remote: true`; remote
 listening without authentication is rejected outright in v1.
 Consequences: safe default; LAN/multi-device use waits for auth design.
+(That design landed as D12 — remote listening is still refused without it.)
 
 ## D9: Fast file fingerprint (size+mtime+partial hash), full hash deferred
 
@@ -124,4 +125,39 @@ cross-platform verification. Acceptance criteria say "Local Quality Gate
 Green; CI not run (quota policy)" instead of "CI green". When quota recovers,
 re-add push/PR triggers (comment in ci.yml shows how) and consider
 `concurrency: cancel-in-progress` plus docs-only `paths-ignore`.
+
+## D12: Bearer-token authentication is what unlocks a remote bind
+
+Context: D8 pinned the API to loopback because there was nothing to
+authenticate a remote peer with — the whole workspace (every imported path,
+every render, the FFmpeg installer trigger) would have been readable and
+writable by anyone on the network. AGENTS.md and SECURITY.md both named auth as
+the *prerequisite* for remote listening, not a follow-up.
+
+Decision (2026-09-20, session #14): a static bearer token gates non-local
+peers. Loopback peers stay trusted, so the desktop client, `xcut client`, and
+the double-clicked exe keep working with zero setup.
+- The token comes from `server.auth_token` or `XCUT_AUTH_TOKEN` — never a CLI
+  flag, which would publish it into process listings and shell history.
+- `config.Resolve` refuses `listen_remote: true` without a token of at least
+  `config.MinAuthTokenLen` characters, and `serveAddr` re-checks that at the
+  last moment before binding: the invariant must not depend on one call site
+  having run.
+- Trust is decided from `r.RemoteAddr` only. `Host` and forwarding headers are
+  attacker-chosen and must never widen the gate.
+- Comparison is constant-time; rejections carry no detail (no hint of how close
+  an attempt was) and are logged without the token or the supplied header.
+- Failed attempts are rate limited per peer (20 per 5 min) with a bounded
+  tracker, because the gate is a new growth axis and AGENTS.md rule 4 has no
+  exceptions.
+- `/api/v1/*` is gated; the embedded UI shell is not, since it carries no user
+  data and a remote operator must be able to load it in order to be asked.
+
+Consequences: `listen_remote` is now a usable option rather than a refusal, and
+serve says which posture it started in. What is deliberately *not* solved here:
+a browser cannot attach a header to `<video src>`, thumbnails, or download
+links, so the web UI over a remote bind needs signed capability URLs — tracked
+as the next milestone, not quietly half-done by accepting tokens in query
+strings (they land in logs, history, and Referer). Configured tokens are masked
+in `xcut config show` and never written into the `xcut init` starter file.
 

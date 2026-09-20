@@ -17,8 +17,10 @@ Then skim `docs/DECISIONS.md` (why the architecture looks like this) and
    args...)` with per-call timeouts only. User text is argv data, never a
    command string.
 3. **User media is untrusted input.** All workspace-internal paths go through
-   `workspace.Workspace.SafeJoin`. The HTTP server binds loopback only;
-   refusing remote binds until auth exists is a feature, do not "fix" it.
+   `workspace.Workspace.SafeJoin`. The HTTP server binds loopback only; a
+   remote bind is legal *only* with `listen_remote: true` **and** a bearer
+   token (D12), and peer trust comes from the socket address — never from
+   `Host`/`X-Forwarded-For`. Refusing the pair is a feature, do not "fix" it.
 4. **Nothing unbounded**: jobs, ffmpeg processes, cache bytes, temp bytes,
    log growth all have configured ceilings (config `resource.*`). If you add
    a new growth axis, give it a budget and enforce it.
