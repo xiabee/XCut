@@ -117,6 +117,7 @@ func TestAssetFileContentType(t *testing.T) {
 	}{
 		{"clip.mov", "video/quicktime"},
 		{"clip.webm", "video/webm"},
+		{"clip.mkv", "video/x-matroska"},
 		{"clip.mp4", "video/mp4"},
 	} {
 		path := filepath.Join(dir, tc.name)

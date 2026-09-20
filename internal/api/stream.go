@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -49,10 +51,41 @@ func (w *writeIdleWriter) Flush() {
 	}
 }
 
+// mediaContentTypes pins the type for the containers XCut actually serves.
+// http.ServeContent falls back to the platform's MIME table, and that answer
+// differs by host — Go's built-in table labels .webm "audio/webm" while a
+// distro's /etc/mime.types says "video/webm" — and a <video> element told the
+// bytes are audio refuses to play the preview. The extensions that matter here
+// are therefore named here; anything else keeps the sniffed fallback.
+var mediaContentTypes = map[string]string{
+	".mp4":  "video/mp4",
+	".m4v":  "video/mp4",
+	".mov":  "video/quicktime",
+	".mkv":  "video/x-matroska",
+	".webm": "video/webm",
+	".avi":  "video/x-msvideo",
+	".mpg":  "video/mpeg",
+	".mpeg": "video/mpeg",
+	".ts":   "video/mp2t",
+	".m4a":  "audio/mp4",
+	".mp3":  "audio/mpeg",
+	".aac":  "audio/aac",
+	".wav":  "audio/wav",
+	".flac": "audio/flac",
+	".ogg":  "audio/ogg",
+	".ass":  "text/x-ssa",
+	".srt":  "application/x-subrip",
+	".vtt":  "text/vtt",
+	".json": "application/json",
+}
+
 // serveMediaFile streams one workspace file with range support via
 // http.ServeContent under the write-idle heartbeat. All streaming routes
 // go through here so the heartbeat cannot drift from the routes.
 func serveMediaFile(w http.ResponseWriter, r *http.Request, name string, mod time.Time, content http.File) {
+	if ct, ok := mediaContentTypes[strings.ToLower(filepath.Ext(name))]; ok {
+		w.Header().Set("Content-Type", ct) // ServeContent respects a preset type
+	}
 	ww := &writeIdleWriter{ResponseWriter: w, rc: http.NewResponseController(w), window: streamIdleWindow}
 	http.ServeContent(ww, r, name, mod, content)
 }
