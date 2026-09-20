@@ -359,6 +359,15 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
   the uninstaller.
   NOT VERIFIED: the interactive wizard path (no UI session available in CI)
   and all-users elevation — same script, different scope flag.
+- Acceptance for the tagged sha itself came from two channels: the control
+  plane (`xnightops ci run XCut` → local PASS with the secret scan, then
+  `--node win-devops` → remote PASS recorded against the same sha) and a
+  cross-platform leg (`git archive v0.1.8-alpha` onto the Linux node,
+  `check.sh full` with `GOFLAGS=-count=1`, green including `-race` and the
+  Rust worker; that node skips `govulncheck`, so only the Windows leg covers
+  it). An SSH local-forward into a loopback-bound `xcut serve` was also driven
+  end to end — which is the recipe the docs tell remote users to run, so it
+  should not be documented from a blog post.
 
 ## Known Issues
 
@@ -469,11 +478,16 @@ Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
 ## Next Priorities
 
 1. Remote-access hardening, in the order the risk suggests (the remote web UI
-   itself shipped as D14): (a) a documented tunnel recipe so a bearer token
-   never crosses an untrusted wire — the product has no TLS and D12 says so;
-   (b) actually look at the sign-in panel (see the unverified-layout note
-   above); (c) token rotation as an operator action rather than
-   edit-config-restart.
+   itself shipped as D14): (a) put the SSH-tunnel recipe into an OPERATIONS
+   doc — the recipe was driven end to end in session #14 (loopback bind on the
+   node + local forward + unauthenticated UI/API through it), but it is not
+   written down anywhere yet, and the doc must say out loud that a tunnel
+   hands authentication to SSH, so anyone who can log into that host can drive
+   XCut; (b) actually look at the sign-in panel (see the unverified-layout
+   note above); (c) token rotation as an operator action rather than
+   edit-config-restart — undecided, because a hot-swappable token fights the
+   process-level gate that D12 chose on purpose, so the alternative may just
+   be "short session TTL plus a restart", which needs writing down either way.
 2. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
    has the badminton worked example — the burned-in scoreboard makes
    rally annotation mechanical (~41 rallies), a manifest template sits in
