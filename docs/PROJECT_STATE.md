@@ -399,15 +399,22 @@ defect it caught) is unchanged below.
   the clip window at the segment start instead of its middle (rally chunks are
   cut on quiet valleys, so the middle of a 30s chunk is often the pause after a
   point). STILL OPEN: (a) climax presence is now structural but *which* rally
-  per phase is still ranked by contaminated audio — that needs the vision-AI
-  seam to identify the players' own strokes; (b) `ranges_hit` is capped by the
-  budget (8 clips × 8 s cannot represent 41 rallies of ~10 s), so representing
-  more of a match means either a longer reel or splitting long segments into
-  several scored windows — the latter needs a per-window activity profile on
-  `event.Segment`, which does not exist yet; **and the arithmetic now says how
-  little is left there**: 473 s of rally time in the match against a 60 s reel
-  bounds recall at 0.127, and the committed state measures 0.112, i.e. 88% of
-  what the budget allows. Decomposing the reel (inside a rally / adjacent to
+  per phase is still ranked by contaminated audio, and the window still ends
+  where the segment says, not where the point ended — measured in session #15:
+  anchoring to the true rally end is worth **+14 points of precision and three
+  more rallies** (oracle P 0.963 vs 0.822), and neither audio onsets, court-ROI
+  motion decay, nor the engine's own segment end can reach it (segment-end
+  anchoring is *worse*: 0.759). So the first vision capability to ask the
+  sidecar for is **score-overlay change detection**, not stroke ownership — this
+  footage's own ground truth came from those digits, so the ask is concrete and
+  checkable; (b) `ranges_hit` was capped by the budget, and that cap is now
+  **lifted** (session #15: `--duration` plus the phase-quota fix take a 240 s
+  request from 10 clips / 8 rallies to 21 clips / 18 rallies), so the old
+  "split long segments into scored windows" idea (which needed a per-window
+  activity profile `event.Segment` does not carry) is no longer the lever —
+  length is; **the arithmetic for the shipped 60 s default**: 473 s of rally
+  time in the match bounds recall at 0.127, and the committed state measures
+  0.112, i.e. 88% of what that budget allows. Decomposing the reel (inside a rally / adjacent to
   its own rally / far from any) gives 53.2 s / 6.8 s / **0.0 s** — no clip is a
   wrong pick, so what remains is boundary coarseness, which is a
   segmentation-resolution problem (vision), not a scoring one; (c) the PROVISIONAL constants were

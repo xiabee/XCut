@@ -180,6 +180,37 @@ an evening here.
 | clip anchored at motion peak | 0.770 | loses — a rally's peak lands at the point's end, pushing the window over the boundary |
 | score onsets corroborated by ROI motion | 0.886, **bit-identical scores** | no effect: within a rally the players are continuously moving, so ROI motion rarely dips below `mean + 0.25·(peak−mean)` and corroboration degenerates to raw counting |
 | trim clips to the first/last audible onset (kill the dead head and tail) | measured **0.0 s recoverable of 21.8 s** | **negative, and measured before building it**: every clip that starts before its annotated rally has 5–10 onsets within 0.1–0.3 s of its first frame — the neighbouring courts are mid-rally during our pre-serve pause. The tail is the same story (last onset sits ≤1.1 s before clip end in all 20 clips). Silence-based trimming has nothing to find here; only knowing *which* strokes are ours would. |
+| end clips where court-ROI motion decays (players stop after the point) | signed error **+4.90 s** vs the fixed window's **−4.63 s** | **negative, and it inverts the premise.** ROI motion stays above `mean + 0.25·(peak−mean)` for ~5 s *past* the point — they retrieve the shuttle and set up for the next serve — so a motion-based end rule would push 18 of 20 clips further past the point, not earlier. Court motion is not a rally terminator either. |
+
+**What the signed errors actually say (session #15, 20-clip / 160 s cut with the
+court ROI set).** The dominant defect is not dead time — it is **truncation**:
+the median clip ends 4.63 s *before* its rally does, because `max_clip_duration`
+(8 s) is shorter than the median rally (10.5 s); only 4 of 20 clips run past the
+point at all. So the reel shows roughly three quarters of each rally it
+chooses. Making windows long enough to cover a whole rally was measured above
+(11 s, 14 s) and *loses* precision, because the engine trusts the detected
+segment boundary, and that boundary is coarser than the rally. That is the wall
+stated in both directions: shorten-to-boundary fails (motion, audio), and
+lengthen-to-fit fails (precision). Only knowing where the point actually ended —
+the scoreboard, or a vision pass over the court — resolves it.
+
+**How much that knowing is worth, and what cannot substitute for it.** An oracle
+that anchors each 8 s window to the *end of the annotated rally* scores
+**P 0.963 / 20 of 43 rallies**, against the engine's 0.822 / 17 — so ~14 points
+of precision and three more rallies sit behind that one fact. The engine's own
+substitute is measurably worse: anchoring to the **detected segment end** gives
+**P 0.759 / 15**, with 12 of 20 windows running past the point (median +1.04 s,
+versus the start-anchored −4.63 s), because the hysteresis walk exits late while
+the hall keeps making noise. This also explains the session #14 result that
+start-anchoring beat every density- or motion-based anchor: the segment's
+*beginning* is a far more trustworthy landmark than its end.
+
+Consequence for the sidecar's priority list: the first vision capability worth
+asking for is not "tell our strokes from theirs" but **read the score overlay**
+— this footage already carries the point boundaries as burned-in digits, which
+is how the ground truth in this file was produced in the first place. A model
+that detects score changes on the client's own media would turn that oracle into
+an input the pipeline can use, without needing to recognise anyone's technique.
 
 | `max_clip_duration` 11 s | P 0.836, R 0.106, ranges 6 | worse: longer windows cannot fit a 10.5 s median rally, so every clip spills past its boundary — and the 60 s budget then holds 6 clips instead of 8 |
 | `max_clip_duration` 14 s | P 0.822, R 0.104, ranges **4** | worse again, and it loses distinct rallies. **8 s remains the measured optimum**, like `rally_chunk`'s 30 s default |
