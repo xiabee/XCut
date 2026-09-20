@@ -68,7 +68,7 @@ func TestEnsureJobKillOnCloseFlag(t *testing.T) {
 // would silently keep encoders uncapped. Zero stays uncapped: the default
 // must not start failing high-resolution renders that never asked for a cap.
 func TestBuildJobLimitsMemoryCap(t *testing.T) {
-	info := buildJobLimits(128)
+	info := buildJobLimits(0)
 	if info.Basic.LimitFlags&jobObjectLimitProcessMemory != 0 {
 		t.Error("cap 0 must leave the process-memory flag off")
 	}
