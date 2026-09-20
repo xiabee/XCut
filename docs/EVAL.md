@@ -179,6 +179,8 @@ an evening here.
 | clip anchored at median onset | 0.789 | loses to start-anchoring |
 | clip anchored at motion peak | 0.770 | loses — a rally's peak lands at the point's end, pushing the window over the boundary |
 | score onsets corroborated by ROI motion | 0.886, **bit-identical scores** | no effect: within a rally the players are continuously moving, so ROI motion rarely dips below `mean + 0.25·(peak−mean)` and corroboration degenerates to raw counting |
+| trim clips to the first/last audible onset (kill the dead head and tail) | measured **0.0 s recoverable of 21.8 s** | **negative, and measured before building it**: every clip that starts before its annotated rally has 5–10 onsets within 0.1–0.3 s of its first frame — the neighbouring courts are mid-rally during our pre-serve pause. The tail is the same story (last onset sits ≤1.1 s before clip end in all 20 clips). Silence-based trimming has nothing to find here; only knowing *which* strokes are ours would. |
+
 | `max_clip_duration` 11 s | P 0.836, R 0.106, ranges 6 | worse: longer windows cannot fit a 10.5 s median rally, so every clip spills past its boundary — and the 60 s budget then holds 6 clips instead of 8 |
 | `max_clip_duration` 14 s | P 0.822, R 0.104, ranges **4** | worse again, and it loses distinct rallies. **8 s remains the measured optimum**, like `rally_chunk`'s 30 s default |
 
@@ -191,10 +193,11 @@ win: with 473 s of rally time in the match, a 60 s reel can reach at most
 recall 60/473 = **0.127**, and the committed state measures **0.112** — 88% of
 the budget ceiling. Raising recall is therefore a *duration* decision
 (`target_duration`, overridable per workspace style), not an algorithm one.
-Trimming the 6.8 s of adjacency would need onset timestamps inside the segment,
-which `event.Segment` does not carry (only aggregates) — and the one signal
-that could substitute for it inside a chunk, local density, was already
-measured above and picks the neighbouring court's rally instead.
+Trimming that adjacency was then measured directly rather than assumed (session
+#15, on a 20-clip / 160 s cut): 21.8 s of it sits *before* the rally and 11.4 s
+*after*, and the onset track says why it cannot be recovered — the head is
+occupied by neighbours' hits within a few tenths of a second, and the tail ends
+on sound too. The idea is dead on this footage, not unimplemented.
 
 ### Reel length: the one lever that was not at its optimum
 
