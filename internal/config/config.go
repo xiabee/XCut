@@ -17,11 +17,36 @@ import (
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
-// Server controls the future local HTTP API. Listen is forced to a loopback
-// address unless ListenRemote is explicitly true (security default).
+// MinAuthTokenLen is the shortest accepted API bearer token. Below it, an
+// attacker on the network can try enough candidates to get inside the remote
+// bind's rate limit (api/auth.go), so the config refuses to accept one.
+const MinAuthTokenLen = 24
+
+// Redacted returns a copy with secret-valued fields replaced by a marker, for
+// any path that prints or persists configuration the operator did not write by
+// hand into a file (`xcut config show`, the config.json written by `xcut init`).
+// A shallow copy is sufficient only while Config holds no reference types —
+// merge.go's "no slices or maps today" note is the same invariant.
+func (c *Config) Redacted() *Config {
+	out := *c
+	if out.Server.AuthToken != "" {
+		out.Server.AuthToken = "<set>"
+	}
+	return &out
+}
+
+// Server controls the local HTTP API. Listen is forced to a loopback address
+// unless ListenRemote is explicitly true (security default), and a remote bind
+// additionally requires AuthToken (D12): the API never listens off-box without
+// something to authenticate the peers it then accepts.
 type Server struct {
 	Listen       string `json:"listen"`
 	ListenRemote bool   `json:"listen_remote"`
+
+	// AuthToken is the bearer token non-loopback peers must present. Set it
+	// in the workspace config or XCUT_AUTH_TOKEN — never a CLI flag, which
+	// would publish the secret into process listings and shell history.
+	AuthToken string `json:"auth_token,omitempty"`
 }
 
 // Resource is the resource budget. Every concurrency knob is a hard cap; the
@@ -188,6 +213,9 @@ func Env(cfg *Config) {
 	if v := os.Getenv("XCUT_LISTEN"); v != "" {
 		cfg.Server.Listen = v
 	}
+	if v := os.Getenv("XCUT_AUTH_TOKEN"); v != "" {
+		cfg.Server.AuthToken = v
+	}
 	if v := os.Getenv("XCUT_AI_BIN"); v != "" {
 		cfg.Workers.AIBin = v
 	}
@@ -280,8 +308,23 @@ func Resolve(cfg *Config) error {
 
 	// Security default: unless remote listening is explicitly enabled, pin to
 	// the loopback interface regardless of the configured address.
+	cfg.Server.AuthToken = strings.TrimSpace(cfg.Server.AuthToken)
 	if !cfg.Server.ListenRemote {
 		cfg.Server.Listen = forceLoopback(cfg.Server.Listen)
+	} else if cfg.Server.AuthToken == "" {
+		return xcerr.E(xcerr.CodeValidation,
+			"server.listen_remote needs server.auth_token (or XCUT_AUTH_TOKEN): "+
+				"a token-less remote bind would expose the whole workspace to the network; "+
+				"generate one with e.g. `openssl rand -hex 24`", nil)
+	}
+	if cfg.Server.AuthToken != "" && len(cfg.Server.AuthToken) < MinAuthTokenLen {
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("server.auth_token is too short (%d chars, need %d): a short bearer token is brute-forceable",
+				len(cfg.Server.AuthToken), MinAuthTokenLen), nil)
+	}
+	if strings.ContainsAny(cfg.Server.AuthToken, " \t\r\n") {
+		return xcerr.E(xcerr.CodeValidation,
+			"server.auth_token must not contain whitespace", nil)
 	}
 	if cfg.Server.Listen == "" {
 		cfg.Server.Listen = "127.0.0.1:8619"

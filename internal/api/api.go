@@ -1,8 +1,9 @@
 // Package api serves XCut's local HTTP API (versioned under /api/v1).
 //
 // Security posture (SECURITY.md): the API is loopback-only by construction —
-// remote listening is rejected until authentication exists. Bodies are size-
-// capped, responses are JSON, and xcerr codes map to stable HTTP statuses.
+// a remote bind additionally requires a bearer token (D12), and non-local
+// peers are authenticated by the socket address, never by headers. Bodies are
+// size-capped, responses are JSON, and xcerr codes map to stable HTTP statuses.
 package api
 
 import (
@@ -39,6 +40,12 @@ type Server struct {
 	// answer honestly that the installer is unavailable.
 	Setup *setup.Installer
 
+	// AuthToken is the bearer token non-loopback peers must present (D12).
+	// Empty — the default, and what every loopback serve runs with — leaves
+	// local clients unauthenticated; it does not open the server to the
+	// network, because config.Resolve refuses a remote bind without a token.
+	AuthToken string
+
 	// TimelineMu serializes timeline document writes (revision-guarded
 	// PUTs, backup restores, and regeneration via Pipe.TimelineWriteLock)
 	// across concurrent request and job goroutines in this process; the
@@ -69,6 +76,10 @@ func statusFor(code xcerr.Code) int {
 		return http.StatusBadRequest
 	case xcerr.CodeNotFound:
 		return http.StatusNotFound
+	case xcerr.CodeUnauthorized:
+		return http.StatusUnauthorized
+	case xcerr.CodeForbidden:
+		return http.StatusForbidden
 	case xcerr.CodeConflict:
 		return http.StatusConflict
 	case xcerr.CodeUnsupportedMedia:
@@ -107,7 +118,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
-// Handler builds the full API route tree.
+// Handler builds the route tree behind the authentication gate (D12): every
+// /api/v1 route requires a bearer token from a non-local peer, the embedded UI
+// shell does not.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -141,7 +154,7 @@ func (s *Server) Handler() http.Handler {
 	s.RegisterExtensionEndpoints(mux)
 	registerStatic(mux)
 
-	return mux
+	return newAuthGate(s.AuthToken, s.Log).authenticate(mux)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

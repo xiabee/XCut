@@ -25,6 +25,9 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Server.ListenRemote {
 		out.Server.ListenRemote = true
 	}
+	if layer.Server.AuthToken != "" {
+		out.Server.AuthToken = layer.Server.AuthToken
+	}
 	if layer.Resource.MaxConcurrentJobs != 0 {
 		out.Resource.MaxConcurrentJobs = layer.Resource.MaxConcurrentJobs
 	}

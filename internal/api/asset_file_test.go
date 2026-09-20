@@ -53,6 +53,7 @@ func TestAssetFileEndpoint(t *testing.T) {
 
 	// Range request (browser seeking) returns the requested slice.
 	req := httptest.NewRequest("GET", "/api/v1/projects/"+p1.ID+"/assets/"+a.ID+"/file", nil)
+	req.RemoteAddr = "127.0.0.1:52000" // local client; the gate is auth_test.go's job
 	req.Header.Set("Range", "bytes=5-8")
 	rec2 := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec2, req)

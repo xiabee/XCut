@@ -31,7 +31,10 @@ func cmdConfig(a *App, args []string) error {
 	case "path":
 		fmt.Fprintln(a.Stdout, a.CfgPath)
 	case "show":
-		b, err := json.MarshalIndent(a.Cfg, "", "  ")
+		// Redacted: the resolved config can carry the API bearer token (from
+		// the workspace file or XCUT_AUTH_TOKEN), and this output is what an
+		// operator pastes into a bug report.
+		b, err := json.MarshalIndent(a.Cfg.Redacted(), "", "  ")
 		if err != nil {
 			return xcerr.E(xcerr.CodeInternal, "cannot serialize config", err)
 		}

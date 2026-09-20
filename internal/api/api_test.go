@@ -52,6 +52,11 @@ func do(t *testing.T, s *Server, method, path, body string) (*httptest.ResponseR
 	} else {
 		req = httptest.NewRequest(method, path, nil)
 	}
+	// httptest.NewRequest defaults RemoteAddr to a TEST-NET address, which the
+	// authentication gate reads as a remote peer. These tests exercise the
+	// routes, not the gate: they are the local client. Gate behavior over a
+	// remote peer is TestAuthGate* in auth_test.go.
+	req.RemoteAddr = "127.0.0.1:52000"
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	var out map[string]any

@@ -9,9 +9,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/xiabee/XCut/internal/api"
+	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/setup"
 	"github.com/xiabee/XCut/internal/version"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -45,10 +47,18 @@ func serveAddr(a *App, args []string) (string, error) {
 	if addr == "" {
 		addr = a.Cfg.Server.Listen
 	}
-	if a.Cfg.Server.ListenRemote || !isLoopbackAddr(addr) {
+	// The invariant AGENTS.md and SECURITY.md protect: nothing reaches this
+	// process from off-box unless the operator asked for it AND a bearer token
+	// stands behind it. Re-checked here rather than trusted to config.Resolve,
+	// because this is the last gate before a socket opens on the network — and
+	// a short token is not authentication, it is a hint. A loopback bind with a
+	// token configured is legal and stays friction-free for local clients.
+	if !isLoopbackAddr(addr) &&
+		(!a.Cfg.Server.ListenRemote || len(a.Cfg.Server.AuthToken) < config.MinAuthTokenLen) {
 		return "", xcerr.E(xcerr.CodeValidation,
-			"remote listening is not available yet (no authentication); "+
-				"set server.listen to a 127.0.0.1 address", nil)
+			"refusing a non-loopback bind: remote listening requires server.listen_remote = true "+
+				"and a server.auth_token of at least "+strconv.Itoa(config.MinAuthTokenLen)+
+				" characters; set server.listen to a 127.0.0.1 address otherwise", nil)
 	}
 	return addr, nil
 }
@@ -69,7 +79,7 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 	defer closeLog()
 	a.Log = slogSvc
 
-	srv := &api.Server{DB: db, Pipe: a.Pipeline(db), Log: a.Log}
+	srv := &api.Server{DB: db, Pipe: a.Pipeline(db), Log: a.Log, AuthToken: a.Cfg.Server.AuthToken}
 	// Component auto-install (owner directive): a double-clicked exe on a
 	// machine without FFmpeg gets a pinned-source, hash-checked download
 	// into the exe-neighbor bin/ dir config.Resolve already probes. The
@@ -123,8 +133,15 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 		db.Close()
 		return nil, xcerr.E(xcerr.CodeInternal, "cannot bind "+addr, err)
 	}
-	fmt.Fprintf(a.Stdout, "xcut serving http://%s (loopback only)\n", ln.Addr().String())
-	a.Log.Info("server started", "addr", ln.Addr().String(), "version", version.Version)
+	posture := "loopback only"
+	if !isLoopbackAddr(addr) {
+		// Reachable off-box: every non-local request now has to clear the
+		// bearer gate, so say that out loud where the operator reads it.
+		posture = "remote bind, authentication required"
+	}
+	fmt.Fprintf(a.Stdout, "xcut serving http://%s (%s)\n", ln.Addr().String(), posture)
+	a.Log.Info("server started", "addr", ln.Addr().String(), "version", version.Version,
+		"auth", a.Cfg.Server.AuthToken != "")
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -165,9 +182,10 @@ func shutdownServe(a *App, r *runningServe) error {
 	return nil
 }
 
-// cmdServe runs the localhost API. Remote listening is refused outright:
-// authentication does not exist yet, so LAN exposure is a vulnerability, not
-// a feature (DECISIONS D8).
+// cmdServe runs the localhost API. A non-loopback bind is refused unless the
+// operator both opted in (listen_remote) and configured a bearer token —
+// exposure without something to authenticate peers is a vulnerability, not a
+// feature (DECISIONS D8, D12).
 func cmdServe(a *App, args []string) error {
 	addr, err := serveAddr(a, args)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xiabee/XCut/internal/analysis"
+	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
@@ -43,7 +44,12 @@ func cmdInit(a *App, _ []string) error {
 	// Write the default config file if none exists (documented starting point).
 	cfgPath := filepath.Join(ws.Root, "config.json")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		b, _ := json.MarshalIndent(a.Cfg, "", "  ")
+		// The file records intent, not whatever secret happens to sit in the
+		// environment: an XCUT_AUTH_TOKEN-provided bearer token must not be
+		// baked into a 0644 config.json by an unrelated `xcut init`.
+		fileCfg := *a.Cfg
+		fileCfg.Server.AuthToken = ""
+		b, _ := json.MarshalIndent(&fileCfg, "", "  ")
 		if err := os.WriteFile(cfgPath, b, 0o644); err != nil {
 			return xcerr.E(xcerr.CodeInternal, "cannot write default config", err)
 		}
@@ -231,6 +237,17 @@ func cmdDoctor(a *App, args []string) error {
 			add("SQLite", "OK", filepath.Base(ws.DBPath()))
 		}
 		db.Close()
+	}
+
+	// API posture, reported without the token itself: an operator deciding
+	// whether to expose serve needs to see which of the three states they are in.
+	switch {
+	case a.Cfg.Server.ListenRemote:
+		add("API auth", "OK", fmt.Sprintf("remote bind enabled; non-local peers must present a bearer token (min %d chars)", config.MinAuthTokenLen))
+	case a.Cfg.Server.AuthToken != "":
+		add("API auth", "OPTIONAL", "token configured but listen is loopback; local clients stay unauthenticated by design")
+	default:
+		add("API auth", "OPTIONAL", "no token; loopback only, remote bind refused")
 	}
 
 	// Cache usage: informational (OPTIONAL) — eviction is enforced elsewhere.

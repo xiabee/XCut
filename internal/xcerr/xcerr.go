@@ -18,6 +18,8 @@ const (
 	CodeValidation       Code = "validation"
 	CodeConflict         Code = "conflict"
 	CodeNotFound         Code = "not_found"
+	CodeUnauthorized     Code = "unauthorized"
+	CodeForbidden        Code = "forbidden"
 	CodeUnsupportedMedia Code = "unsupported_media"
 	CodeResourceLimit    Code = "resource_limit"
 	CodeFFmpegFailure    Code = "ffmpeg_failure"

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/config"
@@ -34,8 +35,9 @@ func TestIsLoopbackAddr(t *testing.T) {
 }
 
 func TestServeRefusesRemoteWithoutAuth(t *testing.T) {
-	// serve must refuse any non-loopback bind: authentication does not exist
-	// yet, so remote exposure would be a vulnerability, not a feature.
+	// serve must refuse any non-loopback bind that is not backed by explicit
+	// opt-in AND a bearer token: remote exposure without authentication would
+	// be a vulnerability, not a feature (SECURITY.md, D12).
 	a := &App{Cfg: defaultTestCfg()}
 	if err := cmdServe(a, []string{"--addr", "0.0.0.0:8619"}); err == nil {
 		t.Fatal("remote bind accepted")
@@ -44,6 +46,38 @@ func TestServeRefusesRemoteWithoutAuth(t *testing.T) {
 	a.Cfg.Server.Listen = "0.0.0.0:8619"
 	if err := cmdServe(a, nil); err == nil {
 		t.Fatal("listen_remote accepted without auth")
+	}
+	// A strong token alone is not consent to bind off-box, and a weak one is
+	// not authentication.
+	a.Cfg.Server.ListenRemote = false
+	a.Cfg.Server.AuthToken = strings.Repeat("x", 32) // fixture, not a credential
+	if _, err := serveAddr(a, []string{"--addr", "0.0.0.0:8619"}); err == nil {
+		t.Fatal("remote bind accepted without listen_remote")
+	}
+	a.Cfg.Server.ListenRemote = true
+	a.Cfg.Server.AuthToken = "short"
+	if _, err := serveAddr(a, nil); err == nil {
+		t.Fatal("remote bind accepted with a token below the minimum length")
+	}
+}
+
+func TestServeAddrAllowsRemoteWithAuth(t *testing.T) {
+	a := &App{Cfg: defaultTestCfg()}
+	a.Cfg.Server.ListenRemote = true
+	a.Cfg.Server.AuthToken = strings.Repeat("x", 32)
+	a.Cfg.Server.Listen = "0.0.0.0:8619"
+	addr, err := serveAddr(a, nil)
+	if err != nil {
+		t.Fatalf("configured remote bind refused: %v", err)
+	}
+	if addr != "0.0.0.0:8619" {
+		t.Fatalf("addr %q, want the configured 0.0.0.0:8619", addr)
+	}
+	// Loopback keeps working with a token configured, and keeps its
+	// friction-free local clients (the desktop client must not need one).
+	a.Cfg.Server.Listen = "127.0.0.1:8619"
+	if addr, err := serveAddr(a, nil); err != nil || addr != "127.0.0.1:8619" {
+		t.Fatalf("loopback bind with auth configured: %q %v", addr, err)
 	}
 }
 

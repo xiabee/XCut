@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,6 +44,7 @@ func TestResolveForcesLoopback(t *testing.T) {
 
 	cfg2 := Default()
 	cfg2.Server.ListenRemote = true
+	cfg2.Server.AuthToken = strings.Repeat("x", 32) // fixture, not a credential
 	cfg2.Server.Listen = "0.0.0.0:9999"
 	if err := Resolve(cfg2); err != nil {
 		t.Fatal(err)

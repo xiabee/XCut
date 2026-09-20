@@ -379,6 +379,7 @@ func TestConcurrentSameNameUploadsNeverOverwrite(t *testing.T) {
 			req := httptest.NewRequest("POST",
 				"/api/v1/projects/"+pid+"/assets/upload?filename=race.mp4",
 				bytes.NewReader(body))
+			req.RemoteAddr = "127.0.0.1:52000" // local client; the gate is auth_test.go's job
 			s.Handler().ServeHTTP(rec, req)
 			results[i] = result{code: rec.Code}
 		}(i)
