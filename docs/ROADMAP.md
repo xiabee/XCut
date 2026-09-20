@@ -34,9 +34,14 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] API authentication (D12, session #14): a bearer token gates every
       non-loopback peer of `/api/v1`, loopback stays trusted, and
       `listen_remote` became a usable option (with a token) instead of a
-      refusal. Remote **web UI** use remains open — a browser cannot attach a
-      header to media/thumbnail/download URLs, so it needs signed capability
-      URLs (next candidate).
+      refusal.
+- [x] Remote web UI (D14, session #14): a browser cannot put a header on media
+      URLs, so login mints an HttpOnly session cookie for reads while writes
+      must echo the id — the asymmetry is the CSRF defence. Verified in a real
+      browser over a LAN peer.
+- [ ] Remote-access finishing: a documented TLS/tunnel recipe (the token and
+      media cross a cleartext wire today), a visual pass over the sign-in
+      panel, and token rotation as an operator action.
 
 - [x] Platform legs of the quality gate (session #14): the same gate now runs
       green on a Linux node (Go incl. `-race`, Rust incl. clippy) and the

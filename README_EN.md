@@ -173,9 +173,15 @@ curl -H "Authorization: Bearer $tok" http://<host-ip>:8619/api/v1/health
   Tailscale/SSH tunnel, and **do not** front it with a same-machine TLS reverse
   proxy — that would make every remote peer "loopback" and bypass the gate
   (SECURITY.md explains).
-- The web UI is still a local surface: a browser cannot attach a header to
-  `<video src>`, thumbnails or download links, so remote UI needs signed
-  capability URLs, which are not built yet.
+- The web UI works remotely: a browser cannot attach a header to `<video src>`,
+  thumbnails or download links, so the first login (proven by the bearer token)
+  mints an `HttpOnly; SameSite=Strict` session cookie used for **reads**, while
+  **writes** still must echo the session id in `X-Cut-Session` — a cross-site
+  page cannot read an HttpOnly cookie to produce that echo, so CSRF is
+  structurally impossible rather than token-guarded (D14). The token itself is
+  never persisted, so reloading does not ask again.
+- Sessions are in-memory: 12 h TTL, capped at 256, all gone on restart;
+  `DELETE /api/v1/session` or the topbar "Sign out" revokes one immediately.
 
 </details>
 

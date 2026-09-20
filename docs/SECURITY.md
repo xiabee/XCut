@@ -59,10 +59,16 @@ every peer that reaches the API from off-box.
   threat model already treats the local OS user as trusted.
 - The embedded UI shell is served unauthenticated; every `/api/v1` route
   (including the media preview, render/subtitle download and the installer
-  trigger) is not. Browser-loaded media URLs cannot carry a header, so the web
-  UI over a *remote* bind additionally needs signed capability URLs — until
-  that lands, remote serving is for API clients, and the UI remains a local
-  surface.
+  trigger) is not. Browsers cannot attach a header to media URLs, so a remote
+  UI logs in once (`POST /api/v1/session`, proven by the bearer token) and then
+  reads with an `HttpOnly; SameSite=Strict` session cookie — while **writes
+  still require the session id echoed in `X-Cut-Session`**, which a cross-site
+  page cannot produce. Verified in a real browser: a media fetch with no header
+  at all succeeds on the cookie, the same-origin mutation without the echo is
+  refused (D14).
+- Sessions are in-memory, TTL 12 hours, capped at 256 (past the cap a login is
+  refused rather than the table growing), revoked by `DELETE /api/v1/session`,
+  and cleared by a restart — deliberately not persisted.
 - Upload size enforced with `http.MaxBytesReader`/`io.LimitReader` streaming
   writes; `Content-Length` is not trusted alone.
 - File type decided by real probing (ffprobe), never by extension or

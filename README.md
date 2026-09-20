@@ -159,8 +159,13 @@ curl -H "Authorization: Bearer $tok" http://<主机IP>:8619/api/v1/health
 - 判定只看 socket 地址，`Host`/`X-Forwarded-For` 一律不参与。
 - 传输是明文 HTTP：请放在可信内网或 Tailscale/SSH 隧道里，**不要**用同机反向代理
   套一层 TLS——那会让所有远端都变成"本机回环"从而绕过鉴权（SECURITY.md 有详细说明）。
-- Web UI 目前仍是本机界面：浏览器给 `<video src>`、缩略图和下载链接挂不上请求头，
-  远程 UI 需要签名能力 URL，尚未实现。
+- Web UI 可远程使用：浏览器给 `<video src>`、缩略图和下载链接挂不上请求头，
+  所以首次登录（用 bearer 令牌证明）后换发一个 `HttpOnly; SameSite=Strict`
+  会话 cookie 供**读取**使用；**写入**仍必须把会话 id 回显在 `X-Cut-Session`
+  头里——跨站页面读不到 HttpOnly cookie，也就无法伪造这个回显，CSRF 因此在
+  结构上不成立（D14）。令牌本身不落盘，刷新页面不会重复索要。
+- 会话是内存态：TTL 12 小时、上限 256 个、重启即全部失效，`DELETE
+  /api/v1/session` 或界面右上角的"退出登录"可立即撤销。
 
 </details>
 

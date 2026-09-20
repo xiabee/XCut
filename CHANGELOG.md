@@ -34,10 +34,22 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   would bypass the gate by presenting every peer as loopback.
 
 ### Added
+- **The web UI works from another machine** (D14). Browsers cannot attach a
+  header to `<video src>`, thumbnails or download links, so signing in
+  (`POST /api/v1/session`, proven by the bearer token) mints a 256-bit session
+  id returned as an `HttpOnly; SameSite=Strict` cookie. Reads may ride the
+  cookie; **every other method must echo the id in `X-Cut-Session`**, which a
+  cross-site page cannot produce from an HttpOnly cookie — CSRF is structurally
+  impossible here rather than token-guarded. The access token is never stored
+  by the page (only the session id, per-tab), a reload stays signed in, and
+  Sign out or `DELETE /api/v1/session` revokes at once. Sessions are in-memory
+  with a 12 h TTL, capped at 256 — past the cap a login is refused rather than
+  the table growing. UI: a localized sign-in panel, a Sign out affordance that
+  appears only when a session exists, and one shared prompt so parallel 401s
+  cannot stack modals.
 - `xcut doctor` reports the API posture (remote + token required / token set
-  but loopback / no token, remote refused) without printing the token.
-- The serve startup line states the posture, and `server started` logs whether
-  authentication is on.
+  but loopback / no token, remote refused) without printing the token, and the
+  serve startup line states which posture it started in.
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
 ### Fixed

@@ -70,6 +70,17 @@ checkpoint
   by CLI and API. Timeline builds append style-driven analyzers (court ROI).
   Render outputs are guarded against overwriting source media, timeline-
   referenced clip sources, or the timeline document.
+- **Remote UI sessions** (session #14, D14): a browser cannot put a header on
+  `<video src>`, thumbnails or download links, so `POST /api/v1/session`
+  (proven by the bearer token) mints a 256-bit id delivered as
+  `HttpOnly; SameSite=Strict; Path=/` and returned once in the body. Reads may
+  ride that cookie; every other method must echo the id in `X-Cut-Session`,
+  which a cross-site page cannot produce from an HttpOnly cookie — the asymmetry
+  is the CSRF defence rather than a token check. The access token is never
+  persisted client-side (only the session id, in `sessionStorage`), a reload
+  stays signed in, `DELETE /api/v1/session` and a topbar Sign out revoke, and
+  the store is in-memory with a 12 h TTL capped at 256 sessions (refusing past
+  the cap, never growing).
 - **API authentication** (session #14, D12): `/api/v1/*` requires
   `Authorization: Bearer <server.auth_token>` from any peer whose socket
   address is not loopback; loopback peers are trusted, so local clients stay
@@ -289,6 +300,20 @@ checkpoint
   1 event)/timeline/render (4.8 MB in 3.1s)/cache/cleanup, and the rendered
   output probed back at 10.02 s with video+audio. Requires a stock FFmpeg:
   see the Kylin vendor-plugin limitation in Known Issues.
+- **Remote UI sessions verified in a real browser over a LAN peer address**
+  (session #14), not only by unit test: the unauthenticated page shows the
+  sign-in modal (localized), signing in with the token returns 201 with
+  `Set-Cookie: xcut_session=…; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict`,
+  the modal closes and Sign out appears; **a media URL fetched with no request
+  header at all returns 200 / `video/mp4` / the full 1,090,855 bytes** (the
+  thing D12 could not do); the same-origin mutation with the cookie but no
+  echo returns 401, and with `X-Cut-Session` returns 201; `document.cookie`
+  cannot see the session (HttpOnly proven from the page); a reload keeps the
+  session without re-prompting. Plus: a forged 64-hex cookie 401s, logout
+  revokes for both cookie and header, loopback needs nothing, curl-level
+  coverage of the same matrix, an 18-case `authorize` table (method × cookie ×
+  header × malformed), a TTL/expiry/prune/revoke lifecycle test, and a hard-cap
+  test (`maxSessions` issues then refusal, table never grows).
 - Pre-existing test flake fixed: `TestSetupStatusShapeWhileDownloading` let the
   install goroutine write into its TempDir after the test returned, racing Go's
   cleanup ("directory is not empty", 1 of 4 runs); cleanup now waits for a
@@ -361,12 +386,19 @@ checkpoint
   `-show_entries` form still opens the decoder), and filtering the buffer is
   rejected on evidence, not taste: see DECISIONS D13.
 - serve authentication is a **static shared bearer token over cleartext HTTP**
-  (D12): no TLS, no per-client identity, no rotation/revocation surface
-  (revoke = edit config + restart), the failure budget resets with the process,
-  and the loopback exemption means any local process can still reach the API.
-  Remote binds are for API clients on a trusted network or inside a tunnel —
-  the web UI cannot use one yet, because a browser cannot attach a header to
-  `<video src>`, thumbnails or download links (needs signed capability URLs).
+  (D12): no TLS, one token for all clients, and no rotation surface (rotate =
+  edit config + restart, which also drops every session). The failure budget
+  and the session table both reset with the process, and the loopback
+  exemption means any local process can still reach the API. Remote binds
+  therefore belong on a trusted network or inside a tunnel. The web UI does
+  work remotely (D14 sessions), but its media is served unencrypted, and a
+  same-origin XSS would still read data through a session — the
+  textContent-only rendering rule is what holds that line.
+- The remote sign-in panel's **visual layout is unverified**: it was driven and
+  asserted in a real browser (modal appears, sign-in succeeds, media loads on
+  the cookie, mutations refused without the echo, reload stays signed in), but
+  the harness viewport was 0×0 so no screenshot could be taken. Nobody has
+  looked at how it renders.
 - Manual timeline edits are overwritten by style regeneration (by design;
   the UI two-step confirm warns, a backup keeps one level of undo, and the
   document revision gives stale editors a loud 409 instead of silent loss).
@@ -385,12 +417,12 @@ checkpoint
 
 ## Next Priorities
 
-1. Remote web UI (follow-up to session #14, tracked as the next milestone):
-   signed, expiring capability URLs for the media/preview/download routes so a
-   browser can use a remote bind at all — today `listen_remote` serves the API
-   to authenticated *clients*, while the UI stays a local surface. Query-string
-   tokens are the wrong answer (logs, history, Referer) and were rejected in
-   D12 for that reason.
+1. Remote-access hardening, in the order the risk suggests (the remote web UI
+   itself shipped as D14): (a) a documented tunnel recipe so a bearer token
+   never crosses an untrusted wire — the product has no TLS and D12 says so;
+   (b) actually look at the sign-in panel (see the unverified-layout note
+   above); (c) token rotation as an operator action rather than
+   edit-config-restart.
 2. Real-footage evaluation (UNBLOCKED, recipe ready): docs/EVAL.md now
    has the badminton worked example — the burned-in scoreboard makes
    rally annotation mechanical (~41 rallies), a manifest template sits in

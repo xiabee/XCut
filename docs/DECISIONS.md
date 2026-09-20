@@ -188,8 +188,42 @@ the double-clicked exe keep working with zero setup.
 Consequences: `listen_remote` is now a usable option rather than a refusal, and
 serve says which posture it started in. What is deliberately *not* solved here:
 a browser cannot attach a header to `<video src>`, thumbnails, or download
-links, so the web UI over a remote bind needs signed capability URLs — tracked
-as the next milestone, not quietly half-done by accepting tokens in query
-strings (they land in logs, history, and Referer). Configured tokens are masked
+links, so the web UI over a remote bind needs a second credential — solved by
+D14, and explicitly NOT by accepting tokens in query strings (they land in
+logs, history, and Referer). Configured tokens are masked
 in `xcut config show` and never written into the `xcut init` starter file.
+
+## D14: Remote UI reads ride a cookie; writes need the id echoed
+
+Context: D12 made the API reachable remotely, but the web UI still was not —
+the browser fetches media by URL (`<video src>`, asset previews, thumbnail and
+download requests) and cannot attach an `Authorization` header to any of them.
+The two usual answers were both unacceptable: a token in the query string
+leaks into logs, history and `Referer` (D12 rejected it), and letting the
+cookie authorize everything would hand CSRF to a server whose whole security
+story is that a workspace is one click away from being edited.
+
+Decision (2026-09-20, session #14): a login (`POST /api/v1/session`, proven by
+the bearer token) mints a random 256-bit session id, delivered as an
+`HttpOnly; SameSite=Strict; Path=/` cookie and returned once in the body. The
+gate then applies an asymmetry:
+
+- safe methods (`GET`/`HEAD`) accept the cookie — that is the entire reason the
+  cookie exists, and what makes media URLs work;
+- every other method requires the id echoed in an `X-Cut-Session` header, which
+  no cross-site page can produce from an HttpOnly cookie (and whose cookie
+  `SameSite=Strict` keeps off the request anyway).
+
+The browser keeps only the session id (`sessionStorage`, per-tab) — the access
+token is never persisted, so a reload stays signed in without storing the thing
+that mints credentials. Sessions are in-memory, TTL 12 h, capped at 256 with
+refusal past the cap; `DELETE /api/v1/session` revokes one.
+
+Consequences: the web UI works from another machine on a trusted network, with
+no per-URL signing and no expiry plumbing in media elements. What it costs: a
+restart signs remote UIs out (deliberate — persistence would turn a stolen
+session into a durable foothold), the cookie cannot carry `Secure` because
+serve has no TLS, and the session id is a bearer credential for reads, so a
+same-origin XSS would still read data through it (the UI's textContent-only
+rendering is what holds that line, not this).
 
