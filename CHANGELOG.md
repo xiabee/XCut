@@ -41,6 +41,45 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
 ### Fixed
+- **Kylin V10 aarch64 could not import anything.** Its packaged FFmpeg's
+  Hisilicon OMX plugin logs to stdout while ffprobe writes JSON there,
+  interleaving mid-line, so every import failed with "cannot parse probe
+  output: invalid character '1'" — a message pointing at the user's file for a
+  toolchain problem. XCut now names the offending build and the remedy
+  (`XCUT_FFPROBE` at a stock build). A buffer-repairing filter was built, run
+  against the real captured output, and rejected on evidence: it recovers a
+  parseable document with the log text inside `codec_long_name`. Refusing
+  outranks repairing ambiguously (DECISIONS D13), and the rejected approach is
+  pinned by `TestFilteringWouldNotBeSafe`.
+- **ARM64 is now runtime-verified end to end** on that Kylin box (it was
+  compile-checked only): with a stock FFmpeg the full chain works — import →
+  analyze (3 tracks / 48 samples / 1 event) → timeline → render 4.8 MB in
+  3.1 s → output probed back at 10.02 s with both streams → cache/cleanup.
+- **The Linux gate had been red for twelve sessions.** Running
+  `scripts/check.sh full` on a Linux node for the first time since the
+  Windows-only installer landed found 8 failures, all A/B-confirmed
+  pre-existing at the previous session's HEAD. Three tests asserted one OS's
+  shape as universal truth (subtitle-path escaping, a path resolved through
+  `filepath.Abs`, the installer happy path); they now assert what each
+  platform guarantees, the installer tests skip off Windows, and two new tests
+  pin the refusal non-Windows users actually get. The node is green: 38 Go
+  packages including `-race`, plus the Rust leg, against FFmpeg 6.1.1.
+- **Content-Type no longer comes from the host MIME table.** `ServeContent`
+  resolves an extension through the platform, and the answer differs by host:
+  Go's built-in table calls `.webm` `audio/webm` while a distro's
+  `/etc/mime.types` calls it `video/webm`, so the same build served a video
+  preview as audio on Linux and the `<video>` element refused to play it. The
+  containers and subtitle formats XCut actually serves are now named in code,
+  everything else keeps the sniffed fallback.
+- Eight Linux test failures found by running `scripts/check.sh full` on a
+  Linux node for the first time since the Windows-only installer landed
+  (A/B-confirmed pre-existing at the previous session's HEAD, not
+  auth-related): the installer tests now skip off Windows with two new tests
+  pinning the refusal non-Windows users really get, `TestEscapeSubsPath`
+  asserts the OS-independent escaping with the separator conversion left to
+  Windows, and `TestMatchAssetIDs` builds fixtures absolute in the running
+  OS's shape (a hardcoded `D:\…` is only absolute on Windows, where
+  `filepath.Abs` is the identity).
 - `TestSetupStatusShapeWhileDownloading` raced the installer goroutine against
   Go's TempDir cleanup (a write landing after removal started), which made the
   gate fail roughly one run in four with "directory is not empty"; cleanup now

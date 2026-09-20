@@ -46,7 +46,12 @@ Grab from [**Releases**](https://github.com/xiabee/XCut/releases):
   to install, with Start-menu/desktop shortcuts and a real uninstaller;
 - **portable Windows zip** (includes a QUICKSTART.txt) — unzip,
   double-click `xcut.exe`;
-- static Linux binaries for amd64/arm64.
+- static Linux binaries for amd64/arm64. Install FFmpeg yourself on Linux
+  (the one-click installer covers Windows only). **Kylin V10 SP1 note:** its
+  packaged FFmpeg writes Hisilicon OMX decoder-plugin logs to stdout, which
+  corrupts ffprobe's JSON and makes import fail — point `XCUT_FFMPEG` /
+  `XCUT_FFPROBE` at a stock build and the full chain works (verified on real
+  hardware: import → analyze → timeline → render).
 
 First launch detects your environment: if FFmpeg is missing, a bar at
 the top offers a **one-click install** (official build, checksum-verified,

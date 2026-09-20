@@ -126,6 +126,38 @@ Green; CI not run (quota policy)" instead of "CI green". When quota recovers,
 re-add push/PR triggers (comment in ci.yml shows how) and consider
 `concurrency: cancel-in-progress` plus docs-only `paths-ignore`.
 
+Amendment (session #14): the remote leg must run on the *other* platform, not
+just on another machine. Twelve sessions of "a remote CI node re-runs the gate"
+were re-running Windows on Windows, and the first `scripts/check.sh full` on a
+Linux node since the Windows-only installer landed found eight red tests.
+A node that shares the dev box's OS re-verifies the machine; it cannot see
+platform drift. Procedure: `git archive HEAD | ssh <node> 'tar -x -C
+~/ci/xcut-<sha>'` (a clean snapshot, not a working copy, so no local caches or
+untracked files ride along), `GOFLAGS=-count=1` so no cached result is quoted
+as evidence, and a repo-local `.tools/ffmpeg` for the integration tests.
+
+## D13: Refuse loudly over repair ambiguously
+
+Context: on Kylin V10 aarch64 the vendor OMX decoder plugin writes log lines to
+the same fd ffprobe uses for its JSON, interleaving *mid-line*, so the buffer
+cannot be parsed. A line filter does recover a parseable document — and places
+the log text inside `codec_long_name`. That is the general shape of this class
+of problem: input that is 95% separable by heuristic and 5% silently wrong.
+
+Decision (2026-09-20, session #14): where a repair cannot be shown to preserve
+every value, XCut refuses with a message that names the failing component and
+the remedy, and the rejected approach gets a test pinning why it was rejected
+(`TestFilteringWouldNotBeSafe`). Wrong metadata outranks no metadata in harm:
+a wrong duration or codec silently poisons every downstream timeline, style
+score and render, and nothing downstream can tell.
+
+Consequences: some real machines need an explicit `XCUT_FFMPEG`/`XCUT_FFPROBE`
+at a stock build — an operator action with a stated reason, not a degraded mode
+nobody asked for. No CLI knob avoids the contamination (measured: `-loglevel
+quiet` leaves the byte count identical, `-out_filename` is unsupported, the
+`-show_entries` form still opens the decoder). Applies to media parsing and to
+anything else that reads an external tool's stdout.
+
 ## D12: Bearer-token authentication is what unlocks a remote bind
 
 Context: D8 pinned the API to loopback because there was nothing to

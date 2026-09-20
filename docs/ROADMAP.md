@@ -38,6 +38,16 @@ Living document. Near-term milestones are concrete; far-term is directional.
       header to media/thumbnail/download URLs, so it needs signed capability
       URLs (next candidate).
 
+- [x] Platform legs of the quality gate (session #14): the same gate now runs
+      green on a Linux node (Go incl. `-race`, Rust incl. clippy) and the
+      binary runs a full workflow on Kylin V10 SP1 aarch64. Twelve sessions of
+      "remote CI" had been Windows-on-Windows and could not see platform
+      drift (D11 amendment).
+- [ ] FFmpeg component install off Windows: the pinned one-click installer is
+      Windows-only, so a Kylin/ARM64 box needs a manual `XCUT_FFMPEG`/
+      `XCUT_FFPROBE` — proven to work, unproven as product UX. Deciding this
+      also decides the packaged-vs-stock FFmpeg question (D13).
+
 ## Phase 3 — Rust worker & vertical depth
 
 - [x] `xcut-worker-media` (Rust): protocol v1 + audio RMS shipped (benchmark parity with ffmpeg — kept as optionality); frame diff / onset pending real need

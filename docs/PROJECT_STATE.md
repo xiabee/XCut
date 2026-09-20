@@ -40,7 +40,12 @@ checkpoint
   sidecar — details in CHANGELOG), all pushed
 - Branch: main
 - CI: local gate (scripts/ci-local.ps1 → check.ps1 fast) is the acceptance
-  entry; a remote CI node re-runs the same gate after every milestone
+  entry; a remote CI node re-runs the same gate after every milestone. Since
+  session #14 the remote leg must include a node on the *other* platform
+  (`scripts/check.sh full` on Linux against a clean `git archive` snapshot):
+  a node sharing the dev box's OS re-verifies the machine, not the
+  cross-platform claim, and that is how eight red Linux tests survived twelve
+  sessions.
 
 ## Working Architecture
 
@@ -270,6 +275,20 @@ checkpoint
   with the correct token still refused while locked out, loopback unaffected;
   `netstat` confirmed those peer connections carried the LAN source address.
   Startup refusals verified on the binary too (no token; short token).
+- **Linux full gate now green on a real Linux node** (session #14): a clean
+  `git archive` snapshot run through `scripts/check.sh full` — gofmt, vet,
+  build, `go test`, `go test -race` (38 packages), linux amd64+arm64
+  cross-compile, `cargo fmt --check` + `cargo clippy -D warnings` + `cargo
+  test` — exit 0, against Ubuntu's FFmpeg **6.1.1** (older than the 9.0.1 the
+  Windows gate uses, so the suite is now known to pass on two toolchain
+  generations). govulncheck/gosec/gitleaks are not installed on that node and
+  skipped loudly there; they ran clean on the Windows host at the same HEAD.
+- **ARM64 is runtime-verified, not just compile-verified** (session #14): the
+  cross-built binary ran a complete workflow on Kylin V10 SP1 aarch64 —
+  version/doctor/init/project create/import/analyze (3 tracks, 48 samples,
+  1 event)/timeline/render (4.8 MB in 3.1s)/cache/cleanup, and the rendered
+  output probed back at 10.02 s with video+audio. Requires a stock FFmpeg:
+  see the Kylin vendor-plugin limitation in Known Issues.
 - Pre-existing test flake fixed: `TestSetupStatusShapeWhileDownloading` let the
   install goroutine write into its TempDir after the test returned, racing Go's
   cleanup ("directory is not empty", 1 of 4 runs); cleanup now waits for a
@@ -279,6 +298,18 @@ checkpoint
 - govulncheck: installed (repo-local .tools/bin); run in the full gate
 - Cross-compile checks: linux amd64+arm64 (compile-verified; linux also
   runtime-verified in session #1 via WSL)
+- **Linux test suite now actually runs, and it was red.** Session #14 ran
+  `scripts/check.sh full` on a Linux node against a clean `git archive`
+  snapshot for the first time since the Windows-only installer landed: 8
+  failures, all pre-existing (A/B-confirmed identical at the previous
+  session's HEAD), all platform-shaped rather than product-broken — plus one
+  genuine product bug (Content-Type came from the host MIME table, so Linux
+  served `.webm` previews as `audio/webm` and the player refused them).
+  Fixed in session #14: the table is pinned in code, the three Windows-shaped
+  assertions now assert what each OS guarantees, the installer tests are
+  gated to Windows, and two new tests pin the *refusal* non-Windows users
+  actually get. Lesson recorded: a "remote CI node" that runs the same OS as
+  the dev box verifies the machine, not the platform claim.
 
 ## Known Issues
 
@@ -320,6 +351,15 @@ checkpoint
   runs it when one is present and skips loudly otherwise (docker runner
   remains the fallback). This machine's windows-gnu gcc satisfies it since
   session #3.
+- **Kylin V10 SP1's packaged FFmpeg cannot drive XCut's import** (found
+  session #14 on real hardware): its Hisilicon OMX decoder plugin logs to
+  stdout while ffprobe writes JSON there, interleaving *inside* lines. XCut
+  refuses with a message naming the build and the way out
+  (`XCUT_FFPROBE`/`XCUT_FFMPEG` at a stock build — proven to make the whole
+  chain work on that machine). No CLI flag avoids it (`-loglevel quiet`
+  changes the byte count by zero; `-out_filename` is unsupported; the
+  `-show_entries` form still opens the decoder), and filtering the buffer is
+  rejected on evidence, not taste: see DECISIONS D13.
 - serve authentication is a **static shared bearer token over cleartext HTTP**
   (D12): no TLS, no per-client identity, no rotation/revocation surface
   (revoke = edit config + restart), the failure budget resets with the process,

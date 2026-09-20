@@ -45,7 +45,11 @@
 - **Windows 安装包** `xcut-*-windows-setup.exe`（约 6 MB）—— 双击安装，
   含开始菜单/桌面快捷方式与卸载器；
 - **Windows 免安装 zip**（含 QUICKSTART.txt）—— 解压后双击 `xcut.exe`；
-- Linux/macOS 下载对应平台的静态二进制。
+- Linux/macOS 下载对应平台的静态二进制。Linux 侧 FFmpeg 需自行安装
+  （一键安装目前只覆盖 Windows）。**银河麒麟 V10 SP1 注意**：该机自带的
+  FFmpeg 会把海思 OMX 解码插件日志写到 stdout，污染 ffprobe 的 JSON 输出，
+  导致导入失败；把 `XCUT_FFMPEG` / `XCUT_FFPROBE` 指向一个标准构建即可，
+  已在真机验证全链路（导入→分析→时间线→渲染）通过。
 
 首次启动会自动检测环境：若缺少 FFmpeg，界面顶栏提供**一键安装**
 （官方构建，经校验和验证后装到 exe 旁的 bin 目录，不会静默捆绑）。
