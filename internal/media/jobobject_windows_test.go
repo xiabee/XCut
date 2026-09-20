@@ -165,6 +165,53 @@ func attachTo(h syscall.Handle, p *os.Process) {
 	procAssignToJobObject.Call(uintptr(h), ph)
 }
 
+// TestFFmpegDiesCleanlyUnderMemoryCap proves the cap's product semantics with
+// the product's own child: ffmpeg (C over libav allocators) must EXIT with an
+// error when the cap bites — libav handles allocation failure at its level,
+// so the render fails fast and loudly. The one way this feature could hurt
+// instead of help is a hung ffmpeg pinning a render slot until the analyzer
+// timeout, and this test exists to catch exactly that shape.
+func TestFFmpegDiesCleanlyUnderMemoryCap(t *testing.T) {
+	tools := requireFFmpeg(t)
+	hRaw, _, _ := procCreateJobObjectW.Call(0, 0)
+	if hRaw == 0 {
+		t.Fatal("CreateJobObjectW failed")
+	}
+	defer procCloseHandle.Call(hRaw)
+	h := syscall.Handle(hRaw)
+	info := buildJobLimits(64) // 64 MB: ffmpeg starts fine, a 4K x264 encode cannot fit
+	r, _, callErr := procSetInformationJobObject.Call(
+		uintptr(h), jobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(info)), unsafe.Sizeof(*info))
+	if r == 0 {
+		t.Fatalf("SetInformationJobObject rejected the limits: %v", callErr)
+	}
+
+	cmd := exec.Command(tools.FFmpeg, "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc2=size=3840x2160:rate=30", "-t", "30",
+		"-c:v", "libx264", "-preset", "veryfast", "-f", "null", "-")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	attachTo(h, cmd.Process)
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("ffmpeg completed a 4K x264 encode within a 64 MB cap; the cap did not bind")
+		}
+		// Non-zero exit is the pass: allocation failure surfaced as a normal
+		// process error, which is what a capped render should report.
+	case <-time.After(90 * time.Second):
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		t.Fatal("ffmpeg hung past 90 s under the cap and had to be killed — " +
+			"cap anomalies must be named, not timed out by go test")
+	}
+}
+
 // TestHelperAllocChild allocates 32 MB blocks (10 × 32 MB ≈ 320 MB), marking
 // each step, until killed (expected under the capped job) or done (failure
 // signal to the parent — 320 MB is far past the 128 MB cap, so a clean exit
