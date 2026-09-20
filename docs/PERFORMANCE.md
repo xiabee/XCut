@@ -65,6 +65,8 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-18 | session #12 re-check: analyze (cold) | 300s 1080p30 testsrc2 + sine | 17.5 s wall | **0.058x realtime** | session #12 HEAD (92f0f5c), CLI wall incl. process start; faster than the 26.9–39.5 s band (idle-night machine), no regression — tonight's changes are CLI/eval/scripts-side |
 | 2026-09-18 | session #12 re-check: analyze (cache hit) | same | 0.31 s wall | ~0x | fingerprint-keyed cache across projects in the workspace |
 | 2026-09-18 | session #12 re-check: render (concat path) | 10s 1-clip 1080p30 timeline | 2.2 s wall | **0.22x** output duration | vs 2.5 s / 0.25x session #9 row — no regression |
+| 2026-09-20 | **session #14: analyze on REAL footage** | 603 s 720p30 broadcast in a shared 6-court hall, 3 analyzers + court ROI | 28.1 s wall | **0.047x realtime** | through the API on a running serve; xcut peak WS **23.8 MB**, ffmpeg child peak **55.7 MB** — streaming analyzers keep the core flat in memory under real load |
+| 2026-09-20 | **session #14: API payload after dropping the probe blob** | `GET /api/v1/projects/{id}` with 1 real asset | **5936 → 558 bytes (−90.6%)** | — | `storage.Asset.ProbeJSON` is stored for diagnostics but was serialized into every response; the UI polls this endpoint, so a 20-asset project went from ~100 KB to ~11 KB per poll. Measured on the live server, not estimated |
 
 Analysis proxies (session #3): the win is on **repeated** analysis (style
 changes, re-runs, multi-project sharing) — analyzer passes drop from
@@ -103,3 +105,4 @@ timeline duration (render). Wall time includes process startup.
 | 2026-09-12 | session #6: serve idle re-check (after subtitles endpoints + new routes) | — | 13.0 MB WS / cpu delta 0.000s over 5s | — | **goals met** (<100 MB RAM, ~0% CPU) |
 | 2026-09-17 | session #11: serve idle re-check (after M120 write-idle wrapper, M-B upload mutex, M-A atomic gate) | — | 16.6 MB WS / 48.1 MB private / cpu delta 0 ms over 10 s | — | **goals met** (<100 MB RAM, ~0% CPU); streaming/mutex additions carry no standing cost |
 | 2026-09-18 | session #12: serve idle re-check (after eval tooling, sweep descent, retrying proxy rename) | — | 17.5 MB WS / 48.1 MB private / cpu delta 0 ms over 10 s | — | **goals met** (<100 MB RAM, ~0% CPU); flat vs session #11 |
+| 2026-09-20 | **session #14: serve idle re-check (after the API auth gate, remote sessions, UI sign-in)** | 45 s idle | 16.4 MB WS flat across the window / cpu delta **0.00 s** (0.0%) / 10 threads / 188 handles | — | **goals met**; the bearer gate and the lazily-created session store add no standing cost — a loopback serve never allocates the map it would need |

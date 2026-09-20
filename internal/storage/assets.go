@@ -36,23 +36,28 @@ func (r *MotionROI) Valid() bool {
 
 // Asset is an imported media file within a project.
 type Asset struct {
-	ID          string     `json:"id"`
-	ProjectID   string     `json:"project_id"`
-	Path        string     `json:"path"`
-	Filename    string     `json:"filename"`
-	Fingerprint string     `json:"fingerprint"`
-	DurationSec float64    `json:"duration_s"`
-	Width       int        `json:"width"`
-	Height      int        `json:"height"`
-	FPS         float64    `json:"fps"`
-	VideoCodec  string     `json:"video_codec"`
-	AudioCodec  string     `json:"audio_codec,omitempty"`
-	HasAudio    bool       `json:"has_audio"`
-	Bitrate     int64      `json:"bitrate"`
-	SizeBytes   int64      `json:"size_bytes"`
-	ProbeJSON   string     `json:"probe_json,omitempty"`
-	CreatedAt   int64      `json:"created_at"`
-	MotionROI   *MotionROI `json:"motion_roi,omitempty"`
+	ID          string  `json:"id"`
+	ProjectID   string  `json:"project_id"`
+	Path        string  `json:"path"`
+	Filename    string  `json:"filename"`
+	Fingerprint string  `json:"fingerprint"`
+	DurationSec float64 `json:"duration_s"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	FPS         float64 `json:"fps"`
+	VideoCodec  string  `json:"video_codec"`
+	AudioCodec  string  `json:"audio_codec,omitempty"`
+	HasAudio    bool    `json:"has_audio"`
+	Bitrate     int64   `json:"bitrate"`
+	SizeBytes   int64   `json:"size_bytes"`
+	// ProbeJSON is stored for diagnostics and never served: it is the whole
+	// ffprobe document, which on a real 10-minute recording measured 5.4 KB of
+	// a 5.9 KB project response (91 %) that no client of the API reads — and
+	// the web UI polls this endpoint. It stays out of JSON by contract, so the
+	// storage round-trip keeps working while the wire does not carry it.
+	ProbeJSON string     `json:"-"`
+	CreatedAt int64      `json:"created_at"`
+	MotionROI *MotionROI `json:"motion_roi,omitempty"`
 }
 
 const assetCols = `id, project_id, path, filename, fingerprint, duration_s, width, height,

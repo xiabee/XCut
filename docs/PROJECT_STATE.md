@@ -414,7 +414,12 @@ checkpoint
 
 ## Performance (measured — docs/PERFORMANCE.md)
 
-- serve idle: 16.6 MB WS / 0 ms CPU per 10 s (session #11 re-check; goals met)
+- serve idle: 16.4 MB WS flat / 0.00 s CPU over 45 s (session #14 re-check after auth +
+  sessions; goals met)
+- API payload: `GET /projects/{id}` 5936 → 558 bytes (−90.6%) once the stored
+  ffprobe blob stopped being serialized into responses (session #14)
+- analyze on real footage: 603 s 720p30 in 28.1 s = 0.047x realtime, xcut peak
+  23.8 MB / ffmpeg child peak 55.7 MB (session #14)
 - analyze 30-min 1080p30: 35.9 s wall / **0.12x realtime** (session #4
   re-check after limiter + capped output capture; no regression)
 - render (concat): 3.3 s wall for a 10 s 720p30 clip (session #4 A/B

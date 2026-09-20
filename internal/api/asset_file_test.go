@@ -139,3 +139,44 @@ func TestAssetFileContentType(t *testing.T) {
 		}
 	}
 }
+
+// The stored ffprobe blob is diagnostics-only: it measured 91 % of a real
+// project response (5.4 KB of 5.9 KB on a 10-minute recording) and the web UI
+// polls that endpoint. If it ever becomes part of the API contract, that must
+// be a decision, not an accident of a struct tag.
+func TestProjectResponseCarriesNoProbeBlob(t *testing.T) {
+	s := testServer(t)
+	ctx := t.Context()
+	p, err := s.DB.CreateProject(ctx, "nobody")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := storageAssetFor(p.ID)
+	a.ProbeJSON = `{"streams":[{"index":0,"codec_name":"h264","filler":"` + strings.Repeat("x", 4096) + `"}]}`
+	if err := s.DB.UpsertAsset(ctx, &a); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("project get: %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "probe_json") {
+		t.Error("probe blob leaked into the API response")
+	}
+	// The rest of the asset must still be there — this is a size fix, not a
+	// feature removal.
+	assets, _ := out["assets"].([]any)
+	if len(assets) != 1 {
+		t.Fatalf("assets %v", out["assets"])
+	}
+	m, _ := assets[0].(map[string]any)
+	for _, key := range []string{"id", "path", "filename", "duration_s", "video_codec"} {
+		if _, ok := m[key]; !ok {
+			t.Errorf("asset lost its %q field: %v", key, m)
+		}
+	}
+	if body := rec.Body.Len(); body > 1024 {
+		t.Errorf("project response is %d bytes for one asset; expected well under 1 KB", body)
+	}
+}

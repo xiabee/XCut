@@ -83,6 +83,21 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   windows per long segment, which needs a per-window activity profile on
   `event.Segment` that does not exist yet.
 
+### Improved — resource and transfer footprint (measured, session #14)
+- **`GET /api/v1/projects/{id}` shrank from 5936 to 558 bytes (−90.6 %)** on a
+  real recording. `storage.Asset.ProbeJSON` holds the whole ffprobe document —
+  kept for diagnostics, read back on load, and therefore serialized into every
+  response, where no client of the API used it (zero references in the UI) and
+  the UI polls that endpoint. It is now `json:"-"`: stored, not served, with a
+  test that fails if the blob reappears. A 20-asset project drops from ~100 KB
+  to ~11 KB per poll.
+- Re-measured rather than assumed: idle serve is 16.4 MB working set flat and
+  **0.00 s CPU over 45 s** with the auth gate and session store in place (a
+  loopback serve never allocates the session map), and a real 603-second 720p30
+  analysis runs in 28.1 s (0.047× realtime) peaking at 23.8 MB in-process /
+  55.7 MB in the ffmpeg child — so the streaming analyzer work from session #7
+  still holds under real load. Numbers are in docs/PERFORMANCE.md.
+
 ### Fixed
 - **Kylin V10 aarch64 could not import anything.** Its packaged FFmpeg's
   Hisilicon OMX plugin logs to stdout while ffprobe writes JSON there,
