@@ -107,7 +107,11 @@ func TestJobObjectMemoryCapStopsRunawayChild(t *testing.T) {
 	}
 	defer procCloseHandle.Call(hRaw)
 	h := syscall.Handle(hRaw)
-	info := buildJobLimits(128) // 128 MB: room for the child's Go runtime, not for 30 × 32 MB
+	// 512 MB: room for the child's own runtime in both plain and -race builds
+	// (the race detector multiplies committed memory severalfold — under
+	// -race a 128 MB cap killed the child before its first block), still far
+	// below what landing every block would take.
+	info := buildJobLimits(512)
 	r, _, callErr := procSetInformationJobObject.Call(
 		uintptr(h), jobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(info)), unsafe.Sizeof(*info))
@@ -142,21 +146,22 @@ func TestJobObjectMemoryCapStopsRunawayChild(t *testing.T) {
 		_, _ = cmd.Process.Wait()
 	}
 	marks := readMarksOrEmpty(markFile)
-	// What must hold: the child cannot land all ten 32 MB blocks under a
-	// 128 MB cap. HOW it stops is OS-dependent — locally it dies fast, on
-	// win-devops the Go runtime stalled at the commit limit (2 marks, alive,
-	// blocked) — a stall at the cap is the cap binding, not the cap failing.
-	// The named failure would be all marks landed (clean exit or not): that
-	// means uncapped.
+	// What must hold: the child cannot land all twenty-four 64 MB blocks
+	// (~1.5 GB) under a 512 MB cap. HOW it stops is OS- and build-dependent —
+	// locally it dies fast, on win-devops the plain-build Go runtime stalled
+	// at the commit limit (alive, blocked), under -race the shadow-memory
+	// overhead changes where the wall sits — a stall at the cap is the cap
+	// binding, not the cap failing. The named failure is all blocks landed
+	// (clean exit or not): that means uncapped.
 	switch {
 	case marks == 0 && waitErr == nil && !stalled:
 		t.Fatal("child produced no marks and is still running — it never got to allocate, so the test proves nothing")
 	case marks == 0:
-		t.Fatalf("child died before its first 32 MB block landed — it never allocated, so the test proves nothing (waitErr=%v, stalled=%v)", waitErr, stalled)
-	case marks >= 10:
-		t.Fatalf("child landed all %d × 32 MB allocations (~320 MB) past a 128 MB cap; the cap did not bind", marks)
+		t.Fatalf("child died before its first 64 MB block landed — the cap is below this build's own runtime overhead, so the test proves nothing (waitErr=%v, stalled=%v)", waitErr, stalled)
+	case marks >= 24:
+		t.Fatalf("child landed all %d × 64 MB allocations (~1.5 GB) past a 512 MB cap; the cap did not bind", marks)
 	}
-	// 1..9 marks with the child gone (died or killed at stall): the cap
+	// 1..23 marks with the child gone (died or killed at stall): the cap
 	// stopped the runaway. The ffmpeg-level semantics live in
 	// TestFFmpegDiesCleanlyUnderMemoryCap.
 }
@@ -220,19 +225,20 @@ func TestFFmpegDiesCleanlyUnderMemoryCap(t *testing.T) {
 	}
 }
 
-// TestHelperAllocChild allocates 32 MB blocks (10 × 32 MB ≈ 320 MB), marking
+// TestHelperAllocChild allocates 64 MB blocks (24 × 64 MB ≈ 1.5 GB), marking
 // each step, until killed (expected under the capped job) or done (failure
-// signal to the parent — 320 MB is far past the 128 MB cap, so a clean exit
-// means the cap never bound). Only runs when the parent re-executes this
-// binary with the env var set.
+// signal to the parent — 1.5 GB is far past the 512 MB cap, so a clean exit
+// means the cap never bound; the margin also absorbs a -race child's larger
+// runtime). Only runs when the parent re-executes this binary with the env
+// var set.
 func TestHelperAllocChild(t *testing.T) {
 	if os.Getenv("XCUT_TEST_ALLOC_CHILD") == "" {
 		return
 	}
 	markFile := os.Getenv("XCUT_TEST_MARK_FILE")
 	var live [][]byte
-	for i := 0; i < 10; i++ {
-		block := make([]byte, 32*1024*1024)
+	for i := 0; i < 24; i++ {
+		block := make([]byte, 64*1024*1024)
 		for j := 0; j < len(block); j += 4096 {
 			block[j] = byte(j) // touch every page: reserves do not fail, commits do
 		}
