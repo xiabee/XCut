@@ -54,7 +54,10 @@ Grab from [**Releases**](https://github.com/xiabee/XCut/releases):
   packaged FFmpeg writes Hisilicon OMX decoder-plugin logs to stdout, which
   corrupts ffprobe's JSON and makes import fail — point `XCUT_FFMPEG` /
   `XCUT_FFPROBE` at a stock build and the full chain works (verified on real
-  hardware: import → analyze → timeline → render).
+  hardware: import → analyze → timeline → render). That 4.2.2 build also
+  **lacks the `xfade` filter**, so the `generic_xfade` style cannot render with
+  it — use `generic_highlight` or install a full build (the render error says
+  exactly that).
 
 First launch detects your environment: if FFmpeg is missing, a bar at
 the top offers a **one-click install** (official build, checksum-verified,

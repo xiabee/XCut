@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -346,10 +347,25 @@ func runFFmpeg(ctx context.Context, bin string, args []string, budget time.Durat
 		if cctx.Err() != nil {
 			return xcerr.E(xcerr.CodeRenderFailure, "render timed out or was cancelled", cctx.Err())
 		}
-		return xcerr.E(xcerr.CodeRenderFailure, "ffmpeg failed",
+		return xcerr.E(xcerr.CodeRenderFailure, ffmpegFailureMessage(out),
 			fmt.Errorf("%v: %s", err, tail(out, 500)))
 	}
 	return nil
+}
+
+// missingFilterRe matches ffmpeg's complaint about a filter its build does not
+// contain. Distros ship trimmed builds (Kylin V10's FFmpeg 4.2.2 has no
+// `xfade`), where the style is fine and the binary is the limit — a difference
+// the user can only act on if the message names it.
+var missingFilterRe = regexp.MustCompile(`No such filter: '([A-Za-z0-9_]+)'`)
+
+func ffmpegFailureMessage(out []byte) string {
+	if m := missingFilterRe.FindSubmatch(out); m != nil {
+		return "this FFmpeg build does not include the '" + string(m[1]) + "' filter — " +
+			"choose a style that does not need it (generic_highlight instead of generic_xfade), " +
+			"or install a full FFmpeg build (xcut doctor shows which binary is used)"
+	}
+	return "ffmpeg failed"
 }
 
 func threadCap(n int) int {

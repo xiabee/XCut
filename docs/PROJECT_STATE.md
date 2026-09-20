@@ -475,6 +475,18 @@ choice, which exposed and fixed a diversity quota that silently truncated it
   changes the byte count by zero; `-out_filename` is unsupported; the
   `-show_entries` form still opens the decoder), and filtering the buffer is
   rejected on evidence, not taste: see DECISIONS D13.
+- **The same machine's FFmpeg also lacks the `xfade` filter** (session #15,
+  found by running the full suite there rather than `doctor`): 4.2.2 built
+  without it, so `generic_xfade` cannot render with the distro binary. The
+  render now fails with a message naming the missing filter and the two ways
+  out (`generic_highlight`, or a full build) instead of "ffmpeg failed".
+  Consequence for verification: **the ARM64 test suite is NOT VERIFIED** — 15+
+  tests fail on that box for these two environmental reasons, not product
+  ones, and closing the gap needs a stock arm64 FFmpeg on the node. The repo
+  pins a checksummed Windows build for the one-click path; nothing equivalent
+  exists for arm64, and downloading an unpinned binary onto the node was not
+  done. Owner decision needed: pin an arm64 build for CI, or accept
+  "arm64 = compile-verified + artifact smoke-tested" as the standing bar.
 - serve authentication is a **static shared bearer token over cleartext HTTP**
   (D12): no TLS, one token for all clients, and no rotation surface (rotate =
   edit config + restart, which also drops every session). The failure budget

@@ -152,6 +152,7 @@ See DECISIONS.md D12 (rotation) and D14 (sessions).
 | `403` | A remote peer appeared while the server had no token configured — the server is telling you it will not serve unauthenticated remote traffic. |
 | UI works, `curl` 401 | Expected: the browser is riding a session cookie; `curl` must send the bearer token or the `X-Cut-Session` header. |
 | Import fails on Kylin V10 with "cannot parse probe output" | The vendor FFmpeg writes decoder-plugin logs into ffprobe's stdout. Point `XCUT_FFPROBE`/`XCUT_FFMPEG` at a stock build. The product refuses rather than repairing, because a heuristic filter recovers a *parseable but wrong* document (D13). |
+| Render fails with "this FFmpeg build does not include the 'xfade' filter" | A trimmed distro build, not a broken project: Kylin V10 SP1's FFmpeg 4.2.2 has no `xfade` (measured in session #15's ARM64 run). Use `generic_highlight` (no transitions) or install a full build. |
 | `doctor` says FFmpeg missing but the app finds it | Different shells, different PATH. `xcut doctor` exits 1 and names the remedy; check the environment the app actually runs in. |
 
 ## Health and limits

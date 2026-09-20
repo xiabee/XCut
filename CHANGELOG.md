@@ -23,6 +23,11 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   directions. Falsified by renaming one id.
 
 ### Fixed
+- **A render failure that named nothing.** Kylin V10 SP1's FFmpeg 4.2.2 is built
+  without `xfade`, so a valid timeline failed with "ffmpeg failed". The message
+  now names the missing filter and the two ways out (`generic_highlight`, or a
+  full build), built from the real captured stderr and guarded against
+  over-matching by a test.
 - **A longer reel used to be silently truncated.** The diversity phase quota
   (`phases × max_per_window`) was an absolute ceiling on clip count regardless
   of budget: a 240 s request on the measured match returned exactly the same
@@ -36,6 +41,13 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   channel (the i18n drift gate covers the attribute in both directions).
 
 ### Measured
+- **The ARM64 suite ran on real Kylin hardware for the first time.** 15+ tests
+  fail there, and every one traces to the two distro-FFmpeg limitations above
+  rather than to product logic — so arm64 stays "compile-verified +
+  artifact-smoke-tested", not suite-green, until the node has a stock build.
+  Closing that gap needs an owner decision (pin a checksummed arm64 FFmpeg for
+  CI, or accept the current bar); an unpinned binary was not downloaded onto
+  the machine.
 - `max_clip_duration` is at its optimum: 11 s and 14 s both lose precision *and*
   distinct rallies (a longer window cannot fit a 10.5 s median rally, so it
   spills and the budget holds fewer clips). Recorded as a negative result.

@@ -236,7 +236,10 @@ that is the vision sidecar's job (`frame_describe`), not a threshold.
    enough; consistency beats volume).
 2. Record a baseline at the current HEAD:
    `xcut eval manifests/x.json --out /tmp/base.json`.
-3. Make the algorithm change.
+3. Make the algorithm change. To test a *budget* hypothesis (does the reel get
+   better if it is longer?) use `--duration` — it overrides the style's target
+   for the run without editing any preset, which is what separated the length
+   question from the quota question in session #15.
 4. `xcut eval manifests/x.json --out /tmp/after.json --baseline /tmp/base.json`
    — it prints per-case and macro deltas (P/R/F1, ranges, dup) instead of
    leaving you to diff two JSON files by hand. It also refuses to pretend:
