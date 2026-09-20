@@ -102,7 +102,7 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 
 	var po probeOutput
 	if err := json.Unmarshal(out, &po); err != nil {
-		return nil, xcerr.E(xcerr.CodeFFmpegFailure, "cannot parse probe output", err)
+		return nil, xcerr.E(xcerr.CodeFFmpegFailure, probeParseFailure(out), err)
 	}
 
 	p := &Probe{Path: path}
@@ -156,6 +156,24 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 	}
 	p.Raw = json.RawMessage(out)
 	return p, nil
+}
+
+// vendorLogMarkers identify a decoder plugin writing its own log to stdout.
+// On a Kylin V10 aarch64 box the Hisilicon OMX layer prints one line per
+// component call — `12:09:31.971  3917874 3917874 [LOG_INFO] ComponentCore:
+// VIDEO:[OMX_GetHandle]...` — interleaving with ffprobe's JSON *mid-line*, so
+// the document cannot be cleaned without risking a value that silently absorbs
+// log text. That build is therefore refused with a remedy, not repaired.
+var vendorLogMarkers = []string{"[LOG_INFO]", "[LOG_ERR]", "[LOG_WARN]", "OMX_"}
+
+func probeParseFailure(out []byte) string {
+	for _, m := range vendorLogMarkers {
+		if strings.Contains(string(out), m) {
+			return "this ffprobe build writes decoder-plugin logs to stdout and corrupts its own JSON output — " +
+				"install a stock FFmpeg or point XCUT_FFPROBE at one (xcut doctor shows which binary is used)"
+		}
+	}
+	return "cannot parse probe output"
 }
 
 func pickFPS(avg, r, cur string) string {
