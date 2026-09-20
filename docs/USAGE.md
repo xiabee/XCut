@@ -137,3 +137,8 @@ committed style already reaches 0.112 of a recall ceiling of 0.127 imposed by a
 60 s budget over 473 s of rallies (docs/EVAL.md), so wanting *more of the
 match* in the reel is a duration decision, not a parameter one.
 
+Asking for more than the material holds is safe and does not hang: the selection
+is bounded by the usable segments, not by the number. Measured on the same
+match — a 240 s target and a 14400 s (4 h) target both yield 21 clips / 168 s,
+because that is everything the detector found that fits the style's rules.
+
