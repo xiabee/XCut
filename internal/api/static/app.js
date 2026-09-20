@@ -27,6 +27,9 @@ function applyI18n() {
   for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
   for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
   for (const el of document.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = t(el.dataset.i18nPlaceholder);
+  // A placeholder is not an accessible name: the sign-in field for a remote
+  // server is the one input a screen reader has to describe without context.
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", t(el.dataset.i18nAria));
   $("lang").value = lang;
 }
 

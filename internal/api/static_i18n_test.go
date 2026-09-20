@@ -15,8 +15,8 @@ import (
 // embedded assets the way the browser would and refuse either direction.
 
 var (
-	// data-i18n, data-i18n-title, data-i18n-placeholder in index.html.
-	i18nHTMLKeyRe = regexp.MustCompile(`data-i18n(?:-title|-placeholder)?="([^"]+)"`)
+	// data-i18n, data-i18n-title, data-i18n-placeholder, data-i18n-aria in index.html.
+	i18nHTMLKeyRe = regexp.MustCompile(`data-i18n(?:-title|-placeholder|-aria)?="([^"]+)"`)
 	// t("key") and tf("key", ...) in app.js — the key literal ends at a
 	// quote followed by ")" or "," (tf's params object).
 	i18nJSKeyRe = regexp.MustCompile(`\bt(?:f)?\("([^"]+)"[,)]`)
