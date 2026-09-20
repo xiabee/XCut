@@ -43,7 +43,10 @@ Target scenarios: **badminton · KTV · vlogs · stage performance · sports hig
 Grab from [**Releases**](https://github.com/xiabee/XCut/releases):
 
 - **Windows installer** `xcut-*-windows-setup.exe` (~6 MB) — double-click
-  to install, with Start-menu/desktop shortcuts and a real uninstaller;
+  to install, with Start-menu/desktop shortcuts and a real uninstaller.
+  For unattended installs pick the scope explicitly:
+  `xcut-...-setup.exe /CURRENTUSER /VERYSILENT /DIR=D:\XCut` (without a scope
+  the installer asks "just me / all users" first, which blocks a script);
 - **portable Windows zip** (includes a QUICKSTART.txt) — unzip,
   double-click `xcut.exe`;
 - static Linux binaries for amd64/arm64. Install FFmpeg yourself on Linux

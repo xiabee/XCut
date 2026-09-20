@@ -43,7 +43,9 @@
 到 [**Releases**](https://github.com/xiabee/XCut/releases) 下载：
 
 - **Windows 安装包** `xcut-*-windows-setup.exe`（约 6 MB）—— 双击安装，
-  含开始菜单/桌面快捷方式与卸载器；
+  含开始菜单/桌面快捷方式与卸载器；无人值守安装请显式选作用域：
+  `xcut-...-setup.exe /CURRENTUSER /VERYSILENT /DIR=D:\XCut`
+  （不给作用域时安装器会让你在"仅当前用户/所有用户"之间选，脚本会卡在那一步）；
 - **Windows 免安装 zip**（含 QUICKSTART.txt）—— 解压后双击 `xcut.exe`；
 - Linux/macOS 下载对应平台的静态二进制。Linux 侧 FFmpeg 需自行安装
   （一键安装目前只覆盖 Windows）。**银河麒麟 V10 SP1 注意**：该机自带的

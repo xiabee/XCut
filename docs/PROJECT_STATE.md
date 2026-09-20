@@ -3,13 +3,15 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-20 (morning) — session #14 (API authentication, D12)
-checkpoint
+Updated: 2026-09-20 (evening) — session #14 shipped as v0.1.8-alpha
+(API authentication D12, remote UI sessions D14, refuse-don't-repair probes D13)
 
 ## Version / HEAD
 
-- Version: 0.1.0-dev (release artifacts stamped via ldflags)
-- HEAD: session #14 (API authentication — D12): a static bearer token gates
+- Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
+  tagged from this session
+- HEAD: session #14 shipped as **v0.1.8-alpha** (API authentication — D12,
+  remote UI sessions — D14): a static bearer token gates
   every non-loopback peer of `/api/v1`; loopback stays trusted so the desktop
   client and the double-clicked exe need zero setup. `listen_remote` is now a
   usable option instead of a refusal, but only when paired with a
@@ -338,6 +340,25 @@ checkpoint
   gated to Windows, and two new tests pin the *refusal* non-Windows users
   actually get. Lesson recorded: a "remote CI node" that runs the same OS as
   the dev box verifies the machine, not the platform claim.
+- **v0.1.8-alpha Release Gate — every artifact really ran.** Windows exe
+  (`version`, `serve`, `/health`, UI index), linux-amd64 on the Linux node
+  (`doctor`, FFmpeg 6.1.1), linux-arm64 on real Kylin V10 SP1 (`doctor`,
+  vendor FFmpeg 4.2.2 reported), and the portable zip (extracted to a clean
+  dir, `xcut.exe version`, QUICKSTART.txt present). The installer completed a
+  full unattended cycle: `/CURRENTUSER /VERYSILENT` install → `version` →
+  `serve` on a non-loopback address with the token posture live (401 without a
+  token, 401 with a wrong one, 200 with the right one, `POST /api/v1/session`
+  → 201) → `unins000.exe /VERYSILENT` removed the directory and the HKCU
+  uninstall key. Two things learned: a silent run must name its scope
+  (`PrivilegesRequiredOverridesAllowed=dialog` otherwise waits on the
+  "just me / all users" choice — the first attempt returned success and
+  installed nothing), and `pkill -f` from Git Bash does not match a Windows
+  process, so a smoke-test server kept `xcut.exe` locked and the first
+  uninstall left it behind. The scope flag is now documented in the README
+  install recipe; the locked-file cause was my own leftover test server, not
+  the uninstaller.
+  NOT VERIFIED: the interactive wizard path (no UI session available in CI)
+  and all-users elevation — same script, different scope flag.
 
 ## Known Issues
 

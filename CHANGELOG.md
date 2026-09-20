@@ -3,7 +3,7 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [Unreleased] — 2026-09-20 session #14 (API authentication — D12)
+## [0.1.8-alpha] — 2026-09-20 session #14 (API authentication — D12/D13/D14)
 
 ### Security
 - **Bearer-token authentication gates a remote bind.** The API had refused
