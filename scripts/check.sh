@@ -51,9 +51,19 @@ elif [ -x ".tools/bin/gitleaks.exe" ]; then
 fi
 SECRET_STATUS="NOT RUN (gitleaks absent — commits are scanned by the control plane, this script does not)"
 if [ -n "$GK" ]; then
-    # Scope count excludes .git and .tools: gitleaks honours .gitignore, so
-    # those are not what it reads. The number is a floor on coverage, and a
-    # zero here would mean the scan silently covered nothing.
+    # See check.ps1: the .gotmp/ allowlist is only legitimate while nothing
+    # under it is tracked, because gitleaks excuses tracked history too.
+    if [ -d .git ]; then
+        tracked_scratch=$(git ls-files -- '.gotmp/*' 2>/dev/null || true)
+        if [ -n "$tracked_scratch" ]; then
+            echo ".gotmp/ is allowlisted for secret scanning, so it must never hold tracked files:" >&2
+            echo "$tracked_scratch" >&2
+            exit 1
+        fi
+    fi
+    # Upper bound on the scan scope, not the read set: gitleaks skips binaries
+    # and allowlisted paths but not .gitignore. Its job here is to prove the
+    # scope is not empty — a zero would mean a scan that covered nothing.
     scan_paths=$(find . -type f -not -path './.git/*' -not -path './.tools/*' 2>/dev/null | wc -l | tr -d ' ')
     if [ "$scan_paths" -eq 0 ]; then
         echo "gitleaks: scan scope is empty — refusing to call that clean" >&2

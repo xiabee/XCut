@@ -51,12 +51,28 @@ function Invoke-Step([string]$Name, [scriptblock]$Body) {
 }
 
 if ($gitleaks) {
+    # The .gitleaks.toml allowlist excuses .gotmp/ (scratch: browser profiles,
+    # lavfi media). Without it the working-tree scan reads 304 MB instead of
+    # 13 MB and reports 157 shape-matches — so the exemption is load-bearing.
+    # It is only legitimate while nothing under .gotmp is *tracked*: gitleaks
+    # applies the same config to history, so a force-added file there would be
+    # excused from the commit scan too. Refuse that shape before scanning.
+    if (Test-Path ".git") {
+        $trackedScratch = @(& git ls-files -- '.gotmp/*' 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $trackedScratch.Count -gt 0) {
+            throw (".gotmp/ is allowlisted for secret scanning, so it must never hold tracked files: " +
+                ($trackedScratch -join ", "))
+        }
+    }
     # Scope is reported with a file count rather than a bare "clean": a scan
     # that silently covered nothing looks identical to one that found nothing,
     # and that is exactly the failure mode found in a sibling project's gate
     # (an empty file list still printed "secret scan clean (0 tracked files)").
-    # .git and .tools are excluded because gitleaks honours .gitignore, so they
-    # are not what it reads; a zero scope is refused rather than called clean.
+    # The count is the tree handed to the scanner, not the bytes it reads:
+    # gitleaks does NOT honour .gitignore (measured — without the allowlist it
+    # read 304 MB of .gotmp), it skips binaries and the configured paths. So
+    # this number is an upper bound, and its only job is to prove the scope is
+    # not empty: a zero scope is refused rather than called clean.
     $scanPaths = (Get-ChildItem -Recurse -File -Force . -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '\\\.git\\' -and $_.FullName -notmatch '\\\.tools\\' } |
         Measure-Object).Count

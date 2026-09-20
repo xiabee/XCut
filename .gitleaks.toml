@@ -3,8 +3,16 @@
 # .gotmp/ is the documented never-committed scratch area (.gitignore 30):
 # verification scaffolding lands there (browser profiles, fixture media,
 # throwaway drives). Chrome profiles and lavfi binaries are dense with
-# token-shaped and high-entropy strings — all false positives. Git history
-# and the tracked working tree remain fully scanned.
+# token-shaped and high-entropy strings — all false positives. Measured cost
+# of this exemption (2026-09-21): without it `gitleaks dir` reads 304 MB
+# instead of 13 MB and reports 157 findings, all from .gotmp — so gitleaks does
+# NOT skip gitignored paths on its own, and the entry is load-bearing.
+#
+# The price: the same config applies to history scans, so a force-added file
+# under .gotmp would be excused from the commit gate too. scripts/check.ps1 and
+# check.sh therefore fail if any .gotmp path is tracked, which is what keeps
+# this exemption honest. Git history and the tracked working tree remain fully
+# scanned.
 [extend]
 useDefault = true
 
