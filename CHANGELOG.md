@@ -52,6 +52,37 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   serve startup line states which posture it started in.
 - Error model: `unauthorized` → 401 and `forbidden` → 403.
 
+### Improved — badminton highlight quality, measured on real footage
+- Ground truth derived automatically instead of by scrubbing: a burned-in
+  scoreboard only changes when a point ends, so a scene-difference detector
+  aimed at the scoreboard crop yields the rally boundaries. Cross-checked
+  against the final score (22:19 = 41 points; the recipe produced 43 candidates
+  for 41). Recipe and its three gotchas are in docs/EVAL.md.
+- **A highlight now covers the match instead of its first two thirds.** The
+  reel's budget was filling entirely from the highest-scoring early chunks;
+  `diversity.max_per_window` + `phases` cap how many clips any one time region
+  may contribute, so the closing phase — match point included — is present
+  (confirmed by inspecting frames, not only by the metric). Phases derive from
+  each asset's own duration, because an absolute window length silently
+  truncates short sources: the existing rally integration test caught exactly
+  that bug on its 47-second fixture.
+- **Clips sit inside rallies rather than across a point.** The trimmed window
+  was placed at the *middle* of its segment, but rally chunks are cut on quiet
+  valleys, so the middle of a 30-second chunk is frequently the pause after a
+  point — the reel opened on players towelling off. Placement is now anchored
+  at the segment start. Measured on the real game: precision **0.742 → 0.886**,
+  recall 0.094 → 0.112, F1 **0.167 → 0.199**.
+- Two alternatives were tried and **rejected on measurement**, recorded so
+  nobody re-spends the effort: anchoring on the median audio onset (P 0.789)
+  and on the motion peak (P 0.770) both lost to plain start placement — in a
+  shared hall the loudest smash is often another court's, and our own peak
+  lands at the point's end, pushing the window over the boundary.
+- Known cost, stated rather than hidden: `ranges_hit` went 7 → 6, and it is
+  capped by the budget anyway (8 clips of 8 s cannot represent 41 rallies of
+  ~10 s). Representing more of a match needs a longer reel or several scored
+  windows per long segment, which needs a per-window activity profile on
+  `event.Segment` that does not exist yet.
+
 ### Fixed
 - **Kylin V10 aarch64 could not import anything.** Its packaged FFmpeg's
   Hisilicon OMX plugin logs to stdout while ffprobe writes JSON there,

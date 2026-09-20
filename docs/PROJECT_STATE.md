@@ -353,20 +353,26 @@ checkpoint
   two strictly separated. Proxy decision is width-based only — a
   high-resolution low-fps source still benefits, a tiny-fps source
   already decodes cheaply.
-- Badminton v2 on real footage (session #11 review, a real 10-min men's
-  singles broadcast): the pipeline now covers the whole match (21/21
-  chunks candidates; the match point included), selection is driven by
-  genuine score differences, and piece boundaries snap to natural
-  breaks. STILL OPEN: (a) the reel's 60s budget fills from the
-  highest-scoring chunks, which are the early bright ones — the
-  match-point section is a candidate but not guaranteed selection;
-  guaranteeing climax presence is match-phase semantics (needs the
-  vision-AI seam, whose gateway model was 503 during the session);
-  (b) every PROVISIONAL constant (0.4 floor ratio, P75 baseline, 4x cap,
-  ±6s snap) awaits annotated eval — docs/EVAL.md now carries the
-  worked-example recipe (scoreboard = ground truth). The court ROI is
-  per-asset (UI picker, assets.motion_roi) and validated on this
-  footage.
+- Badminton on real footage — **now measured against derived ground truth**
+  (session #14, docs/EVAL.md carries the recipe). The clip is a 10:03 men's
+  singles in a **shared six-court hall**, which changes what the signals mean:
+  audio onsets are not court-specific, so `hits`+`density` (65% of the preset's
+  score) rank when the *hall* was busiest. Measured on it, P 0.742 → **0.886**
+  and F1 0.167 → **0.199** from two changes: a per-phase pick cap (the reel had
+  been filling entirely from the first two thirds — the closing phase, match
+  point included, is now present, confirmed by frame inspection) and placing
+  the clip window at the segment start instead of its middle (rally chunks are
+  cut on quiet valleys, so the middle of a 30s chunk is often the pause after a
+  point). STILL OPEN: (a) climax presence is now structural but *which* rally
+  per phase is still ranked by contaminated audio — that needs the vision-AI
+  seam to identify the players' own strokes; (b) `ranges_hit` is capped by the
+  budget (8 clips × 8 s cannot represent 41 rallies of ~10 s), so representing
+  more of a match means either a longer reel or splitting long segments into
+  several scored windows — the latter needs a per-window activity profile on
+  `event.Segment`, which does not exist yet; (c) the remaining PROVISIONAL
+  constants (0.4 floor ratio, P75 baseline, 4x cap, ±6s snap) are still untuned
+  against this manifest. The court ROI is per-asset (UI picker,
+  assets.motion_roi).
 - Render publish vs holds: a client streaming the previous output no
   longer blocks a re-render (share-all downloads + POSIX delete + rename,
   session #7). An EXTERNAL program that opens without the Windows

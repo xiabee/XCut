@@ -97,14 +97,65 @@ annotation ground truth: every score change marks exactly one finished rally.
 Recipe (keep data in the gitignored /eval/):
 
 1. Obtain the recording you have the rights to use, locally.
-2. Scrub the video; note the time at each score change. The span between two
-   changes contains exactly one rally (+ the serve pause); annotate the
-   active part, consistently. A 10-minute men's-singles game typically
-   yields ~40 rallies.
-3. Baseline → change → compare macro P/R/F1, range hits, dup rate (workflow
+2. **Derive the score-change times automatically.** Every score change is one
+   finished rally, and a burned-in overlay changes *only* when the score does,
+   so a scene-difference detector aimed at the scoreboard crop produces the
+   annotations. Verified on a 10:03 game that ends 22:19 — 41 real points, and
+   this produced 43 candidates (the first is the overlay's fade-in, which the
+   recipe below discards):
+
+   ```sh
+   # one-time: find the crop that contains only the digits
+   ffmpeg -ss 120 -i match.mp4 -frames:v 1 -vf crop=200:90:540:555 probe.png
+   # then dump the change times (adjust the crop to your overlay)
+   ffmpeg -i match.mp4 -an -vf \
+     "crop=180:70:550:560,fps=4,select='gt(scene,0.03)',metadata=print:file=board.txt" -f null -
+   # cluster: the overlay cross-fades, so one point spans several frames
+   grep -o 'pts_time:[0-9.]*' board.txt | cut -d: -f2 \
+     | awk '{t=$1+0; if(prev==""||t-prev>5.0) printf "%.1f ",t; prev=t}'
+   ```
+
+   Three things cost time and are worth knowing: the comma inside `gt()` must
+   be **quoted, not backslash-escaped** (`select='gt(scene,0.03)'` — recent
+   ffmpeg builds no longer accept the escaped form, and `-filter_complex_script`
+   is gone); the output path in `metadata=print:file=` must be **relative**,
+   because the `:` of a Windows drive letter is itself a filter-argument
+   separator; and a low threshold is required precisely *because* the overlay
+   cross-fades — at 0.10 the detector found 36 of 41 points, at 0.03 with 5 s
+   clustering it found 43 candidates for 41.
+   **Validate the count against the final score** before trusting it: read the
+   last frame's scoreboard, and the two numbers must sum to the event count.
+3. Turn the times into spans: the play between consecutive changes, dropping
+   the first (overlay fade-in) and the pause after each point.
+4. Baseline → change → compare macro P/R/F1, range hits, dup rate (workflow
    below). The court ROI is worth an A/B: run the manifest with and without
    `asset_roi` (draw the region for your camera once in the web UI and reuse
    the numbers here).
+5. **Look at the picks.** P/R/F1 against auto-derived spans measures agreement
+   with a heuristic; a montage of the scoreboard crop at +0/+4/+8 s of every
+   selected clip shows whether a clip is one whole rally (score constant) or
+   straddles a point (score changes mid-clip). That check is what confirmed the
+   current placement rule, and it catches things the metrics cannot — e.g. a
+   pick that lands in dead time but still overlaps an annotated range.
+
+### What a shared hall does to the signals
+
+The annotated game above is a **multi-court public hall**, not a broadcast: six
+other courts move in frame and their shuttle strikes are just as loud as ours.
+Two consequences measured on it:
+
+- audio onsets are **not court-specific**, so `hits`/`density` (65 % of the
+  badminton preset's score) rank "when the hall was busiest", not "when our
+  rally was best";
+- anchoring a clip on the median onset or the motion peak therefore **lost** to
+  plain segment-start placement (measured: P 0.803 centred → 0.789 median-onset
+  → 0.770 motion-peak → **0.886** start-anchored). A rally's loudest smash sits
+  right at the point's end, so peaking on it pushes the window across the
+  boundary into the dead pause.
+
+The fix for the first problem is semantic (identify the players' own strokes),
+which is the AI sidecar's job and still open; the second was a placement bug and
+is now fixed.
 
 The PROVISIONAL constants in `internal/event/rally.go` (0.4 adaptive-floor
 ratio, P75 baseline, 4x cap, ±6s chunk-snap) are awaiting exactly these
