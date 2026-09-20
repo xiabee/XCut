@@ -6,7 +6,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-21 early session #17 (secret-scan honesty, tailnet recipe, reel cost)
 
 ### Security
-- **Gate hardening (from the control plane's secret-scan blind-spot audit).**
+- **A gate that skipped tools now says so.** The verdict line lists the steps
+  that did not run (`steps not run: integration-tests(no-ffmpeg)` /
+  `not run: govulncheck`), and `check.sh` — which never scanned for secrets at
+  all while printing `gate: PASS` — now carries the scan status in the same
+  line. Verified both ways: a no-FFmpeg snapshot reports the skip, the normal
+  full run reports `none`.- **Gate hardening (from the control plane's secret-scan blind-spot audit).**
   `scripts/check.ps1` now *fails* when gitleaks cannot be found instead of
   warning and continuing to `gate: PASS`; both gates print the scan scope as a
   path count and refuse a zero-file scope; a failing working-tree scan names the
@@ -26,6 +31,16 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   (verified: a force-added file is named and the gate exits 1; the `check.sh`
   logic verified on the Linux node), and the scope comment states what the
   reported number actually measures.
+
+### Fixed
+- **`phase=done` used to be published before the scratch archive was removed.**
+  The installer's cleanup sat in a `defer` on the enclosing function, so a
+  client polling status could observe a finished install with
+  `scratch/ffmpeg-pinned.zip` still on disk. Found by running the gate on a
+  machine without FFmpeg (the timing window opened there), not by changing the
+  test: the archive is now removed before success is published, and the deferred
+  cleanup still covers the error paths. 20 consecutive runs in the environment
+  that exposed it.
 
 ### Measured
 - **Tailscale remote access is now a measured recipe, not an option**: the

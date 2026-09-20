@@ -37,11 +37,16 @@ $gitleaks = $null
 $gkCmd = Get-Command gitleaks -ErrorAction SilentlyContinue
 if ($gkCmd) { $gitleaks = $gkCmd.Source }
 elseif (Test-Path ".tools/bin/gitleaks.exe") { $gitleaks = (Resolve-Path ".tools/bin/gitleaks.exe").Path }
+# Steps that did not run are named in the verdict line: a PASS that quietly
+# skipped the Rust suite, the vulnerability scan or the integration tests is the
+# same failure shape as a secret scan that reported "clean" over nothing.
+$NotRun = @()
 if ($hasFfmpeg) {
     Write-Host "== ffmpeg: $((ffmpeg -version 2>$null | Select-Object -First 1))"
 }
 else {
     Write-Host "== ffmpeg: not on PATH (integration tests will skip)"
+    $NotRun += "integration-tests(no-ffmpeg)"
 }
 
 function Invoke-Step([string]$Name, [scriptblock]$Body) {
@@ -160,6 +165,7 @@ if ($Mode -eq "full") {
     }
     else {
         Write-Host "== cargo: not on PATH, skipped"
+        $NotRun += "rust"
     }
 
     if (Get-Command govulncheck -ErrorAction SilentlyContinue) {
@@ -167,6 +173,7 @@ if ($Mode -eq "full") {
     }
     else {
         Write-Host "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped"
+        $NotRun += "govulncheck"
     }
 
     # Static security analysis: HIGH severity + HIGH confidence findings fail
@@ -177,7 +184,8 @@ if ($Mode -eq "full") {
     }
     else {
         Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped"
+        $NotRun += "gosec"
     }
 }
 
-Write-Host "== gate ($Mode): PASS"
+Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" }))"

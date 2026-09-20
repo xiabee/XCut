@@ -31,10 +31,16 @@ if [ -d .tools/bin ]; then
     PATH="$(pwd)/.tools/bin:$PATH"
     export PATH
 fi
+# Steps that did not run are named in the verdict line. A gate that prints PASS
+# while three of its checks quietly no-oped is the same failure as a secret scan
+# that reports "clean" over an empty file list — and the ffmpeg case has already
+# fooled this project once (a real-footage test "passed" because it had skipped).
+NOT_RUN=""
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "== ffmpeg: $(ffmpeg -version 2>/dev/null | head -1)"
 else
     echo "== ffmpeg: not on PATH (integration tests will skip)"
+    NOT_RUN="$NOT_RUN integration-tests(no-ffmpeg)"
 fi
 
 # Secret scanning. This leg used to say nothing about secrets while still
@@ -127,6 +133,7 @@ if [ "$mode" = "full" ]; then
         (cd crates/xcut-worker-media && cargo test)
     else
         echo "== cargo: not on PATH, skipped" >&2
+        NOT_RUN="$NOT_RUN rust"
     fi
 
     if command -v govulncheck >/dev/null 2>&1; then
@@ -136,13 +143,15 @@ if [ "$mode" = "full" ]; then
                 # Blocked by an Application Control policy: loud skip, use
                 # scripts/vuln-docker.sh for the scan instead.
                 echo "== govulncheck: SKIPPED (execution blocked by policy; use scripts/vuln-docker.sh)" >&2
+                NOT_RUN="$NOT_RUN govulncheck(policy-blocked)"
             else
                 exit "$rc"
             fi
         fi
     else
         echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped" >&2
+        NOT_RUN="$NOT_RUN govulncheck"
     fi
 fi
 
-echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS)"
+echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS; not run:${NOT_RUN:- nothing})"
