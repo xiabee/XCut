@@ -9,9 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // fakeFetch serves arbitrary bytes through the Fetcher seam with a
@@ -104,7 +107,42 @@ func waitPhase(t *testing.T, in *Installer, want ...Phase) Status {
 	return Status{}
 }
 
+// requireWindowsInstaller gates the tests that drive Installer.Start's real
+// install path. Start refuses off Windows by design (the pinned Gyan.dev build
+// is a Windows artifact; every other platform is told to use its package
+// manager), so those tests are only meaningful where the path exists — and
+// TestStartRefusedOffWindows pins the refusal itself.
+func requireWindowsInstaller(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("automatic FFmpeg install is a Windows-only path; refusal tested by TestStartRefusedOffWindows")
+	}
+}
+
+func TestStartRefusedOffWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the refusal is the non-Windows behavior")
+	}
+	root := t.TempDir()
+	in := installerFor(t, buildZip(t, root), filepath.Join(root, "bin"), filepath.Join(root, "scratch"))
+	err := in.Start(context.Background())
+	if err == nil {
+		t.Fatal("Start accepted on a platform with no pinned artifact")
+	}
+	if code := xcerr.CodeOf(err); code != xcerr.CodeUnsupportedMedia {
+		t.Fatalf("refusal code %q, want unsupported_media", code)
+	}
+	// The honest message must name the alternative, not just say "no".
+	if msg := xcerr.UserMessage(err); !strings.Contains(msg, "package manager") {
+		t.Fatalf("refusal tells the user nothing actionable: %q", msg)
+	}
+	if st := in.Status(); st.Phase != PhaseIdle {
+		t.Fatalf("a refused install must not leave a phase behind: %q", st.Phase)
+	}
+}
+
 func TestInstallHappyPath(t *testing.T) {
+	requireWindowsInstaller(t)
 	root := t.TempDir()
 	in := installerFor(t, buildZip(t, root), filepath.Join(root, "bin"), filepath.Join(root, "scratch"))
 	if err := in.Start(context.Background()); err != nil {
@@ -137,6 +175,7 @@ func TestInstallHappyPath(t *testing.T) {
 }
 
 func TestInstallSingleFlight(t *testing.T) {
+	requireWindowsInstaller(t)
 	root := t.TempDir()
 	payload := []byte("stalled")
 	release := make(chan struct{})
@@ -163,6 +202,7 @@ func TestInstallSingleFlight(t *testing.T) {
 }
 
 func TestInstallBadZipFailsHonest(t *testing.T) {
+	requireWindowsInstaller(t)
 	root := t.TempDir()
 	payload := []byte("definitely not a zip")
 	in := &Installer{

@@ -7,7 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -85,7 +88,44 @@ func TestSetupStatusNilInstaller(t *testing.T) {
 	}
 }
 
+// The FFmpeg installer drives a Windows-only path (the pinned artifact is a
+// Windows build); the HTTP tests below that exercise a real install belong on
+// Windows, where TestSetupRefusedOffWindows pins the honest refusal instead.
+func requireWindowsInstaller(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("automatic FFmpeg install is a Windows-only path; refusal tested by TestSetupRefusedOffWindows")
+	}
+}
+
+func TestSetupRefusedOffWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the refusal is the non-Windows behavior")
+	}
+	s, _ := setupServer(t)
+	rec, out := do(t, s, "POST", "/api/v1/setup/ffmpeg", "{}")
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("POST on a platform with no pinned artifact: %d %v, want 415", rec.Code, out)
+	}
+	if out["error"] != "unsupported_media" {
+		t.Errorf("error code %v, want unsupported_media", out["error"])
+	}
+	if msg, _ := out["message"].(string); !strings.Contains(msg, "package manager") {
+		t.Errorf("the UI strip must carry the alternative, got %q", msg)
+	}
+	// GET must keep answering with a usable status rather than an error, so
+	// the warning strip can still render.
+	rec, out = do(t, s, "GET", "/api/v1/setup/ffmpeg", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status read must not fail: %d %v", rec.Code, out)
+	}
+	if out["phase"] != "idle" {
+		t.Errorf("phase %v, want idle after a refused start", out["phase"])
+	}
+}
+
 func TestSetupInstallFlow(t *testing.T) {
+	requireWindowsInstaller(t)
 	s, in := setupServer(t)
 	rec, out := do(t, s, "GET", "/api/v1/setup/ffmpeg", "")
 	if rec.Code != 200 || out["phase"] != "idle" {
@@ -135,6 +175,7 @@ func TestSetupInstallFlow(t *testing.T) {
 }
 
 func TestSetupStatusShapeWhileDownloading(t *testing.T) {
+	requireWindowsInstaller(t)
 	s, in := setupServer(t)
 	// Stall the fetch so the status is sampled mid-download: the response
 	// must carry source, size and target for the UI's progress line.

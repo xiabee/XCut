@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/media"
@@ -12,11 +13,22 @@ import (
 )
 
 func TestEscapeSubsPath(t *testing.T) {
-	if got := escapeSubsPath(`C:\temp dir\lyrics.ass`); got != `C\:/temp dir/lyrics.ass` {
-		t.Fatalf("escape = %q", got)
+	// What the filtergraph needs is OS-independent: an already-slashed path
+	// with a drive letter must still have its colon escaped, and a quote must
+	// still be escaped.
+	if got := escapeSubsPath(`C:/temp dir/lyrics.ass`); got != `C\:/temp dir/lyrics.ass` {
+		t.Fatalf("drive-colon escape = %q", got)
 	}
 	if got := escapeSubsPath(`/tmp/it's.ass`); got != `/tmp/it\'s.ass` {
 		t.Fatalf("quote escape = %q", got)
+	}
+	// Turning separators into slashes is filepath.ToSlash's job, and it is by
+	// definition platform-specific (a no-op where the separator already is
+	// '/'), so only Windows can assert the conversion.
+	if runtime.GOOS == "windows" {
+		if got := escapeSubsPath(`C:\temp dir\lyrics.ass`); got != `C\:/temp dir/lyrics.ass` {
+			t.Fatalf("windows separator conversion = %q", got)
+		}
 	}
 }
 
