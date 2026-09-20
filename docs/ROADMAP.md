@@ -29,7 +29,14 @@ Living document. Near-term milestones are concrete; far-term is directional.
   gate; Linux runtime verified end-to-end via WSL kali + ffmpeg 8.1.1 in
   session #1 and re-verified in session #5; the "full mode on the MR
   node" ops item stays tracked in the night backlog — that node's
-  transport is `local` and cannot be driven remotely)
+  transport is `local` and cannot be driven remotely).
+  **arm64 status, stated precisely (session #15):** the published arm64
+  binary runs on real Kylin V10 SP1 — `doctor` green, and the full token +
+  session path driven over its tailnet address — but the arm64 *test suite*
+  is not green there: 15+ tests fail on the distro FFmpeg (ffprobe JSON
+  corruption, and 4.2.2 has no `xfade`), not on product logic. Getting a real
+  arm64 suite run needs a pinned stock FFmpeg on that node, which is an owner
+  decision, not something to install quietly.
 
 - [x] API authentication (D12, session #14): a bearer token gates every
       non-loopback peer of `/api/v1`, loopback stays trusted, and
@@ -41,7 +48,7 @@ Living document. Near-term milestones are concrete; far-term is directional.
       browser over a LAN peer.
 - [x] Remote-access finishing (closed across sessions #14–16): the TLS/tunnel
       runbook (`docs/OPERATIONS.md` — SSH tunnel driven end to end, plus the
-      Tailscale/WireGuard option), the sign-in panel's visual pass (real
+      Tailscale recipe now measured on a real tailnet peer), the sign-in panel's visual pass (real
       browser, 1280×800 + 390×844 — which caught the credentialless-poll
       budget defect, fixed), and token rotation decided as "edit config +
       restart" with the reason recorded in D12. The open question that remains
