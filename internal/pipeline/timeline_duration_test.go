@@ -22,27 +22,25 @@ func TestTimelineDurationValidation(t *testing.T) {
 		{"zero means the style's own", TimelineRequest{Style: "generic_highlight", Duration: 0}, true},
 		{"one second is the floor", TimelineRequest{Style: "generic_highlight", Duration: 1}, true},
 		{"four hours is the ceiling", TimelineRequest{Style: "generic_highlight", Duration: MaxRequestDuration}, true},
+		// Literal hours, not just the constant: a ceiling that quietly drops
+		// below "a long event reel" is a user-visible regression, while raising
+		// it stays a free decision. Asserting the constant itself would fire on
+		// either and catch neither.
+		{"a three hour reel is accepted", TimelineRequest{Style: "generic_highlight", Duration: 3 * 3600}, true},
+		{"a five hour reel is refused", TimelineRequest{Style: "generic_highlight", Duration: 5 * 3600}, false},
 		{"sub-second rejected", TimelineRequest{Style: "generic_highlight", Duration: 0.5}, false},
 		{"negative rejected", TimelineRequest{Style: "generic_highlight", Duration: -30}, false},
 		{"past the ceiling rejected", TimelineRequest{Style: "generic_highlight", Duration: MaxRequestDuration + 1}, false},
 		{"NaN rejected", TimelineRequest{Style: "generic_highlight", Duration: math.NaN()}, false},
 		{"Inf rejected", TimelineRequest{Style: "generic_highlight", Duration: math.Inf(1)}, false},
 	} {
-		err := tc.req.validate()
+		err := tc.req.Validate()
 		if tc.ok && err != nil {
 			t.Errorf("%s: got %v, want accepted", tc.name, err)
 		}
 		if !tc.ok && err == nil {
 			t.Errorf("%s: got nil, want rejection", tc.name)
 		}
-	}
-}
-
-// The bound has to be reachable from the CLI's own message, otherwise the two
-// copies drift and the CLI promises a range the pipeline refuses.
-func TestMaxRequestDurationIsOneHourMultiples(t *testing.T) {
-	if MaxRequestDuration != 4*3600 {
-		t.Fatalf("MaxRequestDuration = %d; the docs and USAGE quote 4 hours", MaxRequestDuration)
 	}
 }
 

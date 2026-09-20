@@ -362,7 +362,10 @@ func Style(name string) TimelineRequest { return TimelineRequest{Style: name} }
 // one command is a mistake, not a workflow (AGENTS.md rule 4).
 const MaxRequestDuration = 4 * 3600
 
-func (r TimelineRequest) validate() error {
+// Validate reports whether the request carries a usable reel length. Exported
+// because the bound is a contract shared with the CLI and the web UI, each of
+// which must refuse exactly what this package would refuse.
+func (r TimelineRequest) Validate() error {
 	if r.Duration == 0 {
 		return nil
 	}
@@ -381,7 +384,7 @@ func (r TimelineRequest) validate() error {
 // imported so a shared/default project's earlier imports never leak clips
 // into this run's cut.
 func (d Deps) BuildTimeline(project *storage.Project, req TimelineRequest, onlyIDs ...string) (*timeline.Timeline, error) {
-	if err := req.validate(); err != nil {
+	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	result := &timeline.Timeline{}
@@ -395,7 +398,7 @@ func (d Deps) BuildTimeline(project *storage.Project, req TimelineRequest, onlyI
 
 // BuildTimelineAsync is the non-blocking variant.
 func (d Deps) BuildTimelineAsync(project *storage.Project, req TimelineRequest, onlyIDs ...string) (string, error) {
-	if err := req.validate(); err != nil {
+	if err := req.Validate(); err != nil {
 		return "", err
 	}
 	return d.Queue.RunAsync(d.Ctx, job.TypeTimeline, project.ID, job.ClassCPULight,
