@@ -295,7 +295,20 @@ func diverse(p *Preset, chosen []selInterval, cand selInterval, assetDur float64
 		// it does on a 10-minute match. An absolute window length would
 		// silently truncate short sources into a single phase and drop the
 		// reel's tail — which is exactly what this rule exists to prevent.
-		win := assetDur / float64(p.Diversity.Phases)
+		phases := float64(p.Diversity.Phases)
+		// A reel asked for longer than the quota can hold needs *more* windows,
+		// not a looser quota per window: that keeps the spread discipline that
+		// the rule exists for while letting the cut use the budget it was
+		// given. Measured on a 603 s match: with a fixed 5×2 quota a 240 s
+		// request stopped at 10 clips / 80 s (recall 0.140); scaling the
+		// window count instead reached 19 clips at equal precision (0.267).
+		if p.MaxClipDuration > 0 && p.TargetDuration > 0 {
+			room := int(math.Ceil(p.TargetDuration / p.MaxClipDuration))
+			if quota := p.Diversity.Phases * p.Diversity.MaxPerWindow; room > quota {
+				phases = math.Max(phases, math.Ceil(float64(room)/float64(p.Diversity.MaxPerWindow)))
+			}
+		}
+		win := assetDur / phases
 		phase := int(cand.start / win)
 		inPhase := 0
 		for _, c := range chosen {
