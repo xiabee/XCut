@@ -92,7 +92,7 @@
     </section>
 
     <section class="panel" id="panel-roi">
-      <h2><span data-i18n="Court ROI">Court ROI</span> <span class="tag" data-i18n="motion region">motion region</span></h2>
+      <h2><span data-i18n="Regions">Regions</span> <span id="roi-tag-motion" class="tag" data-i18n="motion region">motion region</span><span id="roi-tag-score" class="tag" hidden data-i18n="scoreboard region">scoreboard region</span></h2>
       <div class="row">
         <label for="roi-target" data-i18n="region to draw">region to draw</label>
         <select id="roi-target">
@@ -101,7 +101,7 @@
         </select>
       </div>
       <div class="row">
-        <button id="btn-roi" data-i18n="draw court ROI…">draw court ROI…</button>
+        <button id="btn-roi"><span id="btn-roi-label-court" data-i18n="draw court ROI…">draw court ROI…</span><span id="btn-roi-label-score" data-i18n="draw scoreboard region…" hidden>draw scoreboard region…</span></button>
         <button id="btn-roi-clear" class="ghost" hidden data-i18n="clear">clear</button>
         <span id="roi-status" class="hint" data-i18n="checking…">checking…</span>
       </div>

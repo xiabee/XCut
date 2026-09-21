@@ -1318,14 +1318,22 @@ async function refreshROIStatus() {
   const status = $("roi-status");
   const clearBtn = $("btn-roi-clear");
   const asset = roiAsset();
+  const target = roiTarget();
+  // The two branches are separate requests, so whichever resolves last wins
+  // the label — which is wrong when the user switched target in between.
+  const stale = () => target !== roiTarget();
   $("roi-hint-court").hidden = roiIsScore();
   $("roi-hint-score").hidden = !roiIsScore();
+  $("roi-tag-motion").hidden = roiIsScore();
+  $("roi-tag-score").hidden = !roiIsScore();
+  $("btn-roi-label-court").hidden = roiIsScore();
+  $("btn-roi-label-score").hidden = !roiIsScore();
   if (!currentProject || !asset) { status.textContent = ""; clearBtn.hidden = true; return; }
   const pid = currentProject.id;
   try {
-    if (roiIsScore()) {
+    if (target === "score") {
       const own = await api(`/api/v1/projects/${pid}/assets/${asset.value}/score`);
-      if (projectChangedSince(pid)) return;
+      if (projectChangedSince(pid) || stale()) return;
       clearBtn.hidden = !own.crop;
       if (own.marks > 0 && own.stale) {
         status.textContent = tf("{n} boundaries from an older region ({crop}) — analyze again to re-measure",
@@ -1346,7 +1354,7 @@ async function refreshROIStatus() {
         ? api(`/api/v1/styles/${encodeURIComponent(roiStyleName())}/roi`)
         : Promise.resolve({ roi: null }),
     ]);
-    if (projectChangedSince(pid)) return;
+    if (projectChangedSince(pid) || stale()) return;
     if (own.roi) {
       status.textContent = fmtROI("per-source ROI x={x} y={y} w={w} h={h} (overrides the style)", own.roi);
       clearBtn.hidden = false;

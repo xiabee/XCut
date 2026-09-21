@@ -285,11 +285,15 @@ difference being `score_roi` over the digits, `--duration` at the style default)
 | 44 marks, 60 s | **0.998** | 0.127 | **0.225** | **7/43** | 8 | 44 |
 | no scoreboard, 240 s | 0.813 | 0.289 | 0.426 | 18/43 | 21 | — |
 | 44 marks, 240 s | **0.977** | **0.304** | **0.463** | **20/43** | 21 | 44 |
+| no scoreboard, 120 s | 0.817 | 0.207 | 0.330 | 12/43 | 15 | — |
+| 44 marks, 120 s | **0.972** | **0.243** | **0.389** | **16/43** | 16 | 44 |
 
-The second pair is the more interesting one: at a **fixed** budget the same 21
-clips reach two more distinct rallies (+1.5 points of recall, +3.7 of F1) *and*
-16 points more precision. Coverage is not bought with more reel — it is bought
-by not paying for the dead seconds after a point.
+The longer pairs are the more interesting ones: at a **fixed** budget the same
+21 clips reach two more distinct rallies (+1.5 points of recall, +3.7 of F1)
+*and* 16 points more precision, and at 120 s the marked run covers **16**
+rallies where the unmarked one covered 12 with a similar clip count. Coverage is
+not bought with more reel — it is bought by not paying for the dead seconds
+after a point.
 
 What moved is placement, not ranking: **all 8** marked clips end within 0.05 s
 of an annotated point end (that residual is the manifest's one-decimal

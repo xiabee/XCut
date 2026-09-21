@@ -71,6 +71,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **The region panel cannot show the other region's state.** Switching the
+  picker's target fired two overlapping requests, and whichever resolved last
+  wrote the status line — so the scoreboard view could end up reading "full
+  frame (no ROI)", the court's answer. Each refresh now binds to the target it
+  started for. Found by driving the real UI in a browser session against the
+  owner's match (the scoreboard line then reads "44 point boundaries measured at
+  0.43, 0.78, 0.14, 0.10"). The panel heading and button also stopped claiming
+  "Court ROI" while drawing the scoreboard.
 - **A reel length below the style's minimum clip fails with the real reason.**
   `--duration` under the style's `min_clip_duration` could not hold a single
   candidate, so the run burned a full analysis pass and died with the generic
