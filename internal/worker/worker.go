@@ -169,7 +169,11 @@ func callBounded(ctx context.Context, bin string, req Request, timeout time.Dura
 			return nil, xcerr.E(xcerr.CodeResourceLimit,
 				fmt.Sprintf("worker response exceeded %d bytes (refusing to buffer it)", maxResp), nil)
 		}
-		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot read worker response", readErr)
+		// Name the worker: a misconfigured workers.ai_bin (the interpreter
+		// instead of the sidecar script, say) fails here, and "cannot read
+		// worker response" gives nothing to act on.
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
+			fmt.Sprintf("cannot read worker response from %s", bin), readErr)
 	}
 	resp, parseErr := parseResponse(raw)
 	if waitErr != nil {
@@ -188,7 +192,9 @@ func callBounded(ctx context.Context, bin string, req Request, timeout time.Dura
 				fmt.Errorf("%v: %s", waitErr, stderrTail(cmd.Stderr)))
 		}
 	} else if parseErr != nil {
-		return nil, parseErr
+		// Same reason as the read error above: name what was run.
+		return nil, xcerr.E(xcerr.CodeAnalyzerFailure,
+			fmt.Sprintf("worker response unparseable from %s", bin), parseErr)
 	}
 	if resp.Protocol != Protocol {
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure,

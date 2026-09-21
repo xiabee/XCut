@@ -130,6 +130,19 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **`xcut auto` stayed silent when the reel came out shorter than asked.** The
+  one-shot printed the same `timeline: N clips, X s total` line as `xcut
+  timeline` but not the note under it — so the path where an ambitious
+  `--duration` is most likely to be answered short, and the one a first run
+  takes, was the one path that explained nothing. Found by running the documented
+  recipe on the owner's match: 240 s asked, 23 clips / 158.6 s delivered, silence.
+- **An unreadable worker answer now says which worker was run.** "worker
+  response unparseable: unexpected end of JSON input" was the whole report when
+  `workers.ai_bin` names an interpreter instead of the sidecar script — a dead
+  end that cost a full media run to diagnose. Both worker read paths now name the
+  binary, and the README's one-shot recipe states the region's unit
+  (`--score-crop 0.43,0.78,0.14,0.10`): pixels are the natural guess for a screen
+  region and the refusal said only "out of range".
 - **A data race in the analyze fan-out (the Linux leg's long-standing open
   sighting).** `analyzeBody` runs one goroutine per asset and called the
   per-asset callback *on that goroutine*, while `xcut analyze`'s callback prints

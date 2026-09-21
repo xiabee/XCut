@@ -83,6 +83,12 @@ go build -o xcut ./cmd/xcut          # produces xcut.exe on Windows
 ```sh
 ./xcut auto my-video.mp4 --project first-run --style generic_highlight
 
+# sports footage can be one command too: --score-crop is the region of a
+# burned-in scoreboard (fractions of the frame, 0..1 — not pixels), which analyze
+# measures into point ends so clips stop exactly on a scored point. --duration is
+# the reel length you want, in seconds.
+./xcut auto match.mp4 --project match --style badminton_highlight --duration 240 --score-crop 0.43,0.78,0.14,0.10
+
 # output lands in the project directory of your workspace:
 #   ~/.xcut/projects/<project-id>/render.mp4  (or the --out path you passed)
 ```

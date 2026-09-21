@@ -129,8 +129,12 @@ func parseROI(s string) (*storage.MotionROI, error) {
 	}
 	roi := &storage.MotionROI{X: v[0], Y: v[1], W: v[2], H: v[3]}
 	if !roi.Valid() {
+		// Name the unit, not just the arithmetic: "x+w <= 1" does not tell
+		// someone who typed pixel coordinates what went wrong (ffmpeg's crop
+		// filter takes pixels, so pixels is the instinct), and the region is
+		// stored normalized so it survives a proxy or a transcode.
 		return nil, xcerr.E(xcerr.CodeValidation,
-			fmt.Sprintf("ROI %q out of range (x,y >= 0; w,h > 0; x+w <= 1; y+h <= 1)", s), nil)
+			fmt.Sprintf("ROI %q out of range: x,y,w,h are fractions of the frame (0..1), not pixels — e.g. 0.43,0.78,0.14,0.10", s), nil)
 	}
 	return roi, nil
 }

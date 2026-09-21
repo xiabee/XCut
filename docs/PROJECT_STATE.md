@@ -98,6 +98,15 @@ replacing it.
 
 ## Version / HEAD
 
+**The one-shot was run end to end on the owner's match** (`xcut auto … --style
+badminton_highlight --duration 240 --score-crop 0.4297,0.7778,0.1406,0.0972`):
+77.6 s wall on the laptop for import → analyze (44 scoreboard marks measured in
+the same pass) → timeline → a 158.6 s / 39.0 MB reel, 23 clips of which 22 end on
+a scored point, and it printed the footage note. That run is what surfaced two
+gaps now fixed: `xcut auto` had been the one path that reported a short reel
+without explaining it, and an unreadable worker answer (a mis-set
+`workers.ai_bin`) named no binary. docs/PERFORMANCE.md carries the row.
+
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session
 - HEAD: session #16/#17 (2026-09-20 night) — the auth-gate failure budget

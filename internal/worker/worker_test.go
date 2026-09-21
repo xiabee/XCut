@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +123,8 @@ func TestHelperWorkerStub(t *testing.T) {
 		// running — the shape of a sidecar stuck in a non-daemon thread.
 		os.Stdout.Close()
 		time.Sleep(10 * time.Minute)
+	case "garbage":
+		os.Stdout.WriteString("this is not a json envelope")
 	case "never-answer":
 		time.Sleep(10 * time.Minute)
 	}
@@ -200,5 +203,24 @@ func TestCallReapsAWorkerThatNeverExits(t *testing.T) {
 	if c2, err2 := net.Dial("tcp", addr); err2 == nil {
 		_ = c2.Close()
 		t.Fatalf("the hung worker still answers on %s after Call returned: it was left running", addr)
+	}
+}
+
+// TestUnparseableAnswerNamesTheWorker: a misconfigured workers.ai_bin — the
+// interpreter where the sidecar script belongs, say — fails exactly here, and
+// an error that only says "unparseable" leaves nothing to act on. This hit me
+// while running the documented recipe with the wrong environment variable.
+func TestUnparseableAnswerNamesTheWorker(t *testing.T) {
+	bin := stubWorkerCmd(t, "garbage")
+	_, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, 60*time.Second)
+	if err == nil {
+		t.Fatal("a non-JSON answer was accepted")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "unparseable") {
+		t.Fatalf("error lost its meaning: %s", msg)
+	}
+	if !strings.Contains(msg, bin) {
+		t.Fatalf("error does not say which worker was run: %s", msg)
 	}
 }

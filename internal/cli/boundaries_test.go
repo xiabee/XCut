@@ -156,7 +156,34 @@ func TestAutoAppliesScoreboardRegion(t *testing.T) {
 		t.Fatalf("auto rendered nothing: %v", err)
 	}
 
-	// A malformed region is refused before any media work starts.
-	run(1, "auto", fixture, "--project", "bad", "--score-crop", "0.8,0.8,0.5,0.5")
-	run(1, "auto", fixture, "--project", "bad", "--score-crop", "not,a,rect")
+	// The one-shot has to carry the same explanation `xcut timeline` gives: an
+	// ambitious --duration answered by a much shorter reel must not fail
+	// silently, because that is exactly the command a first-time user runs.
+	out = run(0, "auto", fixture, "--project", "long", "--style", "generic_highlight",
+		"--duration", "600", "--out", filepath.Join(root, "long.mp4"))
+	if !strings.Contains(out, "the cut took") {
+		t.Fatalf("auto did not explain a reel shorter than asked:\n%s", out)
+	}
+
+	// A malformed region is refused before any media work starts — and the
+	// refusal has to name the unit. Pixel coordinates are the natural instinct
+	// (ffmpeg's crop filter takes them, and they are what a screen ruler reads),
+	// so "x+w <= 1" alone left a reader guessing.
+	for _, tc := range []struct{ crop, needle string }{
+		// A pixel rectangle for a 1280x720 frame: the shape a reader reaches for
+		// first, and the one that must be told what unit the flag wants.
+		{"550,560,180,70", "fractions of the frame (0..1), not pixels"},
+		{"0.8,0.8,0.5,0.5", "fractions of the frame (0..1), not pixels"},
+		{"not,a,rect", "must be x,y,w,h (normalized 0..1)"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run([]string{"auto", fixture, "--project", "bad", "--score-crop", tc.crop}, &stdout, &stderr); code != 1 {
+			t.Fatalf("region %q was accepted (exit %d)", tc.crop, code)
+		}
+		msg := stderr.String() + stdout.String()
+		if !strings.Contains(msg, tc.needle) {
+			t.Errorf("refusal of %q does not say %q, it says:\n%s", tc.crop, tc.needle, msg)
+		}
+	}
 }
