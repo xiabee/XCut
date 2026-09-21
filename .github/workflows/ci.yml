@@ -87,6 +87,11 @@ jobs:
       - name: Smoke test artifact
         run: |
           ./dist/xcut-ci-test-linux-amd64 version
+          # Assert the static worker exists before tolerating its exit status:
+          # it speaks JSON on stdin, so an empty input is a non-zero read — but
+          # a missing file means the musl build skipped itself, which is a
+          # packaging regression, not a quirk of the smoke.
+          test -f dist/xcut-worker-media-ci-test-linux-amd64
           ./dist/xcut-worker-media-ci-test-linux-amd64 < /dev/null || true
           test -x dist/xcut-ci-test-linux-amd64
       - uses: actions/upload-artifact@v4

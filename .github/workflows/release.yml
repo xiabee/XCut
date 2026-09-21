@@ -20,20 +20,41 @@ jobs:
           go-version: "1.25"
           cache: true
       - uses: dtolnay/rust-toolchain@stable
+        # The static musl worker is part of what a release ships; without the
+        # target the build script prints "skipped (target not installed)" and
+        # the release goes out quietly without it (see ci.yml's package job,
+        # which has carried this since the worker started shipping).
+        with:
+          targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates/xcut-worker-media
 
       - name: Build Rust worker (host)
+        # The crate is a package, not a workspace: run cargo where its
+        # Cargo.toml is. Every tagged release from v0.1.1 to v0.1.8-alpha died
+        # here with "could not find `Cargo.toml` in /home/runner/work/XCut/XCut".
+        working-directory: crates/xcut-worker-media
         run: cargo build --release -p xcut-worker-media
 
       - name: Build release binaries
+        # The tag string is passed verbatim, v included: that is what
+        # `git describe --tags` yields, what every asset already on the release
+        # page is named with, and what make-installer.ps1 / make-setup.ps1
+        # expect to find in dist/. (The old `VERSION=` env prefix here was dead
+        # code — the script takes its version from $1.)
         run: |
           chmod +x scripts/build-release.sh
-          VERSION="${GITHUB_REF_NAME#v}" scripts/build-release.sh "${GITHUB_REF_NAME}" dist
+          scripts/build-release.sh "$GITHUB_REF_NAME" dist
 
       - name: Smoke test artifact
-        run: ./dist/xcut-${GITHUB_REF_NAME}-linux-amd64 version
+        # The two worker files are asserted, not merely listed: shipping
+        # "static musl worker" quietly degraded to "target not installed" is
+        # exactly how this release path would fail quietly again.
+        run: |
+          ./dist/xcut-$GITHUB_REF_NAME-linux-amd64 version
+          test -f "dist/xcut-worker-media-$GITHUB_REF_NAME-linux-amd64"
+          test -f "dist/xcut-worker-media-$GITHUB_REF_NAME-host"
 
       - name: Create GitHub release with binaries
         uses: softprops/action-gh-release@v2

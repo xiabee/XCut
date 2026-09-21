@@ -136,6 +136,38 @@ platform drift. Procedure: `git archive HEAD | ssh <node> 'tar -x -C
 untracked files ride along), `GOFLAGS=-count=1` so no cached result is quoted
 as evidence, and a repo-local `.tools/ffmpeg` for the integration tests.
 
+Amendment (session #18): the "explicit" release workflow had **never** run to
+completion, and checking turned out to be two separate findings.
+
+1. `release.yml` invoked `cargo build -p xcut-worker-media` from the repository
+   root, where there is no `Cargo.toml` — every tag from v0.1.1 to v0.1.8-alpha
+   is red on Actions with the same `could not find Cargo.toml` (exit 101). The
+   step now runs in `crates/xcut-worker-media`, declares the `musl` target
+   `ci.yml`'s package job already declared, and its smoke step asserts both
+   worker artifacts exist rather than listing `dist/`.
+2. Why that stayed invisible for eight releases: the release page **does** have
+   assets on every tag, because the local packaging flow attached them
+   (`gh release create`). Nobody ever asked the workflow to prove itself. The
+   other half of the answer is billing — the 2026-09-06 runs and the v0.1.1…
+   v0.1.6 releases were not started at all ("recent account payments have
+   failed or your spending limit needs to be increased"), so Actions
+   availability is intermittent, which is the standing reason it is not the
+   acceptance path (rule 8: the control plane's legs are).
+
+Verified without spending quota: the exact step commands were run against a
+clean `git archive` snapshot on the Linux node — root-level cargo reproduces
+the failure, the crate-directory build succeeds in 25.7 s, `build-release.sh`
+emits the three Go binaries plus both workers, and the smoke assertions hold.
+The negative direction came free: before the musl target was installed, the
+worker file simply did not exist, which is precisely what the new `test -f`
+catches. The tag string is passed to the build **verbatim, `v` included** — that
+is what `git describe --tags` yields, what every existing asset is named with,
+and what `make-installer.ps1` / `make-setup.ps1` look for in `dist/`; "tidying"
+the `v` away would have desynchronised three scripts to fix a cosmetic prefix.
+Proof still outstanding: the Actions plumbing itself (checkout, toolchain
+inputs, `softprops/action-gh-release`), which only a tag push can exercise —
+and cutting a release is the operator's call.
+
 ## D13: Refuse loudly over repair ambiguously
 
 Context: on Kylin V10 aarch64 the vendor OMX decoder plugin writes log lines to
