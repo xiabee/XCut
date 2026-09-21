@@ -308,12 +308,14 @@ a budget one — the reason `xcut timeline` now says which one it hit rather tha
 printing a short total in silence. (Reel seconds are only recorded for the rows
 measured with the ladder script.)
 
-One discrepancy is recorded rather than smoothed over: the same file through the
-**CLI** project (`analyze → timeline --duration 300`) gives 18 clips / 126.4 s
-where the **eval** harness gives 21 / 147.2 s, so the two paths do not segment
-identically (proxy-vs-original analysis and cache generation are the suspects).
-Every ladder row above is eval-side; reading a CLI number into this table would
-misstate the curve.
+One difference between the harness and the plain CLI path is now explained
+rather than left open: the manifest's `asset_roi` (court region) is applied to
+the case's asset, and the ROI track yields **21** candidate rallies where the
+same file without a per-source region yields **18** (three chunks dropped at the
+full-frame motion floor). So the ladder above is the *court-ROI + boundaries*
+configuration — the best the feature offers — and a project that never drew a
+region reaches a shorter reel from the same match. Both numbers are true of
+their own path; putting them in one row is not.
 
 The longer pairs are the more interesting ones: at a **fixed** budget the same
 21 clips reach two more distinct rallies (+1.5 points of recall, +3.7 of F1)

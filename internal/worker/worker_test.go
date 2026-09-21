@@ -143,15 +143,25 @@ func TestCallWithExplicitTimeout(t *testing.T) {
 // window and the process is reaped.
 func TestCallReturnsBeforeWorkerExits(t *testing.T) {
 	bin := stubWorkerCmd(t, "answer-then-hang")
+	const deadline = 60 * time.Second
 	start := time.Now()
-	raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, 30*time.Second)
+	raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, deadline)
+	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("valid answer must survive a hanging worker: %v", err)
 	}
 	if !strings.Contains(string(raw), "42") {
 		t.Fatalf("unexpected result: %s", raw)
 	}
-	if elapsed := time.Since(start); elapsed > 15*time.Second {
-		t.Fatalf("call took %s, want seconds (grace + kill), not the full deadline", elapsed)
+	// The claim is "we did not wait for the deadline" (workerExitGrace is 2 s,
+	// so a correct implementation returns in a few seconds). The bound is a
+	// third of the deadline rather than a tight number because the measured
+	// cost here is dominated by the harness re-executing this test binary as
+	// the worker: ~5.0 s idle, ~16.5 s with three other jobs on the machine —
+	// while the grace+kill path itself adds ~0.07 s over that baseline
+	// (measured against the same stub answering and exiting cleanly).
+	if elapsed > deadline/3 {
+		t.Fatalf("call took %s, want well under the %s deadline", elapsed, deadline)
 	}
+	t.Logf("hanging-worker call: %s (deadline %s, grace %s)", elapsed, deadline, workerExitGrace)
 }

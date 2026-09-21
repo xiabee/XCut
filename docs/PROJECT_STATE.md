@@ -393,6 +393,17 @@ cost the tail rule its boundary (P 0.977 → 0.641, 21/21 → 3/21 ends on a poi
 
 ## Known Issues
 
+- **One unreproduced 500 on the Windows CI node (open).** `api/TestTimelineRegenAndPutRevisionUniqueness`
+  failed on win-devops at `984a1d4` (job `20260921-173929-cfff4f`) with
+  `timeline_api_test.go:458: unexpected PUT status 500` — the test's contract is
+  "every concurrent PUT is 200 or 409". Same commit: the local fast gate passed
+  (454 tests), and the test itself passed 40 consecutive local runs and again
+  under `-count=8`. The node's own SSH account cannot run builds (`Permission
+  denied` for the CI user's key), so it has not been hammered where it failed.
+  **What changed instead of a guess:** the test now keeps each rejected PUT's
+  response body (it printed a bare status before), and
+  `TestPutFailureCarriesItsReason` proves that channel carries a named reason —
+  so the next occurrence says which step refused rather than joining this list.
 - **One unreproduced `DATA RACE` on the Linux leg (open).** Session #18's
   `check.sh full` at `1f7c899` failed with `testing.go:1712: race detected
   during execution of test` in `cli.TestE2EAutoScopesToRunInputs`; the surviving

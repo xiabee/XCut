@@ -110,6 +110,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   owner's match (the scoreboard line then reads "44 point boundaries measured at
   0.43, 0.78, 0.14, 0.10"). The panel heading and button also stopped claiming
   "Court ROI" while drawing the scoreboard.
+- **Two tests that could only report a number now report a reason.** The
+  concurrent-PUT revision test threw away every response body, so the one time
+  it failed (a 500 on a CI node, unreproducible in 48 local runs) it said only
+  "unexpected PUT status 500"; it now prints the body, and a second test proves
+  that a rejected PUT does explain itself. The hanging-worker test asserted
+  "returns in seconds" with a hand-picked 15 s bound, while the measured cost of
+  *its own harness* re-executing the test binary as the worker is ~5.0 s idle and
+  ~16.5 s under load — the grace-and-kill path it guards adds ~0.07 s over that
+  baseline. The bound is now a third of a stated deadline and the elapsed time is
+  logged; making the grace 15× longer still trips it, which is what proves the
+  assertion can fail.
 - **A scoreboard scan and its region can no longer be written apart.** Storing
   marks now stamps the region they were measured from in the same statement.
   The eval harness had been writing one without the other, and the consumer

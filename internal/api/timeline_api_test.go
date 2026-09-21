@@ -381,7 +381,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	put := func(rev int64) int {
+	put := func(rev int64) (int, string) {
 		tl := &timeline.Timeline{
 			Version:  timeline.Version,
 			Revision: rev,
@@ -396,17 +396,20 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 			}},
 		}
 		rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl))
-		return rec.Code
+		// The body is the diagnosis: a bare status told us "500" on a CI node
+		// and nothing about which of the read/rename/validation steps said it.
+		return rec.Code, strings.TrimSpace(rec.Body.String())
 	}
 
 	// Seed revision 1.
-	if code := put(0); code != http.StatusOK {
-		t.Fatalf("seed save: %d", code)
+	if code, body := put(0); code != http.StatusOK {
+		t.Fatalf("seed save: %d %s", code, body)
 	}
 
 	const writers, iters, regens = 4, 3, 4
 	var wg sync.WaitGroup
 	codes := make([]int, writers*iters)
+	details := make([]string, writers*iters)
 	for i := 0; i < writers; i++ {
 		wg.Add(1)
 		go func(i int) {
@@ -419,7 +422,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 					continue
 				}
 				rev := int64(out["timeline"].(map[string]any)["revision"].(float64))
-				codes[i*iters+j] = put(rev)
+				codes[i*iters+j], details[i*iters+j] = put(rev)
 			}
 		}(i)
 	}
@@ -447,7 +450,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 	wg.Wait()
 
 	accepted := 0
-	for _, c := range codes {
+	for k, c := range codes {
 		switch c {
 		case http.StatusOK:
 			accepted++
@@ -455,7 +458,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 		case 0:
 			t.Fatal("a writer never issued its PUT")
 		default:
-			t.Fatalf("unexpected PUT status %d", c)
+			t.Fatalf("unexpected PUT status %d: %s", c, details[k])
 		}
 	}
 
@@ -520,5 +523,30 @@ func TestTimelinePutSurvivesAssetReimport(t *testing.T) {
 	tl.Revision = rev
 	if rec, body := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl)); rec.Code != http.StatusOK {
 		t.Fatalf("stored timeline no longer valid after reimport: %d %s", rec.Code, body)
+	}
+}
+
+// TestPutFailureCarriesItsReason is the control for the assertion above: a
+// rejected PUT must explain itself in the response body, otherwise
+// "unexpected PUT status %d: %s" prints an empty diagnosis and the instrumented
+// line is decoration.
+func TestPutFailureCarriesItsReason(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "put-reason"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "put-reason")
+
+	rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", `{"version":1,"canvas":{`)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("a truncated JSON body was accepted: %d", rec.Code)
+	}
+	body := strings.TrimSpace(rec.Body.String())
+	if body == "" || body == "{}" {
+		t.Fatalf("status %d answered with no explanation: %q", rec.Code, body)
+	}
+	if !strings.Contains(strings.ToLower(body), "invalid") &&
+		!strings.Contains(strings.ToLower(body), "timeline") {
+		t.Fatalf("body %q does not name what was wrong", body)
 	}
 }
