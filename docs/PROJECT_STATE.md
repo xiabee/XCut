@@ -204,6 +204,25 @@ uncommitted (it is `b839c95`, prose only, no code difference from `90b7f41`),
 because I stopped the client after it had already uploaded and killing the client
 does not stop the node.
 
+Two follow-ups to that step, both small and both about trusting a green scan.
+The suppression convention (`#nosec GXXX -- reason`) had nothing enforcing it, so
+both gates now pass `-nosec-require-justification -nosec-require-rules`; the
+control was planted rather than assumed (a package with `// #nosec G104` and one
+with a bare `// #nosec` exits 1 naming `missing justification` and
+`missing rule ID`, and it fires even under `-severity high`, so the rule is not
+tied to the findings filter). And because `gosec --version` answers "dev" for any
+build, a log could not say what produced its verdict — the gates now print the
+scanner's sha256 prefix and path before running it, with the pinned install
+command (`@v2.29.0`, chosen after measuring that v2.29.0 and the incumbent agree
+here: both `Issues : 0`). That paid for itself immediately: the node carries two
+gosec binaries, and the Linux leg at `68e13a2` is the record of which one scanned
+(`== gosec scanner: ad6ae7a445f0 at /home/ci/go/bin/gosec`, the pinned copy, not
+`/usr/local/bin`'s `fe2af13f1924`), with `gate (full): PASS`, `455 passed /
+13 skipped`, zero `DATA RACE` lines and `not run: nothing` — the same verdict the
+enforced flags passed on at `ff1b2d6`. The PowerShell side of both changes was
+verified by running its commands directly, in both directions, not through a full
+Windows gate on the laptop.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

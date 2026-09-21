@@ -32,7 +32,15 @@ tailnet recipe, reel cost, rally slicing, the Windows 500)
   (`gosec -severity high`, same suppression convention), and a clean run now
   announces itself — the first version printed its clean line on the
   policy-skip path as well, so a scan that never ran claimed there was nothing to
-  find; the exit-126 leg caught that in its own log.
+  find; the exit-126 leg caught that in its own log. The convention is now
+  enforced by the scanner instead of by review: both gates pass
+  `-nosec-require-justification -nosec-require-rules`, so `// #nosec` with no rule
+  id or no `-- reason` fails (planted both defects, each named; and the check fires
+  even below the severity filter). Both gates also say *which* scanner ran —
+  `gosec --version` prints "dev" whatever tag it was built from, so the log now
+  carries the binary's sha256 prefix and path, and the install hints name
+  `@v2.29.0` / `@v1.8.0` rather than `@latest`. First run proved the need: the node
+  holds two gosec binaries and the log settled which one scanned.
 - **A vulnerability finding could not fail the gate.** `check.sh` read the scan
   status as `if ! govulncheck ./...; then rc=$?` — and `$?` after a negated
   command is the *negation*, always 0 — so every non-zero scan landed in

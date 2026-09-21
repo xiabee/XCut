@@ -202,7 +202,7 @@ if [ "$mode" = "full" ]; then
             exit "$gvc_rc"
         fi
     else
-        echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped" >&2
+        echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@v1.8.0), skipped" >&2
         NOT_RUN="$NOT_RUN govulncheck"
     fi
 

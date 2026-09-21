@@ -233,7 +233,7 @@ if ($Mode -eq "full") {
         Invoke-Step "govulncheck" { govulncheck ./... }
     }
     else {
-        Write-Host "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped"
+        Write-Host "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@v1.8.0), skipped"
         $NotRun += "govulncheck"
     }
 
@@ -254,7 +254,7 @@ if ($Mode -eq "full") {
         Invoke-Step "gosec" { gosec -severity high -tests=false -nosec-require-justification -nosec-require-rules ./... }
     }
     else {
-        Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped"
+        Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0), skipped"
         $NotRun += "gosec"
     }
 }
