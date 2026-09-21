@@ -538,6 +538,21 @@ preset changed; the table is in docs/EVAL.md.
   response body (it printed a bare status before), and
   `TestPutFailureCarriesItsReason` proves that channel carries a named reason —
   so the next occurrence says which step refused rather than joining this list.
+  **A candidate mechanism has since been reproduced locally, and removed.** A
+  timeline save publishes through `workspace.RetryableRename`, whose escalating
+  sleeps then allowed only ~420 ms for a destination held by another handle —
+  and the reader here is `timeline.LoadFile`'s `os.ReadFile`, which shares read
+  and write but *not* delete, so a rename landing during that window answers
+  `Access is denied`. `TestRetryableRenameWaitsOutABriefHolder` pins it: with the
+  old window the test fails verbatim with `Access is denied. (waited 627ms)`
+  against a holder that releases at 900 ms; the wait budget is now an explicit
+  2 s, and the paired test proves it still gives up *boundedly* (error, under
+  4 s, source file intact) when the holder never releases. Not switched to
+  `RetryableReplace`: that deletes the destination first, which trades a
+  timeline document's revision integrity for convenience — the deliberate choice
+  already recorded in `workspace/rename.go`. The entry stays open: the node's one
+  occurrence is consistent with this cause, not proof of it, and the instrumented
+  message will say which step refused if it ever returns.
 - **The Linux-leg `DATA RACE` is reproduced, root-caused and fixed (closed).** It
   fired again at `680d707`, this time with both halves of the report: two worker
   goroutines in `analyzeBody`'s per-asset fan-out were calling the analyze

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 // TestRetryableReplaceThroughSharedHolder pins the publish-vs-playback
@@ -53,6 +54,82 @@ func TestRetryableReplaceThroughSharedHolder(t *testing.T) {
 	}
 	if !bytes.Equal(buf, old) {
 		t.Fatal("old holder sees new content — playback would corrupt")
+	}
+}
+
+// TestRetryableRenameWaitsOutABriefHolder pins the reason the budget is two
+// seconds rather than the ~420 ms of escalating sleeps it had: a holder that
+// releases later than that window (an antivirus scan on a busy machine, which is
+// what the one win-devops "unexpected PUT status 500" looked like) must still
+// end in a published file, not in a user-visible failure. The holder is
+// os.Open, i.e. no delete-share — the shape the API's own reads take.
+func TestRetryableRenameWaitsOutABriefHolder(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only semantics")
+	}
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "doc.json")
+	src := filepath.Join(dir, "tmp.json")
+	for _, p := range []string{dst, src} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := os.Open(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		time.Sleep(900 * time.Millisecond)
+		_ = h.Close()
+		done <- nil
+	}()
+	start := time.Now()
+	if err := RetryableRename(src, dst); err != nil {
+		t.Fatalf("rename gave up while a holder that releases after 900ms was still in the budget window: %v (waited %s)", err, time.Since(start))
+	}
+	if b, err := os.ReadFile(dst); err != nil || string(b) != "x" {
+		t.Fatalf("destination after publish: %q (%v)", b, err)
+	}
+}
+
+// TestRetryableRenameGivesUpBoundedly is the other half: a holder that never
+// releases must produce an error, and must not turn the save into a hang. The
+// window is measured, not assumed — under 4 s here, so a stuck rename still
+// fails a request rather than blocking the request handler.
+func TestRetryableRenameGivesUpBoundedly(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only semantics")
+	}
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "doc.json")
+	src := filepath.Join(dir, "tmp.json")
+	for _, p := range []string{dst, src} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := os.Open(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+
+	start := time.Now()
+	err = RetryableRename(src, dst)
+	waited := time.Since(start)
+	if err == nil {
+		t.Fatal("rename succeeded while the destination handle was still open")
+	}
+	if waited < renameWaitBudget {
+		t.Errorf("gave up after %s, before the %s budget", waited, renameWaitBudget)
+	}
+	if waited > 4*time.Second {
+		t.Errorf("gave up after %s; the give-up itself must stay quick enough to fail a request", waited)
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Errorf("the source must survive a failed publish so the caller can retry: %v", err)
 	}
 }
 

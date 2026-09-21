@@ -141,6 +141,22 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **A timeline save could give up while Windows was a moment from letting it
+  through.** Publishing renames a temp file over `timeline.json`, and on Windows
+  that fails with `Access is denied` while any handle holds the destination open
+  — including the read the API itself performs on every `GET /timeline`. A retry
+  existed, but its escalating sleeps allowed only ~420 ms, which a Defender scan
+  or four concurrent savers on a loaded node can outlast; the request then
+  answered 500. The window is now an explicit 2 s wait budget, which is
+  risk-free (nothing is deleted; the source keeps its bytes if the give-up
+  comes). `TestRetryableRenameWaitsOutABriefHolder` reproduces the old
+  behaviour verbatim — holder releases at 900 ms,
+  `Access is denied. (waited 627ms)` — and its pair proves the give-up stays
+  bounded (error, under 4 s, source intact) when the holder never releases. The
+  media path's delete-then-rename is deliberately still not used here: it would
+  trade the timeline document's revision integrity for the same convenience.
+  Most plausible, now-reproduced cause of the single unreproduced 500 in
+  `docs/PROJECT_STATE.md` — not proof of it.
 - **`xcut auto` stayed silent when the reel came out shorter than asked.** The
   one-shot printed the same `timeline: N clips, X s total` line as `xcut
   timeline` but not the note under it — so the path where an ambitious

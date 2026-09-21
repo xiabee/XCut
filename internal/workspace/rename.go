@@ -10,25 +10,37 @@ import (
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
+// renameWaitBudget is how long a rename may keep waiting on a transient holder
+// before the caller is told. The wait itself is risk-free — nothing is deleted
+// and the source keeps its bytes, so a longer budget costs only a slower
+// failure. A too-short budget costs the user a visible failure on a save that
+// Defender was a moment from releasing: win-devops reported one
+// `unexpected PUT status 500` in the concurrent-save test under the previous
+// ~420 ms of escalating sleeps (6 attempts, 20..120 ms).
+const renameWaitBudget = 2 * time.Second
+
 // RetryableRename renames src onto dst, absorbing the Windows reality that
 // Defender (and the indexer) briefly hold freshly written files: an
 // os.Rename over such a file fails with a sharing violation / access
 // denied, which documents rewritten in rapid succession (timeline saves,
-// render publishes) would surface as spurious failures. A short escalating
-// backoff clears the scanner window; other platforms and other errors fail
+// render publishes) would surface as spurious failures. Escalating backoff
+// clears the scanner window; other platforms and other errors fail
 // immediately.
 func RetryableRename(src, dst string) error {
 	var err error
-	for attempt := 0; attempt < 6; attempt++ {
+	deadline := time.Now().Add(renameWaitBudget)
+	for delay := 20 * time.Millisecond; ; delay *= 2 {
 		if err = os.Rename(src, dst); err == nil {
 			return nil
 		}
 		if runtime.GOOS != "windows" || !isWindowsRettableRename(err) {
 			return err
 		}
-		time.Sleep(time.Duration(20*(attempt+1)) * time.Millisecond)
+		if !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(delay)
 	}
-	return err
 }
 
 // isWindowsRettableRename matches the errnos a rename over a held file
