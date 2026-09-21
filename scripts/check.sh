@@ -31,6 +31,14 @@ if [ -d .tools/bin ]; then
     PATH="$(pwd)/.tools/bin:$PATH"
     export PATH
 fi
+# `go install` puts tools in GOPATH/bin, which a non-login ssh PATH does not
+# carry — so the gate reported `not run: govulncheck` on a node that had owned
+# the binary for weeks. Look where Go actually puts it.
+GOBIN_DIR=$(go env GOPATH 2>/dev/null)/bin
+if [ -n "$GOBIN_DIR" ] && [ "$GOBIN_DIR" != "/bin" ] && [ -d "$GOBIN_DIR" ]; then
+    PATH="$GOBIN_DIR:$PATH"
+    export PATH
+fi
 # Steps that did not run are named in the verdict line. A gate that prints PASS
 # while three of its checks quietly no-oped is the same failure as a secret scan
 # that reports "clean" over an empty file list — and the ffmpeg case has already
