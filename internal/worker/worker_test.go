@@ -142,26 +142,39 @@ func TestCallWithExplicitTimeout(t *testing.T) {
 // the call until the deadline — the answer is returned after the grace
 // window and the process is reaped.
 func TestCallReturnsBeforeWorkerExits(t *testing.T) {
-	bin := stubWorkerCmd(t, "answer-then-hang")
+	// The property is "an answered call is not held open by a worker that never
+	// exits". Asserting it against a wall clock is a load detector: the cost of
+	// this test's own harness — re-executing the test binary as the worker —
+	// measured 5.0 s idle and 7.7–22.7 s while the suite runs other packages in
+	// parallel, several times the 2 s grace it was meant to watch.
+	//
+	// So the same spawn is measured twice and subtracted: a clean-exit stub and a
+	// hung stub, identical but for what happens after the answer. Whatever the
+	// machine costs to start a process, it costs both of them the same.
 	const deadline = 60 * time.Second
-	start := time.Now()
-	raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, deadline)
-	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("valid answer must survive a hanging worker: %v", err)
+	call := func(mode string) time.Duration {
+		bin := stubWorkerCmd(t, mode)
+		start := time.Now()
+		raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, deadline)
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("%s worker: %v", mode, err)
+		}
+		if !strings.Contains(string(raw), "42") {
+			t.Fatalf("%s worker result: %s", mode, raw)
+		}
+		return elapsed
 	}
-	if !strings.Contains(string(raw), "42") {
-		t.Fatalf("unexpected result: %s", raw)
+
+	clean := call("answer")
+	hung := call("answer-then-hang")
+	t.Logf("clean-exit %s, hung %s, difference %s (grace %s)", clean, hung, hung-clean, workerExitGrace)
+	// The hung worker must cost little more than the clean one: the answer is
+	// followed by a grace window of 2 s and then a kill. Load inflates both
+	// numbers together; only a regression that waits on the process (or on the
+	// deadline) separates them — verified by setting workerExitGrace to 40 s,
+	// which pushes the difference to ~35 s and fails here.
+	if d := hung - clean; d > 5*time.Second {
+		t.Fatalf("a hung worker held the call %.3fs longer than a clean one; want <5s (grace is %s)", d.Seconds(), workerExitGrace)
 	}
-	// The claim is "we did not wait for the deadline" (workerExitGrace is 2 s,
-	// so a correct implementation returns in a few seconds). The bound is a
-	// third of the deadline rather than a tight number because the measured
-	// cost here is dominated by the harness re-executing this test binary as
-	// the worker: ~5.0 s idle, ~16.5 s with three other jobs on the machine —
-	// while the grace+kill path itself adds ~0.07 s over that baseline
-	// (measured against the same stub answering and exiting cleanly).
-	if elapsed > deadline/3 {
-		t.Fatalf("call took %s, want well under the %s deadline", elapsed, deadline)
-	}
-	t.Logf("hanging-worker call: %s (deadline %s, grace %s)", elapsed, deadline, workerExitGrace)
 }

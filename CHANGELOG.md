@@ -112,15 +112,18 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   "Court ROI" while drawing the scoreboard.
 - **Two tests that could only report a number now report a reason.** The
   concurrent-PUT revision test threw away every response body, so the one time
-  it failed (a 500 on a CI node, unreproducible in 48 local runs) it said only
+  it failed (a 500 on a CI node, unreproducible in 40 local runs and two green
+  local gates) it said only
   "unexpected PUT status 500"; it now prints the body, and a second test proves
   that a rejected PUT does explain itself. The hanging-worker test asserted
   "returns in seconds" with a hand-picked 15 s bound, while the measured cost of
   *its own harness* re-executing the test binary as the worker is ~5.0 s idle and
-  ~16.5 s under load — the grace-and-kill path it guards adds ~0.07 s over that
-  baseline. The bound is now a third of a stated deadline and the elapsed time is
-  logged; making the grace 15× longer still trips it, which is what proves the
-  assertion can fail.
+  7.7–22.7 s with the suite running other packages in parallel — the grace path it
+  guards adds ~0.07 s over that baseline, so the fixed bound was a load detector
+  and did go red on a busy machine. It now times a clean-exit stub and a hung stub
+  back to back and bounds the **difference** at 5 s: spawn cost cancels, measured
+  differences were 0.85 s and 1.55 s under load, and inflating the grace 20×
+  separates them to 40.3 s — a clean, named failure.
 - **A scoreboard scan and its region can no longer be written apart.** Storing
   marks now stamps the region they were measured from in the same statement.
   The eval harness had been writing one without the other, and the consumer
