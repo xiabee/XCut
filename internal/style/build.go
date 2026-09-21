@@ -296,6 +296,10 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			// second one is a fact the user has to be told out loud.
 			"candidate_events": strconv.Itoa(len(cands)),
 			"candidate_limit":  strconv.FormatBool(!budgetRanOut),
+			// The number the reel was asked for, next to the number it got. The
+			// CLI has it in scope; a client reloading a saved document does not,
+			// and "58.3s" only reads as a shortfall against something.
+			"target_duration": strconv.FormatFloat(round4(preset.TargetDuration), 'f', 2, 64),
 		},
 	}
 

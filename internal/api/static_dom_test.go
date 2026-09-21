@@ -20,6 +20,11 @@ var (
 	anyIDRe      = regexp.MustCompile(`id="([a-zA-Z0-9_-]+)"`)
 	labelForRe   = regexp.MustCompile(`for="([a-zA-Z0-9_-]+)"`)
 	ariaByRe     = regexp.MustCompile(`aria-labelledby="([a-zA-Z0-9_-]+)"`)
+	// A class the script switches on: classList.add("x") / remove / toggle.
+	jsToggleClassRe = regexp.MustCompile(`classList\.(?:add|remove|toggle)\("([a-zA-Z0-9_-]+)"\)`)
+	// Any class selector in the stylesheet, including inside a group
+	// (.a, .b {}) and pseudo/state compounds (.open:hover).
+	cssClassRe = regexp.MustCompile(`\.([a-zA-Z0-9_-]+)`)
 )
 
 // staticFile reads one embedded UI asset.
@@ -83,6 +88,47 @@ func TestLabelAndAriaTargetsExist(t *testing.T) {
 				t.Errorf("attribute target %q names no element in index.html", m[1])
 			}
 		}
+	}
+}
+
+// TestToggledClassesAreStyled closes the other half of the same coupling: the
+// script shows and hides things by flipping a class, and nothing compiles the
+// claim that the stylesheet answers. It used to flip a class the stylesheet had
+// no rule for and, on top of that, left a [hidden] attribute nobody cleared, so
+// the project picker's list could never appear and an already-created project
+// was unreachable after a reload — while the empty state still read "select or
+// create a project". A class no selector reads is not a style miss, it is a
+// control that does nothing.
+func TestToggledClassesAreStyled(t *testing.T) {
+	js := staticFile(t, "static/app.js")
+	css := staticFile(t, "static/style.css")
+
+	styled := map[string]bool{}
+	for _, m := range cssClassRe.FindAllStringSubmatch(css, -1) {
+		styled[m[1]] = true
+	}
+	if len(styled) == 0 {
+		t.Fatal("no class selectors found in style.css — the extractor rotted")
+	}
+
+	flipped := map[string]bool{}
+	for _, m := range jsToggleClassRe.FindAllStringSubmatch(js, -1) {
+		flipped[m[1]] = true
+	}
+	if len(flipped) == 0 {
+		t.Fatal(`no classList.add/remove/toggle("x") calls found in app.js — the extractor rotted`)
+	}
+
+	var unstyled []string
+	for name := range flipped {
+		if !styled[name] {
+			unstyled = append(unstyled, name)
+		}
+	}
+	if len(unstyled) > 0 {
+		sort.Strings(unstyled)
+		t.Errorf("app.js flips %d class(es) no stylesheet rule reads: %s",
+			len(unstyled), strings.Join(unstyled, ", "))
 	}
 }
 

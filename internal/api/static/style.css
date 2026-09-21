@@ -102,7 +102,10 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
 .proj-current:hover { border-color: var(--acc-line); background: var(--panel-3); }
 .proj-current .caret { color: var(--dim); margin-left: 4px; }
 .proj-menu-wrap { position: relative; }
+/* Visibility is owned here by class, because a class toggle is what the script
+   does; a [hidden] attribute nobody clears outranks nothing and strands the list. */
 .proj-menu {
+  display: none;
   position: absolute; top: 46px; left: 0; z-index: 30;
   min-width: 280px; max-height: 340px; overflow: auto;
   background: var(--panel-2); border: 1px solid var(--line);
@@ -110,6 +113,7 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   list-style: none; margin: 0; padding: 6px;
   animation: pop-in 130ms cubic-bezier(.2, .9, .3, 1.2);
 }
+.proj-menu.open { display: block; }
 @keyframes pop-in {
   from { opacity: 0; transform: translateY(-4px) scale(.98); }
   to { opacity: 1; transform: none; }

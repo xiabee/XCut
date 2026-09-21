@@ -34,6 +34,16 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **The client now says out loud when the footage, not the setting, capped the
+  reel.** The web UI already showed per-clip `ends at point`; it stayed silent
+  about the whole reel. The generated document carries
+  `target_duration` next to `candidate_events` / `candidate_limit`, and the
+  timeline panel prints the same sentence the CLI prints when the selector ran
+  out of rallies while seconds were still allotted. Verified on the owner's
+  match through the real path (draw nothing, click twice): a 240 s ask over 21
+  candidate rallies renders *"这段素材只提供 21 个候选回合，成片用了 21 段——要 240
+  秒只做到 168.0 秒"*, and the 60 s reel, which the budget cut rather than the
+  footage, keeps the line hidden.
 - **`xcut auto --score-crop x,y,w,h`** brings point boundaries to the one-shot
   flow: the region is written to the assets this run imported before analyze, so
   import → measure → cut → render is one command, and a malformed region is
@@ -100,6 +110,18 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **An existing project could not be opened.** The header's project button was
+  revealed only by selecting a project, and the list it opens was hidden by a
+  `hidden` attribute while the script toggled a class no stylesheet rule read —
+  so after a reload, or after deleting the project that was open, the only
+  action left in the bar was *create a new project*, and the media, analysis,
+  timeline and renders of every project already on disk were unreachable
+  (while the empty state invited "select or create a project"). Found by
+  loading the UI against a workspace that already had a project in it: the
+  button was not in the accessibility tree and the list computed to
+  `display: none` after the click. The button now appears whenever there is at
+  least one project, and the menu's visibility is owned by one mechanism (a
+  class the stylesheet answers).
 - **The timeline refuses boundaries it cannot vouch for.** Marks are consumed
   only when they were measured against the region the asset carries *now*. The
   storage layer already dropped them on a region change, so nothing could go

@@ -108,6 +108,7 @@ window.XCUT_I18N = {
     "score": "得分",
     "why": "入选原因",
     "ends at point": "结束于得分点",
+    "this footage offered {n} candidate rallies and the reel holds {clips} — {got}s of the {asked}s asked for. A longer cut needs more sources, or a style that accepts shorter events.": "这段素材只提供 {n} 个候选回合，成片用了 {clips} 段——要 {asked} 秒只做到 {got} 秒。想要更长，需要更多素材，或换一部能接受更短事件的风格。",
     "trim in (s)": "入点裁剪（秒）",
     "trim out (s)": "出点裁剪（秒）",
     "speed (×)": "速度（×）",

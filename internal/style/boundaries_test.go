@@ -156,6 +156,12 @@ func TestCandidateLimitMetadata(t *testing.T) {
 	if tl.Metadata["candidate_events"] != "3" {
 		t.Fatalf("candidate_events = %q, want 3", tl.Metadata["candidate_events"])
 	}
+	// The asked-for length travels with the document, and it follows the preset
+	// rather than the style file: a client reopening a saved timeline cannot
+	// otherwise tell "60s of material" from "60s was asked, the footage gave 50".
+	if tl.Metadata["target_duration"] != "60.00" {
+		t.Fatalf("target_duration = %q, want 60.00", tl.Metadata["target_duration"])
+	}
 
 	tight := boundaryPreset()
 	tight.TargetDuration = 10 // only the first clip can fit
@@ -165,5 +171,8 @@ func TestCandidateLimitMetadata(t *testing.T) {
 	}
 	if tl2.Metadata["candidate_limit"] != "false" {
 		t.Fatalf("a 10s budget stopped the loop early; metadata claims %q", tl2.Metadata["candidate_limit"])
+	}
+	if tl2.Metadata["target_duration"] != "10.00" {
+		t.Fatalf("target_duration = %q, want 10.00", tl2.Metadata["target_duration"])
 	}
 }

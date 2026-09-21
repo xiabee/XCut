@@ -41,6 +41,7 @@ function setLang(l) {
   // each of these guards itself when no project is open.
   refreshHealth();
   refreshTimeline();
+  renderProjButton();
   refreshJobs();
   refreshSubtitlesStatus();
   refreshROIStatus();
@@ -261,6 +262,22 @@ async function refreshProjects() {
     li.addEventListener("click", () => { closeProjMenu(); selectProject(p); });
     menu.appendChild(li);
   }
+  renderProjButton();
+}
+
+// The picker button is the only door into an existing project, and it used to
+// be revealed by selectProject alone: after a reload — or after deleting the
+// project that was open — the list had entries and no visible door, while the
+// empty state still invited you to "select or create a project".
+function renderProjButton() {
+  const btn = $("proj-current");
+  btn.hidden = !currentProject && $("project-list").children.length === 0;
+  btn.innerHTML = "";
+  btn.append(currentProject ? currentProject.name : t("no project"));
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  caret.textContent = " ▾";
+  btn.append(caret);
 }
 
 function closeProjMenu() { $("project-list").classList.remove("open"); }
@@ -284,12 +301,9 @@ $("new-project").addEventListener("submit", async (e) => {
 function selectProject(p) {
   currentProject = p;
   $("project-view").hidden = false;
-  $("detail").classList.remove("empty");
   const ph = document.querySelector("#detail .placeholder");
   if (ph) ph.style.display = "none";
-  $("proj-current").innerHTML = "";
-  $("proj-current").append(p.name, Object.assign(document.createElement("span"), { className: "caret", textContent: " ▾" }));
-  $("proj-current").hidden = false;
+  renderProjButton();
   $("delete-project").hidden = false;
   // Reset the player: without this, switching from a project that has a
   // render shows the OLD project's video (and its download link) under the
@@ -325,13 +339,11 @@ async function deleteProject() {
     await api(`/api/v1/projects/${currentProject.id}`, { method: "DELETE" });
     currentProject = null;
     $("project-view").hidden = true;
-    $("detail").classList.add("empty");
     const ph = document.querySelector("#detail .placeholder");
     if (ph) ph.style.display = "";
     btn.hidden = true;
     $("player").removeAttribute("src");
-    $("proj-current").hidden = true;
-    await refreshProjects();
+    await refreshProjects(); // re-renders the picker: other projects may remain
   } catch (e) { banner(tf("Delete failed: {msg}", { msg: e.message })); }
 }
 
@@ -724,6 +736,7 @@ async function refreshTimeline() {
   if (prev) { prev.hidden = true; prev.removeAttribute("src"); prev.load(); }
   renderInspector();
   renderTimeline();
+  renderFootageNote();
   if (!currentProject) return;
   const pid = currentProject.id;
   try {
@@ -734,15 +747,44 @@ async function refreshTimeline() {
     $("btn-tl-restore").hidden = !has_backup;
   } catch (_) { /* no timeline yet — expected before first generation */ }
   renderTimeline();
+  renderFootageNote();
 }
 
 const EPS = 1e-6;
 const playDur = (c) => (c.source_end - c.source_start) / (c.speed > 0 ? c.speed : 1);
 
-function totalDuration() {
-  if (!clipEdits || clipEdits.length === 0) return 0;
-  const last = clipEdits[clipEdits.length - 1];
+function totalDuration(clips) {
+  const list = clips || clipEdits;
+  if (!list || list.length === 0) return 0;
+  const last = list[list.length - 1];
   return last.timeline_start + playDur(last);
+}
+
+// renderFootageNote tells apart the two reasons a reel came out short: the
+// selector ran out of candidate rallies while seconds were still allotted
+// (candidate_limit === "true"), or the budget stopped it early. The first one
+// is a fact about the user's footage and has a fix they can act on; reading it
+// as the second one sends them to the wrong control. Numbers come from the
+// generated document, not the working copy, so manual trims cannot make the
+// note claim the selector held back.
+function renderFootageNote() {
+  const el = $("tl-footage-note");
+  if (!el) return;
+  const md = (timelineDoc && timelineDoc.metadata) || {};
+  const first = ((timelineDoc || {}).tracks || [])[0] || {};
+  const clips = Array.isArray(first.clips) ? first.clips : [];
+  const n = clips.length;
+  const got = totalDuration(clips);
+  const asked = Number(md.target_duration);
+  if (md.candidate_limit !== "true" || !(asked > 0) || asked - got < 1 || n === 0) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = tf("this footage offered {n} candidate rallies and the reel holds {clips} — {got}s of the {asked}s asked for. A longer cut needs more sources, or a style that accepts shorter events.", {
+    n: md.candidate_events, clips: n, got: got.toFixed(1), asked: Math.round(asked),
+  });
 }
 
 // renderTimeline draws the visual strip: a time ruler, one block per clip

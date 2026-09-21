@@ -16,7 +16,7 @@
   <div class="proj-picker">
     <button id="proj-current" class="proj-current" hidden><span data-i18n="no project">no project</span> <span class="caret">▾</span></button>
     <div class="proj-menu-wrap">
-      <ul id="project-list" class="proj-menu" hidden></ul>
+      <ul id="project-list" class="proj-menu"></ul>
     </div>
     <form id="new-project" class="proj-new">
       <input id="np-name" placeholder="new project name" data-i18n-placeholder="new project name" autocomplete="off" required>
@@ -125,7 +125,7 @@
     </section>
   </aside>
 
-  <section id="detail" class="stage empty">
+  <section id="detail" class="stage">
     <div class="placeholder">
       <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 10h22l-5 9h13v4H22l-5.5 10H10l7-12.5L8 10z" opacity=".5"/></svg>
       <p data-i18n="Select or create a project.">Select or create a project.</p>
@@ -154,6 +154,7 @@
         </div>
         <video id="clip-preview" controls preload="metadata" hidden></video>
         <p class="hint" data-i18n="click a clip to inspect · drag blocks to reorder · edits save via “Save changes”">click a clip to inspect · drag blocks to reorder · edits save via “Save changes”</p>
+        <p class="hint" id="tl-footage-note" hidden></p>
       </div>
     </div>
   </section>

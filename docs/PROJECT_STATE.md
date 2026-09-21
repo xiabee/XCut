@@ -42,6 +42,24 @@ covers no Rust), and `scripts/check.sh full` on the Linux node PASS with
 the Rust worker was then verified separately on the same snapshot
 (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` rc=0 / 3 passed).
 
+**Same session, later still:** the client says the same thing the CLI says when a
+reel came out short because the footage ran out of rallies, not because the
+budget did — the document now carries `target_duration` beside
+`candidate_events`/`candidate_limit`, and the timeline panel prints the sentence
+(verified on the owner's match through the real path: 240 s asked → 21 clips /
+168.0 s, note shown; 60 s asked → 8 clips, note hidden because the budget cut
+it). Pointing the browser at a workspace that *already* had a project in it
+found a worse defect, now fixed: **an existing project could not be opened at
+all** after a reload — the picker button was revealed only by selecting a
+project, and the list was hidden by an attribute no code cleared while the
+script flipped a class the stylesheet never read. A structural gate
+(`TestToggledClassesAreStyled`) now refuses a class the script switches on and
+nothing styles; it was checked by renaming `.proj-menu.open` (red, naming
+`open`) and it caught one more dead class on the way in. Not covered by any
+test: the visibility *logic* itself (Go cannot run the script) — that rests on
+the browser run above, which drove DOM clicks, not pointer hit-testing (the
+connector still reports a 0×0 viewport).
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
