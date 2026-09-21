@@ -548,11 +548,16 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 // eventConfigFor returns the event config for ONE asset: an asset-scoped
 // ROI upgrades the default motion source to the ROI track, so the cut is
 // driven by what happened on the court instead of the full-frame signal; a
-// preset-set motion_track keeps precedence.
+// preset-set motion_track keeps precedence. A dense rally longer than the reel
+// needs also gets sliced finer — see event.AdaptRallyChunk.
 func eventConfigFor(preset *style.Preset, a *storage.Asset) event.Config {
 	cfg := preset.EventConfig
 	if a.MotionROI != nil && cfg.MotionTrack == "" {
 		cfg.MotionTrack = "frame_diff_roi"
+	}
+	if cfg.Mode == event.ModeRally {
+		want := event.AdaptRallyChunk(cfg.RallyChunk, a.DurationSec, preset.TargetDuration, preset.MaxClipDuration)
+		cfg.RallyChunk = want
 	}
 	return cfg
 }

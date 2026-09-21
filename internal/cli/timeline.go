@@ -128,6 +128,6 @@ func footageLimitNote(tl *timeline.Timeline, asked float64) string {
 	if short < 1.0 {
 		return ""
 	}
-	return fmt.Sprintf("  note: this footage offered %s candidate rallies and the reel holds %d — %.1fs of the %.0fs asked for. A longer cut needs more sources, or a style that accepts shorter events.",
+	return fmt.Sprintf("  note: this footage offered %s candidate rallies and the cut took %d of them — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.",
 		tl.Metadata["candidate_events"], countTimelineClips(tl), tl.Duration(), asked)
 }

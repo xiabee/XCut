@@ -46,9 +46,9 @@ the Rust worker was then verified separately on the same snapshot
 reel came out short because the footage ran out of rallies, not because the
 budget did — the document now carries `target_duration` beside
 `candidate_events`/`candidate_limit`, and the timeline panel prints the sentence
-(verified on the owner's match through the real path: 240 s asked → 21 clips /
-168.0 s, note shown; 60 s asked → 8 clips, note hidden because the budget cut
-it). Pointing the browser at a workspace that *already* had a project in it
+(verified on the owner's match through the real path: 240 s asked → 27 clips /
+216.0 s, note shown and recomputed against the served document; 60 s asked → 8
+clips, note hidden because the budget cut it). Pointing the browser at a workspace that *already* had a project in it
 found a worse defect, now fixed: **an existing project could not be opened at
 all** after a reload — the picker button was revealed only by selecting a
 project, and the list was hidden by an attribute no code cleared while the
@@ -70,6 +70,22 @@ in-run control that a live listener is dialable on this host — mutation-checke
 and 7× cheaper (27.7 s → 3.9 s). The trade is written into the test: nothing now
 notices the grace window itself growing, which is a PERFORMANCE.md number, not a
 gate.
+
+**A claim this session made about the footage was wrong, and the fix came out of
+measuring it.** The note's story was "this match offers 21 candidate rallies";
+measured with `rally_chunk` moved, the 21 was `603 s ÷ 30 s` — the slice length,
+not the match (whose 43 labelled point-ended ranges were always the larger
+number). Relaxing the event *floor* was measured first and rejected: identical
+P/R/F1 and `dropped_min_duration=0`, i.e. the gate nobody passed. The shipped
+rule narrows the slice only when the ask needs more candidates than the current
+slice can supply, never widens, and stops at two clip lengths — an 8 s floor was
+tried first and the suite refused it (it still split the fixture's 10 s rallies
+and took rally recall to 0.455). Result: 60 s and 120 s rows unchanged to the
+decimal, 240 s 21 clips/F1 0.426 → 27/0.511 and 300 s → 0.523 (docs/EVAL.md).
+The note was rewritten to stop recommending the remedy that measurement showed
+does nothing, and to report the pool honestly (`offered 30 candidate rallies and
+the cut took 27 of them` — the selector works through the list, it does not take
+every piece of it).
 
 ## Version / HEAD
 
@@ -464,7 +480,10 @@ gate.
   mutation stayed invisible through 8 local `-race` runs of the e2e that
   originally caught it, while the node caught it on its first pass — load on
   4 cores is part of the trigger, so the only honest local guarantee is an
-  assertion that measures overlap directly.
+  assertion that measures overlap directly. Closed on the same channel that
+  opened it: the Linux full leg at `aef2ace` reports `gate (full): PASS` with
+  zero `DATA RACE` lines (it failed with two at `680d707`), and win-devops
+  passed the same sha (job `20260921-202622-d0e4e2`, 457 passed / 7 skipped).
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
   ffmpeg fallback covers it.
 - Cut detection is chroma-aware since session #6 (max of YDIF/UDIF/VDIF);

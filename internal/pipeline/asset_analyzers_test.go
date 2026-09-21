@@ -89,4 +89,26 @@ func TestEventConfigFor(t *testing.T) {
 	if cfg.MotionTrack != "frame_diff" {
 		t.Fatalf("preset motion_track must win, got %q", cfg.MotionTrack)
 	}
+
+	// The rally slice length is a ceiling, not a demand: the same asset on the
+	// same style narrows it only when the reel asks for more than the stock
+	// slices can supply (see event.AdaptRallyChunk for the arithmetic — this is
+	// the wiring that carries the preset's own target and clip ceiling here).
+	match := &storage.Asset{DurationSec: 603}
+	long := &style.Preset{Name: "p", TargetDuration: 240, MaxClipDuration: 8,
+		EventConfig: event.Config{Mode: event.ModeRally}}
+	if got := eventConfigFor(long, match).RallyChunk; got < 19.5 || got > 20.5 {
+		t.Fatalf("240s ask over 603s of play: rally_chunk = %.2f, want ~20.1", got)
+	}
+	short := &style.Preset{Name: "p", TargetDuration: 60, MaxClipDuration: 8,
+		EventConfig: event.Config{Mode: event.ModeRally}}
+	if got := eventConfigFor(short, match).RallyChunk; got != 30 {
+		t.Fatalf("a 60s ask must keep the style's own slice, got %.2f", got)
+	}
+	// A non-rally style has no slice to narrow.
+	nonRally := &style.Preset{Name: "p", TargetDuration: 240, MaxClipDuration: 8,
+		EventConfig: event.Config{Mode: "frame_diff"}}
+	if got := eventConfigFor(nonRally, match).RallyChunk; got != 0 {
+		t.Fatalf("non-rally config must stay untouched, got %.2f", got)
+	}
 }

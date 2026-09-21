@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/testmedia"
@@ -61,6 +63,14 @@ func TestEvalBadmintonRally(t *testing.T) {
 	}
 	var results struct {
 		Cases []struct {
+			// Selected is in the failure message on purpose: "recall 0.455
+			// below 0.6" says a gate fired but not whether the clips were
+			// missing, short, or placed between rallies — three different
+			// bugs with three different fixes.
+			Selected []struct {
+				Start float64 `json:"start"`
+				End   float64 `json:"end"`
+			} `json:"selected"`
 			Metrics *struct {
 				Precision   float64 `json:"precision"`
 				Recall      float64 `json:"recall"`
@@ -78,11 +88,16 @@ func TestEvalBadmintonRally(t *testing.T) {
 		t.Fatalf("no metrics in results:\n%s", b)
 	}
 	m := results.Cases[0].Metrics
+	picked := make([]string, 0, len(results.Cases[0].Selected))
+	for _, s := range results.Cases[0].Selected {
+		picked = append(picked, fmt.Sprintf("%.1f-%.1f", s.Start, s.End))
+	}
+	t.Logf("selected %d clips covering %s", len(picked), strings.Join(picked, " "))
 	if m.RangesHit < 3 {
 		t.Errorf("rally detection missed ranges: %d/%d hits", m.RangesHit, m.RangesTotal)
 	}
 	if m.Recall < 0.6 {
-		t.Errorf("rally recall %.3f below 0.6", m.Recall)
+		t.Errorf("rally recall %.3f below 0.6 (clips %s)", m.Recall, strings.Join(picked, " "))
 	}
 	if m.Precision < 0.6 {
 		t.Errorf("rally precision %.3f below 0.6 (selection spills into gaps)", m.Precision)

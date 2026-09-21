@@ -36,6 +36,46 @@ const (
 	rateStep   = 0.5 // s window advance per step
 )
 
+// AdaptRallyChunk narrows the dense-rally chunk length when the reel asked for
+// more than the current chunking can supply. A span of `duration` chunked at
+// `chunk` yields about duration/chunk candidates and each clip contributes at
+// most `maxClip` of playtime, so an ask needing more candidates than that is
+// being starved by the slice length — which reads as "this match has no more
+// rallies" when the truth is "we only ever looked at 30 s slices of one
+// continuous rally".
+//
+// Measured on the owner's match (docs/EVAL.md): a 240 s reel over 603 s of
+// play gets 21 clips / 168 s at 30 s chunks (F1 0.426, 18 of 43 labelled
+// ranges) and 27 clips / 23 ranges at ~20 s (F1 0.511) — but at the default
+// 60 s the narrower settings were *worse* (F1 0.199 → 0.184 / 0.171), so this
+// shrinks only where supply falls short, and never widens.
+//
+// The floor is two clip-lengths, not one and not minRallyChunk: a piece has to
+// be able to hold a full-length clip with room left for where the boundary
+// snapping lands, otherwise splitting trades coverage for count. Measured, not
+// reasoned — at a 47 s fixture of three 10 s rallies, an 8 s floor still split
+// those rallies (8 + 2) and the snapped pieces covered 5.5 s each, taking rally
+// recall from 0.6+ to 0.455 (cli.TestEvalBadmintonRally). At two clip lengths
+// the 10 s rallies are never split, and the owner's continuous 603 s span still
+// narrows to 20.1 s for a 240 s reel.
+func AdaptRallyChunk(chunk, duration, target, maxClip float64) float64 {
+	if chunk <= 0 {
+		chunk = defaultMaxRally
+	}
+	if duration <= 0 || target <= 0 || maxClip <= 0 {
+		return chunk
+	}
+	floor := math.Max(minRallyChunk, 2*maxClip)
+	need := target / maxClip
+	if need*chunk <= duration {
+		return chunk // the current slices already cover the ask
+	}
+	if shrunk := duration / need; shrunk < chunk {
+		return math.Max(shrunk, floor)
+	}
+	return chunk
+}
+
 // buildRallies clusters onsets into rally segments. The stats pointer (nil
 // in tests that don't care) collects gate disposition counts.
 func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64, cfg Config, stats *BuildStats) ([]Segment, error) {

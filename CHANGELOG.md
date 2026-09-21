@@ -34,16 +34,31 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **A long reel now gets finer rally slices, a short one does not.** The dense
+  span the analyzer finds is cut at `rally_chunk` (default 30 s), so
+  candidates = footage ÷ slice — on the owner's 603 s match that pinned the pool
+  at 21 candidates whatever the style asked for, and a 240 s reel stopped at
+  168 s while the note blamed the footage. The pipeline now narrows the slice for
+  an asset when the ask needs more candidates than the current slice can supply
+  (`event.AdaptRallyChunk`: never widened, floor at **two** clip lengths).
+  Measured on the owner's match, unmarked manifest: 60 s and 120 s unchanged to
+  the decimal (F1 0.199 / 0.330, 8 / 15 clips); 240 s goes 21 clips / F1 0.426 →
+  **27 / 0.511** with 18 → 23 of 43 labelled ranges hit; 300 s → **0.523**. The
+  8 s floor was tried first and rejected by the suite: it still split the
+  synthetic fixture's 10 s rallies and took rally recall to 0.455. Relaxing the
+  event *floor* instead (`min_duration`, `min_hits`) was measured and rejected
+  too — it changed nothing (`dropped_min_duration=0`), so the note no longer
+  recommends that remedy. Details: `docs/EVAL.md`.
 - **The client now says out loud when the footage, not the setting, capped the
   reel.** The web UI already showed per-clip `ends at point`; it stayed silent
   about the whole reel. The generated document carries
   `target_duration` next to `candidate_events` / `candidate_limit`, and the
   timeline panel prints the same sentence the CLI prints when the selector ran
   out of rallies while seconds were still allotted. Verified on the owner's
-  match through the real path (draw nothing, click twice): a 240 s ask over 21
-  candidate rallies renders *"这段素材只提供 21 个候选回合，成片用了 21 段——要 240
-  秒只做到 168.0 秒"*, and the 60 s reel, which the budget cut rather than the
-  footage, keeps the line hidden.
+  match through the real path (reload the page, open the project, click twice):
+  a 240 s ask over 30 candidate rallies renders *"这段素材提供 30 个候选回合，成片取了
+  其中 27 段——要 240 秒只做到 216.0 秒"*, and the 60 s reel, which the budget cut
+  rather than the footage, keeps the line hidden.
 - **`xcut auto --score-crop x,y,w,h`** brings point boundaries to the one-shot
   flow: the region is written to the assets this run imported before analyze, so
   import → measure → cut → render is one command, and a malformed region is

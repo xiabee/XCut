@@ -782,7 +782,7 @@ function renderFootageNote() {
     return;
   }
   el.hidden = false;
-  el.textContent = tf("this footage offered {n} candidate rallies and the reel holds {clips} — {got}s of the {asked}s asked for. A longer cut needs more sources, or a style that accepts shorter events.", {
+  el.textContent = tf("this footage offered {n} candidate rallies and the cut took {clips} of them — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.", {
     n: md.candidate_events, clips: n, got: got.toFixed(1), asked: Math.round(asked),
   });
 }

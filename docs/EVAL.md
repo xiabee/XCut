@@ -308,6 +308,48 @@ a budget one — the reason `xcut timeline` now says which one it hit rather tha
 printing a short total in silence. (Reel seconds are only recorded for the rows
 measured with the ladder script.)
 
+### The 21-candidate ceiling was the slice length, not the match
+
+That paragraph said the footage "offered 21 candidate rallies". Measured again
+with the same harness on the unmarked manifest, that number is an artefact of
+`defaultMaxRally = 30 s`: one continuous dense span is cut into
+`ceil(603/30) = 21` pieces, so *candidates = duration ÷ slice*, and every
+threshold the style offers was beside the point. Two sweeps, same manifest, same
+43 labelled ranges:
+
+| arm | 60 s ask | 240 s ask |
+| --- | --- | --- |
+| `min_duration` 2→1, `min_hits` 4→2 | P 0.886 F1 0.199, 8 clips | P 0.813 F1 0.426, 21 clips |
+| — identical to stock: `dropped_min_duration=0`, `dropped_min_hits=0`, `segments=21` | | |
+| `rally_chunk` 18 s | P 0.760 F1 0.171, 8 clips | P 0.810 F1 0.481, 25 clips |
+| `rally_chunk` 12 s | P 0.819 F1 0.184, 8 clips | P 0.800 F1 0.486, 26 clips |
+
+Relaxing the *floor* buys nothing on this footage (nothing was being dropped by
+it), and narrower slices actively hurt the default 60 s reel. So the shipped rule
+is conditional rather than a new constant: `event.AdaptRallyChunk` narrows the
+slice only when `target ÷ max_clip_duration` candidates cannot come out of
+`duration ÷ slice`, never widens, and stops at **two** clip lengths. That floor is
+measured, not tidy: at 8 s (one clip length) the synthetic 47 s fixture of three
+10 s rallies was still being split — pieces of 8 + 2 s, snapped down to 5.5 s of
+coverage each — and its rally recall fell from 0.6+ to 0.455
+(`cli.TestEvalBadmintonRally`). Two clip lengths leave those rallies whole while
+the 603 s continuous span still narrows to 20.1 s for a 240 s reel.
+
+| asked | stock clips / F1 | adaptive clips / F1 | ranges |
+| --- | --- | --- | --- |
+| 60 s | 8 / 0.199 | 8 / 0.199 | 6/43 |
+| 120 s | 15 / 0.330 | 15 / 0.330 | 12/43 |
+| 240 s | 21 / 0.426 | **27 / 0.511** | 18 → 23/43 |
+| 300 s | 21 / 0.426 | **29 / 0.523** | 18 → 23/43 |
+
+The 240 s ask still stops near 216 s, and it is no longer the slice: with 30+
+candidates in play the selector declines the rest on its own diversity rules
+(`min_gap` 4 s, `max_per_window` 2). That is the next ceiling, and it is a taste
+decision rather than a shortage — which is why the CLI and client sentence now
+states what happened (*the cut already uses every rally the analysis found*)
+instead of recommending a shorter-event style, the one remedy this section
+measured as inert.
+
 One difference between the harness and the plain CLI path is now explained
 rather than left open: the manifest's `asset_roi` (court region) is applied to
 the case's asset, and the ROI track yields **21** candidate rallies where the

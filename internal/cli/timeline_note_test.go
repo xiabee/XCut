@@ -44,7 +44,7 @@ func TestFootageLimitNote(t *testing.T) {
 			t.Errorf("%s: wanted silence, got %q", tc.name, got)
 		}
 		if tc.want {
-			for _, needle := range []string{"offered 18 candidate rallies", "the reel holds 1", "126.4s", "300s"} {
+			for _, needle := range []string{"offered 18 candidate rallies", "the cut took 1 of them", "126.4s", "300s"} {
 				if !strings.Contains(got, needle) {
 					t.Errorf("%s: note %q lacks %q", tc.name, got, needle)
 				}

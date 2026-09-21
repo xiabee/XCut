@@ -529,3 +529,51 @@ func TestRallyChunkValidation(t *testing.T) {
 		}
 	}
 }
+
+// TestAdaptRallyChunk: a long ask over one continuous rally must not be
+// starved by the slice length. The numbers are the owner's match (603 s,
+// max_clip_duration 8 s) and the measurements recorded in docs/EVAL.md: at
+// 240 s the 30 s default supplies 21 candidates and fills 168 s, while 12-20 s
+// slices reach 26 clips and 24 of 43 labelled ranges — but at 60 s both
+// narrower settings scored worse, so the rule may only shrink, and only when
+// supply actually falls short.
+func TestAdaptRallyChunk(t *testing.T) {
+	const (
+		match   = 603.0 // one asset's duration
+		maxClip = 8.0   // the preset's own ceiling on one clip
+		startAt = 30.0  // defaultMaxRally
+		floorAt = 16.0  // max(minRallyChunk, 2 × the style's clip ceiling)
+	)
+	cases := []struct {
+		name                              string
+		chunk, dur, target, maxClip, want float64
+	}{
+		{"default 60s ask keeps the historical slice", startAt, match, 60, maxClip, 30},
+		{"120s still covered by 30s slices", startAt, match, 120, maxClip, 30},
+		{"240s narrows to just enough", startAt, match, 240, maxClip, 20.1},
+		{"300s narrows further", startAt, match, 300, maxClip, 16.08},
+		{"zero chunk means the default", 0, match, 240, maxClip, 20.1},
+		{"an absurd ask stops at the floor", startAt, match, 6000, maxClip, floorAt},
+		// 47 s of three 10 s rallies asked for a 60 s reel: slicing below two
+		// clip lengths splits those rallies and cuts recall
+		// (cli.TestEvalBadmintonRally caught it at 0.455 with an 8 s floor).
+		{"a short asset stops at two clip lengths", startAt, 47, 60, maxClip, 16},
+		{"unknown duration changes nothing", startAt, 0, 240, maxClip, 30},
+		{"no target changes nothing", startAt, match, 0, maxClip, 30},
+		{"no clip ceiling changes nothing", startAt, match, 240, 0, 30},
+		{"never widens a finer preset", 10.0, match, 60, maxClip, 10},
+		{"a finer preset that is already short stays", 10.0, match, 240, maxClip, 10},
+	}
+	for _, c := range cases {
+		got := AdaptRallyChunk(c.chunk, c.dur, c.target, c.maxClip)
+		if math.Abs(got-c.want) > 0.06 {
+			t.Errorf("%s: AdaptRallyChunk(%v, %v, %v, %v) = %.2f, want %.2f",
+				c.name, c.chunk, c.dur, c.target, c.maxClip, got, c.want)
+		}
+		// The floor bounds what the rule may shrink TO. A preset that ships a
+		// finer slice already is respected, never widened back.
+		if from := c.chunk; (from == 0 || from >= floorAt) && got < floorAt && c.dur > 0 && c.target > 0 && c.maxClip > 0 {
+			t.Errorf("%s: returned %.2f below the %gs floor", c.name, got, floorAt)
+		}
+	}
+}
