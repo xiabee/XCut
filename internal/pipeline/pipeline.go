@@ -326,6 +326,9 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 		if first := firstErr(errCh); first != nil {
 			return first
 		}
+		if err := d.scanScoreMarks(jctx, assets); err != nil {
+			return err
+		}
 		return nil
 	}
 }

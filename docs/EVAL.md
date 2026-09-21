@@ -270,8 +270,11 @@ The recipe above stopped being a shell pipeline: the sidecar now has a
 `score_changes` op, `xcut boundaries <project> --crop x,y,w,h` stores the result
 per asset, an eval manifest takes `score_roi` to A/B it, and the style engine
 ends a clip at the nearest reachable mark inside its window
-(`style.AssetEvents.Boundaries` → `trimSegment`). Everything is optional — no
-marks stored, selection is what it always was, and a test pins that equality.
+(`style.AssetEvents.Boundaries` → `trimSegment`). The web UI's region picker can
+draw either rectangle (court or scoreboard); what it writes for the scoreboard is
+the **intent**, and the analyze job is what measures it — re-measuring when the
+region has moved. Optional by construction: with no marks stored, selection is
+what it always was, and a test pins that equality.
 
 Measured on the owner's match (2026-09-21, same binary, same manifest, the only
 difference being `score_roi` over the digits, `--duration` at the style default):
@@ -321,8 +324,9 @@ path before the boundary; the eval A/B is what caught it, not the unit tests.
 
 The open half is unchanged: `hits`/`density` still rank "when the hall was
 busiest", so the scoreboard fixes **where** a clip ends, not **which** rally is
-worth cutting. And the crop is a terminal-only operation today; a UI picker is
-the obvious next step.
+worth cutting. The crop itself no longer needs a terminal: the web UI's region
+picker has a "scoreboard region" target, which writes `assets.score_crop`, and
+the next `analyze` run measures it (see `docs/USAGE.md`, `xcut boundaries`).
 
 ## Workflow for algorithm changes
 

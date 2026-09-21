@@ -63,12 +63,7 @@ type ScoreMarks struct {
 // the offending part rather than a blob the timeline must defend itself
 // against.
 func (m *ScoreMarks) Valid() bool {
-	if m == nil || len(m.Crop) != 4 || len(m.Times) > MaxScoreMarks {
-		return false
-	}
-	x, y, w, h := m.Crop[0], m.Crop[1], m.Crop[2], m.Crop[3]
-	roi := &MotionROI{X: x, Y: y, W: w, H: h}
-	if !roi.Valid() {
+	if m == nil || !ValidCropRect(m.Crop) || len(m.Times) > MaxScoreMarks {
 		return false
 	}
 	prev := math.Inf(-1)
@@ -109,20 +104,25 @@ type Asset struct {
 	// this source; it rides the asset because the crop belongs to the camera,
 	// not to the style.
 	ScoreMarks *ScoreMarks `json:"score_marks,omitempty"`
+	// ScoreCrop is the region the user pointed the scoreboard detector at
+	// ([x, y, w, h], normalized). It is intent; ScoreMarks is measurement. The
+	// analyze stage scans when marks are missing or were measured against a
+	// different rect, so moving the crop re-derives the marks by itself.
+	ScoreCrop []float64 `json:"score_crop,omitempty"`
 }
 
 const assetCols = `id, project_id, path, filename, fingerprint, duration_s, width, height,
 fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at, motion_roi,
-score_marks`
+score_marks, score_crop`
 
 func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 	var a Asset
 	var hasAudio int
-	var roiJSON, marksJSON string
+	var roiJSON, marksJSON, cropJSON string
 	err := row.Scan(&a.ID, &a.ProjectID, &a.Path, &a.Filename, &a.Fingerprint,
 		&a.DurationSec, &a.Width, &a.Height, &a.FPS,
 		&a.VideoCodec, &a.AudioCodec, &hasAudio, &a.Bitrate, &a.SizeBytes,
-		&a.ProbeJSON, &a.CreatedAt, &roiJSON, &marksJSON)
+		&a.ProbeJSON, &a.CreatedAt, &roiJSON, &marksJSON, &cropJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -145,6 +145,14 @@ func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 				"asset "+a.ID+" has a corrupt score_marks", err)
 		}
 		a.ScoreMarks = marks
+	}
+	if cropJSON != "" {
+		var crop []float64
+		if err := json.Unmarshal([]byte(cropJSON), &crop); err != nil {
+			return nil, xcerr.E(xcerr.CodeStorageFailure,
+				"asset "+a.ID+" has a corrupt score_crop", err)
+		}
+		a.ScoreCrop = crop
 	}
 	return &a, nil
 }
@@ -257,6 +265,16 @@ func (d *DB) SetAssetROI(ctx context.Context, assetID string, roi *MotionROI) er
 	return nil
 }
 
+// ValidCropRect reports whether a normalized [x, y, w, h] region lies inside
+// the frame — the same rule as a motion ROI, expressed over a slice because
+// that is the shape the sidecar protocol and the web UI both carry.
+func ValidCropRect(crop []float64) bool {
+	if len(crop) != 4 {
+		return false
+	}
+	return (&MotionROI{X: crop[0], Y: crop[1], W: crop[2], H: crop[3]}).Valid()
+}
+
 // SetAssetScoreMarks stores (marks != nil) or clears (marks == nil) the
 // scoreboard marks read off one asset. Reports NotFound when the asset id is
 // unknown.
@@ -277,6 +295,54 @@ func (d *DB) SetAssetScoreMarks(ctx context.Context, assetID string, marks *Scor
 	res, err := d.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`, value, assetID)
 	if err != nil {
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset score marks", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return xcerr.E(xcerr.CodeNotFound, "asset not found", nil)
+	}
+	return nil
+}
+
+// SameCrop compares two normalized regions by value (nil means "unset"). The
+// staleness rule — marks measured against a different rect must not steer
+// clips — is needed by the analyze stage and the CLI listing alike.
+func SameCrop(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// SetAssetScoreCrop records (or clears, with nil) the region the scoreboard
+// occupies on one asset. Moving the region drops the marks measured against the
+// old one: stale boundaries would end clips at points that belong to a different
+// part of the frame, which is worse than no boundaries at all.
+func (d *DB) SetAssetScoreCrop(ctx context.Context, assetID string, crop []float64) error {
+	if crop != nil && !ValidCropRect(crop) {
+		return xcerr.E(xcerr.CodeValidation,
+			"score crop must be x,y,w,h with 0<=x,y, 0<w,h and x+w,y+h<=1 (normalized to the frame)", nil)
+	}
+	value := ""
+	if crop != nil {
+		b, err := json.Marshal(crop)
+		if err != nil {
+			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize score crop", err)
+		}
+		value = string(b)
+	}
+	// Re-writing the same region is a no-op for the measurement (a UI that
+	// saves twice must not wipe a good scan); any *change*, including clearing,
+	// drops the marks measured against the old rect.
+	res, err := d.ExecContext(ctx, `
+UPDATE assets SET score_crop = ?,
+	score_marks = CASE WHEN score_crop = ? THEN score_marks ELSE '' END
+WHERE id = ?`, value, value, assetID)
+	if err != nil {
+		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset score crop", err)
 	}
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return xcerr.E(xcerr.CodeNotFound, "asset not found", nil)

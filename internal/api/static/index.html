@@ -94,6 +94,13 @@
     <section class="panel" id="panel-roi">
       <h2><span data-i18n="Court ROI">Court ROI</span> <span class="tag" data-i18n="motion region">motion region</span></h2>
       <div class="row">
+        <label for="roi-target" data-i18n="region to draw">region to draw</label>
+        <select id="roi-target">
+          <option value="roi" data-i18n="court region (motion)">court region (motion)</option>
+          <option value="score" data-i18n="scoreboard region (point ends)">scoreboard region (point ends)</option>
+        </select>
+      </div>
+      <div class="row">
         <button id="btn-roi" data-i18n="draw court ROI…">draw court ROI…</button>
         <button id="btn-roi-clear" class="ghost" hidden data-i18n="clear">clear</button>
         <span id="roi-status" class="hint" data-i18n="checking…">checking…</span>
@@ -106,7 +113,8 @@
         <div class="row">
           <button id="btn-roi-save" disabled data-i18n="save ROI">save ROI</button>
           <button id="btn-roi-cancel" class="ghost" data-i18n="cancel">cancel</button>
-          <span class="hint" data-i18n="drag a rectangle over the court area — saved for this asset; it overrides the style's region.">drag a rectangle over the court area — saved for this asset; it overrides the style's region.</span>
+          <span id="roi-hint-court" class="hint" data-i18n="drag a rectangle over the court area — saved for this asset; it overrides the style's region.">drag a rectangle over the court area — saved for this asset; it overrides the style's region.</span>
+          <span id="roi-hint-score" class="hint" hidden data-i18n="drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.">drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.</span>
         </div>
       </div>
     </section>

@@ -34,6 +34,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **No terminal needed.** The web UI's region picker now draws either the court
+  or the scoreboard (`GET/PUT/DELETE
+  /api/v1/projects/{id}/assets/{assetID}/score`), and `analyze` measures whatever
+  region it finds on the asset row — so drawing over the score digits and running
+  the normal pipeline is the whole flow. What a region does *not* do is pretend
+  to be a measurement: the response reports `marks: 0` until an analyze has run,
+  and marks measured against a moved region read `stale` (changing the region
+  drops the old boundaries rather than silently reusing them).
 - **The gate now says which optional legs actually ran.** `go test` reports
   `N passed, M skipped` and lists every skipped test by name, and the verdict
   line carries the count. Verified both directions on the same host: with

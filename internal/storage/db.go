@@ -175,6 +175,14 @@ ALTER TABLE assets ADD COLUMN motion_roi TEXT NOT NULL DEFAULT '';
 	{id: 5, name: "asset-score-marks", stmt: `
 ALTER TABLE assets ADD COLUMN score_marks TEXT NOT NULL DEFAULT '';
 `},
+	// v6: the scoreboard region, split from the marks it produced. The rect is
+	// what a user (or the UI picker) asks for; the times are what the scan
+	// measured. Keeping them apart lets the analyze stage see "crop set, never
+	// scanned" and "scanned against an older crop" as different states, which
+	// one coupled column cannot express.
+	{id: 6, name: "asset-score-crop", stmt: `
+ALTER TABLE assets ADD COLUMN score_crop TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is

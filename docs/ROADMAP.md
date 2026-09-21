@@ -71,9 +71,9 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] Manual timeline editing polish: per-clip preview, drag reorder
 - [x] Badminton pipeline v2: rally clustering (transient-based), court ROI analysis, hit-driven scoring, diversity dedup; `xcut eval` harness for measurement
 - [x] Point boundaries imported from a burned-in scoreboard (sidecar `score_changes`,
-      `xcut boundaries`, manifest `score_roi`) — the one rally-end signal the core
-      could not derive itself; measured P 0.886 → 0.998 on the owner's match (D15).
-      UI crop picker and stroke-level ranking still open
+      `xcut boundaries`, manifest `score_roi`, UI region picker, analyze-stage measurement) —
+      the one rally-end signal the core could not derive itself; measured P 0.886 → 0.998 on
+      the owner's match (D15). Stroke-level ranking (which rally is best) still open
 - [x] KTV pipeline v2: onset-density weighted selection (honest naming — high-energy signal, no chorus claims)
 - [x] AI sidecar protocol v1 (capabilities/health/analyze, bounded output), capability detection in doctor; reference sidecar ships, models remain optional/local
 

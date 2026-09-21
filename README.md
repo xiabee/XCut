@@ -94,6 +94,11 @@ go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 #   可选：为单个素材框定球场运动区域（0..1 归一化坐标）；羽毛球风格
 #   生成时间线时按它裁掉场外干扰。`xcut roi <project>` 列出、`--clear`
 #   清除；UI 侧栏"框选球场 ROI…"保存的是同一份数据
+./xcut boundaries badminton-2026 --crop 0.43,0.78,0.14,0.10
+#   可选：把画面里"烧录"的记分牌区域读成得分点边界（需要 AI sidecar，
+#   见 `xcut doctor`）。存进该素材，时间线会让片段正好在得分点结束；
+#   UI 侧栏把区域类型选成"记分牌区域"写入的是同一份数据，下一次
+#   `analyze` 负责测量
 ./xcut timeline badminton-2026 --style badminton_highlight
 #   重新生成会覆盖手动编辑——上一版文档保留为 timeline.backup.json；
 #   `--restore-backup` 可以换回来
@@ -206,6 +211,13 @@ curl -H "Authorization: Bearer $tok" http://<主机IP>:8619/api/v1/health
 时覆盖所选风格的 per-preset 区域——每个固定机位的球场位置都可以不同，
 没有自己区域的素材回退到风格设置。风格级区域走
 `GET/PUT/DELETE /api/v1/styles/{name}/roi`。
+
+同一处下拉还能选"记分牌区域"：它只写下意图
+（`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/score`），下一次
+`analyze` 才会通过 AI sidecar 把它测成得分边界并存回素材；时间线让片段在
+最近的可达边界处结束。区域一改，旧测量就被丢弃（不会静默复用）。实测：
+在有烧录记分牌的那场比赛上，精度 0.886 → 0.998，同样的 21 条片多覆盖 2
+个回合（[docs/EVAL.md](docs/EVAL.md)）。
 
 每个入选片段都在元数据里携带得分、分项与入选原因——Web UI 会展示每段
 的"为什么"。

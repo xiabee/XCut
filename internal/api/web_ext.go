@@ -25,6 +25,9 @@ func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIPut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIDelete)
+	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreGet)
+	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScorePut)
+	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreDelete)
 	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles", s.handleSubtitlesStatus)
 	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles/file", s.handleSubtitlesFile)
 }

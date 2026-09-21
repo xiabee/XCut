@@ -157,6 +157,79 @@ func TestAssetScoreMarksWireShape(t *testing.T) {
 	}
 }
 
+// TestAssetScoreCropLifecycle: the crop is the request and the marks are the
+// measurement, so re-saving the same region must keep a good scan, while moving
+// or clearing it must drop the boundaries that no longer describe the frame.
+func TestAssetScoreCropLifecycle(t *testing.T) {
+	db, _, assetID := marksAsset(t, "crop-lifecycle")
+	ctx := context.Background()
+	crop := []float64{0.4, 0.7, 0.2, 0.15}
+	moved := []float64{0.1, 0.1, 0.2, 0.2}
+
+	if err := db.SetAssetScoreCrop(ctx, assetID, crop); err != nil {
+		t.Fatal(err)
+	}
+	got := mustAsset(t, db, ctx, assetID)
+	if !SameCrop(got.ScoreCrop, crop) {
+		t.Fatalf("crop round trip = %v, want %v", got.ScoreCrop, crop)
+	}
+	if got.ScoreMarks != nil {
+		t.Fatalf("a fresh region must not carry marks yet: %+v", got.ScoreMarks)
+	}
+
+	// The measurement arrives against the current region (what analyze does).
+	if err := db.SetAssetScoreMarks(ctx, assetID, &ScoreMarks{Crop: crop, Times: []float64{4, 12}}); err != nil {
+		t.Fatal(err)
+	}
+	// Re-saving the same region (a UI that posts twice) keeps the scan.
+	if err := db.SetAssetScoreCrop(ctx, assetID, crop); err != nil {
+		t.Fatal(err)
+	}
+	if got = mustAsset(t, db, ctx, assetID); got.ScoreMarks == nil || len(got.ScoreMarks.Times) != 2 {
+		t.Fatalf("identical crop must not drop marks: %+v", got.ScoreMarks)
+	}
+
+	// Moving the region drops them: they describe a different part of the frame.
+	if err := db.SetAssetScoreCrop(ctx, assetID, moved); err != nil {
+		t.Fatal(err)
+	}
+	if got = mustAsset(t, db, ctx, assetID); got.ScoreMarks != nil {
+		t.Fatalf("moved region must invalidate its marks: %+v", got.ScoreMarks)
+	}
+	if !SameCrop(got.ScoreCrop, moved) {
+		t.Fatalf("crop after move = %v, want %v", got.ScoreCrop, moved)
+	}
+
+	// Clearing the request clears the measurement with it.
+	if err := db.SetAssetScoreCrop(ctx, assetID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got = mustAsset(t, db, ctx, assetID)
+	if got.ScoreCrop != nil || got.ScoreMarks != nil {
+		t.Fatalf("cleared: crop=%v marks=%+v", got.ScoreCrop, got.ScoreMarks)
+	}
+
+	if err := db.SetAssetScoreCrop(ctx, assetID, []float64{0.8, 0.8, 0.5, 0.5}); !xcerr.IsCode(err, xcerr.CodeValidation) {
+		t.Fatalf("out-of-frame crop: err=%v, want validation", err)
+	}
+	if err := db.SetAssetScoreCrop(ctx, "asst_missing", crop); !xcerr.IsCode(err, xcerr.CodeNotFound) {
+		t.Fatalf("unknown asset: err=%v, want not_found", err)
+	}
+}
+
+func TestSameCropComparesByValue(t *testing.T) {
+	if !SameCrop(nil, nil) || !SameCrop([]float64{1, 2}, []float64{1, 2}) {
+		t.Error("equal regions must compare equal")
+	}
+	// Unset has two spellings in JSON (null and []); they are the same state.
+	if !SameCrop(nil, []float64{}) {
+		t.Error("nil and empty must both read as 'no region'")
+	}
+	if SameCrop([]float64{1, 2}, []float64{1, 2, 3}) || SameCrop([]float64{1, 2}, []float64{1, 3}) {
+		t.Error("different regions must compare unequal")
+	}
+}
+
 func mustAsset(t *testing.T, db *DB, ctx context.Context, id string) *Asset {
 	t.Helper()
 	a, err := db.GetAsset(ctx, id)

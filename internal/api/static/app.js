@@ -1284,28 +1284,62 @@ $("btn-subtitles").addEventListener("click", async () => {
   } catch (e) { banner(tf("Transcribe failed: {msg}", { msg: e.message })); busy(false); }
 });
 
-/* ---------- court ROI editor ---------- */
-/* A normalized rect (0..1) stored per SOURCE (assets.motion_roi): each
- * fixed camera has the court in a different spot, so the asset's own
- * region overrides the selected style's per-preset one during timeline
- * generation. Assets without their own rect fall back to the style's. */
+/* ---------- region editor (court ROI / scoreboard) ---------- */
+/* Two normalized rects (0..1) stored per SOURCE:
+ *   assets.motion_roi  — the court area, which part of the frame the motion
+ *                        signal should look at (overrides the style's rect);
+ *   assets.score_crop  — the score overlay, whose changes mark finished points.
+ * The court rect is read by the timeline directly; the scoreboard rect is only
+ * an intent — measuring it runs the AI sidecar, which belongs to the analyze
+ * job, so saving here reports "region stored" and the boundaries show up after
+ * the next analyze run. */
 let roiRect = null;      // {x,y,w,h} drawn but not yet saved
 let roiAssetId = null;   // asset whose frame is on display
 
 function roiStyleName() { return $("style").value; }
 function roiAsset() { return $("subs-asset").selectedOptions[0] || null; }
+// "roi" (court) or "score" (scoreboard): the same picker, the same drag code,
+// two endpoints that take the same rectangle shape.
+function roiTarget() { return $("roi-target").value === "score" ? "score" : "roi"; }
+function roiIsScore() { return roiTarget() === "score"; }
+function roiUrl(assetValue) {
+  return `/api/v1/projects/${currentProject.id}/assets/${assetValue}/${roiTarget()}`;
+}
 
 function fmtROI(label, roi) {
   return tf(label, { x: roi.x.toFixed(2), y: roi.y.toFixed(2), w: roi.w.toFixed(2), h: roi.h.toFixed(2) });
+}
+
+function fmtCrop(crop) {
+  return crop.map((v) => v.toFixed(2)).join(", ");
 }
 
 async function refreshROIStatus() {
   const status = $("roi-status");
   const clearBtn = $("btn-roi-clear");
   const asset = roiAsset();
+  $("roi-hint-court").hidden = roiIsScore();
+  $("roi-hint-score").hidden = !roiIsScore();
   if (!currentProject || !asset) { status.textContent = ""; clearBtn.hidden = true; return; }
   const pid = currentProject.id;
   try {
+    if (roiIsScore()) {
+      const own = await api(`/api/v1/projects/${pid}/assets/${asset.value}/score`);
+      if (projectChangedSince(pid)) return;
+      clearBtn.hidden = !own.crop;
+      if (own.marks > 0 && own.stale) {
+        status.textContent = tf("{n} boundaries from an older region ({crop}) — analyze again to re-measure",
+          { n: own.marks, crop: fmtCrop(own.crop) });
+      } else if (own.marks > 0) {
+        status.textContent = tf("{n} point boundaries measured at {crop}",
+          { n: own.marks, crop: fmtCrop(own.crop) });
+      } else if (own.crop) {
+        status.textContent = tf("region {crop} stored — run analyze to measure it", { crop: fmtCrop(own.crop) });
+      } else {
+        status.textContent = t("no scoreboard region");
+      }
+      return;
+    }
     const [own, preset] = await Promise.all([
       api(`/api/v1/projects/${pid}/assets/${asset.value}/roi`),
       roiStyleName()
@@ -1366,12 +1400,13 @@ function closeROIEditor() {
 $("btn-roi").addEventListener("click", openROIEditor);
 $("btn-roi-cancel").addEventListener("click", closeROIEditor);
 $("subs-asset").addEventListener("change", refreshROIStatus);
+$("roi-target").addEventListener("change", () => { closeROIEditor(); refreshROIStatus(); });
 $("btn-roi-clear").addEventListener("click", async () => {
   const asset = roiAsset();
   if (!currentProject || !asset) return;
   try {
-    await api(`/api/v1/projects/${currentProject.id}/assets/${asset.value}/roi`, { method: "DELETE" });
-    banner(t("Per-source ROI cleared — this asset falls back to the style's region"));
+    await api(roiUrl(asset.value), { method: "DELETE" });
+    banner(roiIsScore() ? t("Scoreboard region cleared") : t("Per-source ROI cleared — this asset falls back to the style's region"));
     refreshROIStatus();
   } catch (e) { banner(tf("Clear failed: {msg}", { msg: e.message })); }
 });
@@ -1380,12 +1415,14 @@ $("btn-roi-save").addEventListener("click", async () => {
   const asset = roiAsset();
   if (!asset) return;
   try {
-    await api(`/api/v1/projects/${currentProject.id}/assets/${asset.value}/roi`, {
+    await api(roiUrl(asset.value), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(roiRect),
     });
-    banner(t("Court ROI saved for this asset — it overrides the style's region"));
+    banner(roiIsScore()
+      ? t("Scoreboard region saved — the point boundaries are measured on the next analyze run")
+      : t("Court ROI saved for this asset — it overrides the style's region"));
     closeROIEditor();
     refreshROIStatus();
   } catch (e) { banner(tf("Save failed: {msg}", { msg: e.message })); }

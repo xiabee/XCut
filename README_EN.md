@@ -101,6 +101,11 @@ Verify the result with any player or `ffprobe`.
 #   the badminton style uses it to cut out-of-court noise when the timeline
 #   is built. `xcut roi <project>` lists, `--clear` clears; the UI's
 #   "draw court ROI…" saves the same data
+./xcut boundaries badminton-2026 --crop 0.43,0.78,0.14,0.10
+#   optional: read a burned-in scoreboard into point boundaries (needs an AI
+#   sidecar — see `xcut doctor`). Stored per asset, the timeline then ends a
+#   clip exactly where the point ended; in the UI, pick "scoreboard region" as
+#   the region type to write the same data — analyze does the measuring
 ./xcut timeline badminton-2026 --style badminton_highlight
 #   regenerating overwrites manual edits — the previous document is kept
 #   as timeline.backup.json; `--restore-backup` swaps it back
@@ -232,6 +237,15 @@ selected style's per-preset region during timeline generation — each fixed
 camera can have the court in a different spot, and assets without their own
 rect fall back to the style's region
 (`GET/PUT/DELETE /api/v1/styles/{name}/roi`).
+
+The same dropdown also offers a **scoreboard region**: drawing one only stores
+the intent (`GET/PUT/DELETE /api/v1/projects/{id}/assets/{aid}/score`), and the
+next `analyze` measures it into point boundaries through the AI sidecar and
+writes them back on the asset, so clips end at the nearest reachable boundary
+instead of running past the point. Move the region and the old measurement is
+dropped rather than silently reused. Measured on a match with a burned-in
+scoreboard: precision 0.886 → 0.998, and the same 21 clips cover two more
+rallies ([docs/EVAL.md](docs/EVAL.md)).
 
 Every selected clip carries its score, score breakdown and the reason it was
 picked in its metadata — the web UI shows the "why" per clip.

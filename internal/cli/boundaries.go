@@ -7,15 +7,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
-
-// scoreScanTimeout bounds one sidecar scan. An 8-minute match measured 8.6 s
-// on the dev laptop; the ceiling is for a 4-hour source on a slower machine,
-// and a hung sidecar must not pin the command.
-const scoreScanTimeout = 10 * time.Minute
 
 func init() {
 	register("boundaries", "read point ends off a burned-in scoreboard, so clips can stop there",
@@ -90,10 +86,12 @@ func cmdBoundaries(a *App, args []string) error {
 
 	switch {
 	case *clear:
-		if err := db.SetAssetScoreMarks(a.Ctx, target, nil); err != nil {
+		// The crop carries the intent, so clearing it is what removes both the
+		// request and the measurement (SetAssetScoreCrop drops stale marks).
+		if err := db.SetAssetScoreCrop(a.Ctx, target, nil); err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stdout, "cleared score marks for %s (%s)\n", chosen.Filename, target)
+		fmt.Fprintf(a.Stdout, "cleared score region and marks for %s (%s)\n", chosen.Filename, target)
 	case *cropRect != "":
 		roi, perr := parseROI(*cropRect)
 		if perr != nil {
@@ -117,7 +115,13 @@ func cmdBoundaries(a *App, args []string) error {
 				"the AI sidecar does not offer score_changes — this build needs the scoreboard op (see xcut doctor)", nil)
 		}
 		started := time.Now()
-		times, err := worker.ScoreChanges(a.Ctx, bin, chosen.Path, crop, scoreScanTimeout)
+		// The region first, then the measurement: score_crop is the source of
+		// truth for what the user asked to be scanned, and writing it through
+		// the same setter the UI uses keeps the two paths identical.
+		if err := db.SetAssetScoreCrop(a.Ctx, target, crop); err != nil {
+			return err
+		}
+		times, err := worker.ScoreChanges(a.Ctx, bin, chosen.Path, crop, pipeline.ScoreScanTimeout)
 		if err != nil {
 			return err
 		}
@@ -144,15 +148,37 @@ func cmdBoundaries(a *App, args []string) error {
 	}
 	for _, as := range rows {
 		shown := "—"
-		if m := as.ScoreMarks; m != nil {
+		switch {
+		case as.ScoreMarks != nil:
+			m := as.ScoreMarks
 			shown = fmt.Sprintf("%d marks at %s", len(m.Times), formatMarksCrop(m.Crop))
 			if m.At > 0 {
 				shown += " (" + time.Unix(m.At, 0).Format("2006-01-02 15:04") + ")"
 			}
+			if !sameCrop(as.ScoreCrop, m.Crop) {
+				// The region moved since the scan: these boundaries describe a
+				// different part of the frame, and the next analyze re-measures.
+				shown += "  [STALE: region now " + formatMarksCrop(as.ScoreCrop) + "]"
+			}
+		case as.ScoreCrop != nil:
+			shown = "region " + formatMarksCrop(as.ScoreCrop) + ", not scanned yet (run `xcut analyze`)"
 		}
 		fmt.Fprintf(a.Stdout, "%s  %-24s  %s\n", as.ID, as.Filename, shown)
 	}
 	return nil
+}
+
+// sameCrop compares two normalized regions by value; nil means "unset".
+func sameCrop(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func formatMarksCrop(crop []float64) string {

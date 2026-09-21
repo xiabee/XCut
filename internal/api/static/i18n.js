@@ -150,6 +150,16 @@ window.XCUT_I18N = {
     "Import an asset first — the ROI editor draws over its first frame": "请先导入素材 — ROI 编辑器在其首帧上框选",
     "Per-source ROI cleared — this asset falls back to the style's region": "本源 ROI 已清除 — 该素材回退到风格的区域",
     "Court ROI saved for this asset — it overrides the style's region": "本源的球场 ROI 已保存 — 将覆盖风格设置的区域",
+    "region to draw": "要框选的区域",
+    "court region (motion)": "球场区域（运动）",
+    "scoreboard region (point ends)": "记分牌区域（得分点）",
+    "drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.": "只在比分数字上拖一个矩形 — 边界会在下一次分析时测得。",
+    "no scoreboard region": "未设置记分牌区域",
+    "region {crop} stored — run analyze to measure it": "已保存区域 {crop} — 运行分析即可测量",
+    "{n} point boundaries measured at {crop}": "在 {crop} 测得 {n} 个得分边界",
+    "{n} boundaries from an older region ({crop}) — analyze again to re-measure": "区域已改变（{crop}），{n} 个边界是旧的 — 重新分析以重测",
+    "Scoreboard region cleared": "记分牌区域已清除",
+    "Scoreboard region saved — the point boundaries are measured on the next analyze run": "记分牌区域已保存 — 得分边界将在下一次分析时测得",
     "drag a rectangle over the court area — saved for this asset; it overrides the style's region.": "在球场区域拖出一个矩形——保存到该素材，并覆盖风格设置的区域。"
   }
 };

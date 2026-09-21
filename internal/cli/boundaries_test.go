@@ -97,7 +97,9 @@ func TestBoundariesScanListClear(t *testing.T) {
 	run(1, "boundaries", "bnd", "--crop", "0,0,0.4,0.3", "--clear")
 
 	out = run(0, "boundaries", "bnd", "--clear")
-	if !strings.Contains(out, "cleared score marks") || strings.Contains(out, "marks at") {
+	// Clearing the region is what removes the measurement with it, so the
+	// listing must fall back to "nothing set" rather than showing old marks.
+	if !strings.Contains(out, "cleared score region and marks") || strings.Contains(out, "marks at") {
 		t.Fatalf("clear output:\n%s", out)
 	}
 }

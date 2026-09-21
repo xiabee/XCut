@@ -55,7 +55,7 @@ func scanScoreMarks(ea *App, db *storage.DB, c eval.Case, assetID string) (int, 
 		return 0, xcerr.E(xcerr.CodeNotFound,
 			fmt.Sprintf("case %q asks for score_roi, which needs a scoreboard-capable AI sidecar (set workers.ai_bin)", c.Name), nil)
 	}
-	times, err := worker.ScoreChanges(ea.Ctx, bin, c.Media, crop, scoreScanTimeout)
+	times, err := worker.ScoreChanges(ea.Ctx, bin, c.Media, crop, pipeline.ScoreScanTimeout)
 	if err != nil {
 		return 0, err
 	}
