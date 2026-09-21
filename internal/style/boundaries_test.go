@@ -130,3 +130,40 @@ func TestNoBoundariesKeepsStartAnchoredWindows(t *testing.T) {
 		}
 	}
 }
+
+// TestCandidateLimitMetadata: the flag the CLI prints to explain a short reel
+// must distinguish "this footage offered no more" from "your budget stopped
+// early". Getting it backwards would blame the footage for the user's setting,
+// which is worse than saying nothing.
+func TestCandidateLimitMetadata(t *testing.T) {
+	items := func() []AssetEvents {
+		return []AssetEvents{{
+			Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 600},
+			Segments: []event.Segment{
+				seg(10, 30, 0.5, -8), seg(100, 130, 0.4, -9), seg(200, 225, 0.6, -7),
+			},
+		}}
+	}
+
+	full := boundaryPreset() // target 60s: every segment fits
+	tl, err := Build(full, "prj", items())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tl.Metadata["candidate_limit"] != "true" {
+		t.Fatalf("candidates ran out, metadata says %q", tl.Metadata["candidate_limit"])
+	}
+	if tl.Metadata["candidate_events"] != "3" {
+		t.Fatalf("candidate_events = %q, want 3", tl.Metadata["candidate_events"])
+	}
+
+	tight := boundaryPreset()
+	tight.TargetDuration = 10 // only the first clip can fit
+	tl2, err := Build(tight, "prj", items())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tl2.Metadata["candidate_limit"] != "false" {
+		t.Fatalf("a 10s budget stopped the loop early; metadata claims %q", tl2.Metadata["candidate_limit"])
+	}
+}

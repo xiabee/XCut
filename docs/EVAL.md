@@ -288,6 +288,33 @@ difference being `score_roi` over the digits, `--duration` at the style default)
 | no scoreboard, 120 s | 0.817 | 0.207 | 0.330 | 12/43 | 15 | — |
 | 44 marks, 120 s | **0.972** | **0.243** | **0.389** | **16/43** | 16 | 44 |
 
+The full marked ladder from the same harness (`--duration` swept over one match,
+44 boundaries scanned each time; every row analysed again in a throwaway
+workspace, so the rows are independent):
+
+| asked | clips | reel seconds | ranges | boundary-shaped | P | F1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 60 s | 8 | — | 7/43 | 8/8 | 0.998 | 0.225 |
+| 90 s | 12 | 85.4 | 12/43 | 12/12 | 0.997 | 0.305 |
+| 120 s | 16 | — | 16/43 | 16/16 | 0.972 | 0.389 |
+| 180 s | 21 | 147.2 | 20/43 | 21/21 | 0.977 | 0.463 |
+| 240 s | 21 | 147.2 | 20/43 | 21/21 | 0.977 | 0.463 |
+| 300 s | 21 | 147.2 | 20/43 | 21/21 | 0.977 | 0.463 |
+
+**180 s is where this match stops answering**: 180, 240 and 300 give the same 21
+clips and the same 147.2 s, because the footage offered 18 candidate rallies and
+the selector had already taken all it would accept. That is a footage limit, not
+a budget one — the reason `xcut timeline` now says which one it hit rather than
+printing a short total in silence. (Reel seconds are only recorded for the rows
+measured with the ladder script.)
+
+One discrepancy is recorded rather than smoothed over: the same file through the
+**CLI** project (`analyze → timeline --duration 300`) gives 18 clips / 126.4 s
+where the **eval** harness gives 21 / 147.2 s, so the two paths do not segment
+identically (proxy-vs-original analysis and cache generation are the suspects).
+Every ladder row above is eval-side; reading a CLI number into this table would
+misstate the curve.
+
 The longer pairs are the more interesting ones: at a **fixed** budget the same
 21 clips reach two more distinct rallies (+1.5 points of recall, +3.7 of F1)
 *and* 16 points more precision, and at 120 s the marked run covers **16**

@@ -183,13 +183,17 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	})
 
 	// Greedy selection up to the target duration, honoring diversity rules.
+	// budgetRanOut distinguishes the two ways the loop can end: the reel is
+	// full, or there is nothing left to consider.
 	total := 0.0
+	budgetRanOut := false
 	var chosen []selInterval
 	var clips []timeline.Clip
 	n := 0
 	for _, c := range cands {
 		remaining := preset.TargetDuration - total
 		if remaining <= 0 {
+			budgetRanOut = true
 			break
 		}
 		srcStart, srcEnd, atBoundary, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
@@ -286,6 +290,12 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		Metadata: map[string]string{
 			"style":   preset.Name,
 			"style_v": strconv.Itoa(preset.Version),
+			// What ran out first — the footage or the budget. Without these the
+			// caller cannot tell "18 clips because you asked for 18" from "18
+			// because this match only offered 18 candidate rallies", and the
+			// second one is a fact the user has to be told out loud.
+			"candidate_events": strconv.Itoa(len(cands)),
+			"candidate_limit":  strconv.FormatBool(!budgetRanOut),
 		},
 	}
 

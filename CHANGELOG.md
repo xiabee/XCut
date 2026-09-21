@@ -34,6 +34,13 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **A reel that came out shorter than asked now says why.** Sweeping
+  `--duration` over the owner's match found that 180, 240 and 300 seconds all
+  produce the same 21 clips / 147.2 s — the footage stops answering long
+  before the budget runs out. `xcut timeline` distinguishes the two cases
+  (`candidate_events` / `candidate_limit` in the document's metadata) and prints
+  which one applied: *"this footage offered 18 candidate rallies and the reel
+  holds 18 — 126.4s of the 300s asked for"*. A budget-limited reel says nothing.
 - **A scoreboard scan reports its own spacing**, not just its count:
   `44 boundaries, 0.3s..595.7s, median gap 13.5s, tightest 5.0s`, in
   `xcut boundaries` output and in the analyze job log. A crop that follows a

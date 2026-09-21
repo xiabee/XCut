@@ -77,6 +77,9 @@ func cmdTimeline(a *App, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+	if note := footageLimitNote(tl, req.Duration); note != "" {
+		fmt.Fprintln(a.Stdout, note)
+	}
 	outPath, err := d.TimelinePath(p.ID)
 	if err != nil {
 		return err
@@ -108,4 +111,23 @@ func parseDurationFlag(v string) (float64, error) {
 				" seconds (got "+v+")", nil)
 	}
 	return f, nil
+}
+
+// footageLimitNote explains a reel that came out shorter than asked when the
+// reason is the footage, not the budget: the selector ran out of candidate
+// events while seconds were still allotted. Silence here reads as "it chose not
+// to fill the reel", which is a different problem with a different fix.
+func footageLimitNote(tl *timeline.Timeline, asked float64) string {
+	if tl == nil || asked <= 0 {
+		return ""
+	}
+	if tl.Metadata["candidate_limit"] != "true" {
+		return ""
+	}
+	short := asked - tl.Duration()
+	if short < 1.0 {
+		return ""
+	}
+	return fmt.Sprintf("  note: this footage offered %s candidate rallies and the reel holds %d — %.1fs of the %.0fs asked for. A longer cut needs more sources, or a style that accepts shorter events.",
+		tl.Metadata["candidate_events"], countTimelineClips(tl), tl.Duration(), asked)
 }
