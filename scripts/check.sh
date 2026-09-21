@@ -210,9 +210,10 @@ if [ "$mode" = "full" ]; then
     # originally severity HIGH *and* confidence HIGH, which on this codebase
     # matched nothing at all — 90 findings, none in that cell — so the step could
     # not fail for want of a threshold. Suppression convention: `#nosec GXXX --
-    # written reason` inline, never a rule exclusion.
+    # written reason` inline, never a rule exclusion — and both halves of that
+    # convention are now enforced by the scanner rather than left to review.
     if command -v gosec >/dev/null 2>&1; then
-        gosec -severity high -tests=false ./... && gsc_rc=0 || gsc_rc=$?
+        gosec -severity high -tests=false -nosec-require-justification -nosec-require-rules ./... && gsc_rc=0 || gsc_rc=$?
         if [ "$gsc_rc" = 126 ]; then
             echo "== gosec: SKIPPED (execution blocked by policy)" >&2
             NOT_RUN="$NOT_RUN gosec(policy-blocked)"

@@ -242,9 +242,11 @@ if ($Mode -eq "full") {
     # cell was empty (90 findings, none HIGH x HIGH), so the step could not fail
     # for want of a threshold. Suppressions stay in the source as
     # `#nosec GXXX -- reason` (each with a written justification), never as
-    # blanket rule exclusions.
+    # blanket rule exclusions — and the two scanner flags below reject a
+    # suppression that leaves out either half, so the convention is enforced
+    # rather than trusted to review.
     if (Get-Command gosec -ErrorAction SilentlyContinue) {
-        Invoke-Step "gosec" { gosec -severity high -tests=false ./... }
+        Invoke-Step "gosec" { gosec -severity high -tests=false -nosec-require-justification -nosec-require-rules ./... }
     }
     else {
         Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped"
