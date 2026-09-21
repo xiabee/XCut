@@ -7,6 +7,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 ### Security
+- **The render download endpoint's response header is now pinned against hostile
+  project names.** `GET /api/v1/projects/{id}/render` writes
+  `Content-Disposition` from the project name, and names are validated for length
+  only — a stored CR, LF or quote goes straight in. No test had ever reached that
+  handler (or `GET /api/v1/styles`). The new test drives the real endpoint and
+  requires the header to match one narrow shape; replaying the mutations shows it
+  bites: allowing `"` through the sanitizer produces
+  `filename="…_"quoted"___"` (a parameter boundary), allowing 13/10 produces a
+  header with a literal CRLF in it. Same sweep deleted three functions with no
+  callers at all (`event.scoreRally`, `event.intervalMax`,
+  `analysis.Result.FindTrack`).
 - **Every HIGH-severity static-analysis finding triaged, and the bar raised to
   match.** `gosec` on this tree reports 90 findings and had none at
   severity HIGH × confidence HIGH — the only cell the gate looked at, which made

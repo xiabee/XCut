@@ -842,7 +842,11 @@ Windows gate on the laptop.
    `TestStylesEndpointListsTheEmbeddedPresets`; both handlers moved 0% → ~74%.
    Note for anyone repeating the sweep: without FFmpeg on PATH the same
    measurement reports `pipeline.AnalyzeProject` at 0%, so a "gap" found that way
-   is an environment artifact, not a missing test.
+   is an environment artifact, not a missing test. Accepted at `ae9298c` on all
+   three channels: local fast gate 468/8, win-devops job
+   `20260922-041338-ca1370` 469/7 (the extra pass is the symlink cleanup test,
+   which skips in a plain developer session), Linux full gate 457/13 with the
+   pinned scanner and `not run: nothing`.
 2. Remote-access hardening: **(a) and (b) are both done** — the runbook with
    the SSH-tunnel recipe in `docs/OPERATIONS.md`, and the sign-in panel's
    visual pass with the budget defect it caught (session #16). What remains of
