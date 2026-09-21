@@ -509,6 +509,24 @@ preset changed; the table is in docs/EVAL.md.
 
 ## Known Issues
 
+- **The Windows job-object memory-cap test is closed, and this is the record of
+  what its failures were.** Three win-devops runs on 2026-09-21 morning went red
+  in `internal/media`: jobs `20260921-033656-2fd56e` and `20260921-035742-63824e`
+  hit `panic: test timed out after 10m0s` (606.8 s and 603.1 s for the package),
+  and `20260921-043220-d9f236` failed as
+  `TestJobObjectMemoryCapKillsRunawayChild (60.09s)`. Those were the old test —
+  it waited on the child without a bound and treated "stalled at the cap" as
+  "cap failed". The current `TestJobObjectMemoryCapStopsRunawayChild` bounds the
+  wait at 60 s, accepts a stall as the cap binding, and names the only shape that
+  is genuinely uncapped (all 24 × 64 MB blocks landed). Evidence it is settled:
+  37 of the 42 XCut jobs visible on the node are PASS and every run after the
+  hardening is among them — nothing has recurred. Read this entry before opening
+  a new investigation: a load-sensitive Windows test that has already been made
+  deterministic does not need a second one. Scope of the claim: the hardening
+  landed at 2026-09-21 04:38 (`6d65321`), and no `internal/media` failure has
+  appeared in the node's 42 visible jobs since — the one later red,
+  `20260921-173929-cfff4f`, is the API 500 in the next entry, a different package.
+
 - **One unreproduced 500 on the Windows CI node (open).** `api/TestTimelineRegenAndPutRevisionUniqueness`
   failed on win-devops at `984a1d4` (job `20260921-173929-cfff4f`) with
   `timeline_api_test.go:458: unexpected PUT status 500` — the test's contract is
