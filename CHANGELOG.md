@@ -7,6 +7,20 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 ### Security
+- **A vulnerability finding could not fail the gate.** `check.sh` read the scan
+  status as `if ! govulncheck ./...; then rc=$?` — and `$?` after a negated
+  command is the *negation*, always 0 — so every non-zero scan landed in
+  `exit 0`: green, with the script stopping before its own verdict line. The
+  `govulncheck(policy-blocked)` branch was unreachable the same way. Proven end
+  to end on the Linux node: in a copy of the snapshot, a package calling
+  `html.Render` from `golang.org/x/net v0.12.0` makes the real scanner exit 3
+  naming the call site, and the gate now returns `gate_rc=3` with
+  `== govulncheck: FAILED (rc=3)`; the identical shape before the fix returned 0
+  and printed no verdict line. The step also has something to run for the first
+  time: `not run: govulncheck` had been in every Linux verdict line while the
+  node held `~/go/bin/govulncheck` (a non-login ssh PATH carries no GOPATH/bin),
+  and a pinned `.tools/bin` copy now wins over whatever the machine installed —
+  the precedence was inverted, and a stub leg that came back green proved it.
 - **A gate that skipped tools now says so.** The verdict line lists the steps
   that did not run (`steps not run: integration-tests(no-ffmpeg)` /
   `not run: govulncheck`), and `check.sh` — which never scanned for secrets at

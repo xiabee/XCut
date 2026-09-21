@@ -143,6 +143,36 @@ Windows-semantics tests and skip there, so the Linux leg proves only that the
 change did not break POSIX (where a rename over an open file simply succeeds) —
 the 2 s sharing-class budget is guarded by the two Windows channels alone.
 
+The gate that watches dependencies for known vulnerabilities could not fail.
+`check.sh` read the scan status as `if ! govulncheck ./...; then rc=$?`, and
+`$?` in that position is the status of the *negation* — always 0 — so every
+non-zero result fell through to `exit 0`: the gate went green and stopped before
+writing its own verdict line (the `policy-blocked` branch was unreachable the
+same way). Measured on both sides of the fix on linux-ci: at `5c63ffe` a stub
+returning 3 gave `gate_rc=0` with `grep -c "gate (full)"` = 0 in the log; at
+`b6ba01c` a throwaway copy of the snapshot holding one package that calls
+`html.Render` from `golang.org/x/net v0.12.0` made the real scanner exit 3 naming
+`internal/vulncontrol/control.go:15:20`, and the gate answered `gate_rc=3` with
+`== govulncheck: FAILED (rc=3)`. That exit code is measured, not remembered, and
+the same fixture is the positive control that gives this repo's
+`No vulnerabilities found` some meaning.
+
+Two coverage facts fell out of the investigation. No CI leg had ever run that
+step: the control-plane local leg and win-devops both use the *fast* gate, and
+the Linux full leg could not see `~/go/bin/govulncheck`, which had been installed
+on the node for weeks but is not on a non-login ssh PATH. The gate now looks
+where `go install` actually puts things, and the Linux verdict line reads
+`not run: nothing` for the first time (452 passed / 13 skipped, zero `DATA RACE`
+lines, `cargo test` 3 passed). Looking there also inverted the documented pinning
+order — a `.tools/bin` stub got shadowed by the node's own binary and reported a
+green gate, which is how the inversion was caught — repaired at `15a1712`, where
+the stub wins again and still fails the gate with rc=3. Scope, so this entry is
+not over-read: `gosec` is not in the Linux gate and not on the node, so static
+security analysis remains a Windows-nightly pass, and the Windows channel needed
+no change because its `.tools/bin` already carries both tools. Those three
+commits touch only `scripts/check.sh`, so no Windows leg was re-run — the Go tree
+is byte-identical to `5c63ffe`, accepted in the paragraph above.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
