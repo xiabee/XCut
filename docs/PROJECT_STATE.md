@@ -85,7 +85,11 @@ decimal, 240 s 21 clips/F1 0.426 → 27/0.511 and 300 s → 0.523 (docs/EVAL.md)
 The note was rewritten to stop recommending the remedy that measurement showed
 does nothing, and to report the pool honestly (`offered 30 candidate rallies and
 the cut took 27 of them` — the selector works through the list, it does not take
-every piece of it).
+every piece of it). Acceptance for `17eb130`: local fast gate PASS (458/7),
+win-devops PASS (job `20260921-213700-829911`, same 458/7), and the Linux full
+leg PASS with `-race` clean and the Rust worker actually run this time
+(`cargo test` rc=0, 3 passed) because the dispatch appended to `PATH` instead of
+replacing it.
 
 ## Version / HEAD
 
