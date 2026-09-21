@@ -53,12 +53,16 @@ type selectedClipJSON struct {
 }
 
 type evalResults struct {
-	Version      int              `json:"version"`
-	GeneratedAt  string           `json:"generated_at"`
-	HitIoU       float64          `json:"hit_iou"`
-	DuplicateIoU float64          `json:"duplicate_iou"`
-	Cases        []evalCaseResult `json:"cases"`
-	Macro        eval.Macro       `json:"macro"`
+	Version      int     `json:"version"`
+	GeneratedAt  string  `json:"generated_at"`
+	HitIoU       float64 `json:"hit_iou"`
+	DuplicateIoU float64 `json:"duplicate_iou"`
+	// Duration is the reel-length override this run used, 0 when each style's
+	// own target applied. A baseline and a run at different lengths are not
+	// comparable as algorithms, so the number has to survive into the file.
+	Duration float64          `json:"duration,omitempty"`
+	Cases    []evalCaseResult `json:"cases"`
+	Macro    eval.Macro       `json:"macro"`
 }
 
 func cmdEval(a *App, args []string) error {
@@ -169,6 +173,7 @@ func cmdEval(a *App, args []string) error {
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
 		HitIoU:       hitIoU,
 		DuplicateIoU: eval.DefaultMetricsConfig().DuplicateIoU,
+		Duration:     duration,
 		Cases:        make([]evalCaseResult, 0, len(manifest.Cases)),
 	}
 	var runMetrics []*eval.CaseMetrics
@@ -509,6 +514,11 @@ func reportEvalBaseline(a *App, run *evalResults, path string) error {
 			"the deltas below compare different yardsticks, not two algorithms\n",
 			base.HitIoU, run.HitIoU)
 	}
+	if base.Duration != run.Duration {
+		fmt.Fprintf(a.Stdout, "  WARN reel length differs (baseline %s, this run %s): "+
+			"the deltas below compare different yardsticks, not two algorithms\n",
+			baselineLength(base.Duration), baselineLength(run.Duration))
+	}
 	d := func(v float64) string { return fmt.Sprintf("%+.3f", v) }
 
 	seen := map[string]bool{}
@@ -543,4 +553,13 @@ func reportEvalBaseline(a *App, run *evalResults, path string) error {
 			m.RangesHit-p.RangesHit)
 	}
 	return nil
+}
+
+// baselineLength names a run's reel budget for the comparison line: an explicit
+// override in seconds, or the style's own target when none was given.
+func baselineLength(d float64) string {
+	if d <= 0 {
+		return "each style's own target"
+	}
+	return fmt.Sprintf("%.0fs", d)
 }

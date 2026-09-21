@@ -280,7 +280,10 @@ that is the vision sidecar's job (`frame_describe`), not a threshold.
    a case that errored on either side reports `NOT COMPARABLE`, a case new to
    or gone from the manifest is labelled, and a different `--iou` prints
    `WARN hit_iou differs` because those deltas compare two yardsticks rather
-   than two algorithms.
+   than two algorithms. The same guard covers the budget: results record the
+   `--duration` they ran with (omitted when each style's own target applied),
+   and a baseline taken at a different length prints `WARN reel length differs`
+   — 8 clips against 21 measures the budget, not the change.
 5. Confirm the tool itself: re-running the unchanged HEAD against its own
    baseline must print `+0.000` everywhere. Anything else is nondeterminism.
 6. Record the delta in the milestone notes (docs/NIGHTLY_LOG.md).
