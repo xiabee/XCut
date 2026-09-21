@@ -18,6 +18,15 @@ FFmpeg installer found by running the gate on a host without FFmpeg) is
 unchanged below. Session #16 (sign-in visual pass + the budget
 defect it caught) is unchanged below.
 
+**Same session, later:** the region is now drawable in the web UI (the court
+picker gained a target select; "scoreboard region" writes
+`assets.score_crop`), and **analyze** is what measures it — marks stored on the
+asset row, dropped when the region moves, and reported `stale` if a scan
+predates the current rect. Verified end to end in a real browser session (draw →
+`marks: 0` + "run analyze" → analyze → `marks: 2` at the drawn crop, the fixture's
+two changes), on the DOM/HTTP path — screenshots stay unavailable through the
+connector (0×0 viewport), so no pixel claim is made.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
