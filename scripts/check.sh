@@ -213,6 +213,12 @@ if [ "$mode" = "full" ]; then
     # written reason` inline, never a rule exclusion — and both halves of that
     # convention are now enforced by the scanner rather than left to review.
     if command -v gosec >/dev/null 2>&1; then
+        # Attribute the scan before running it: gosec stamps "dev" into
+        # --version however it was built, so the bytes are the only identity a
+        # log can carry. Printed unconditionally rather than with the verdict,
+        # because the case that needs attribution most is the one that fails.
+        GSEC_BIN=$(command -v gosec)
+        echo "== gosec scanner: $(sha256sum "$GSEC_BIN" 2>/dev/null | cut -c1-12) at $GSEC_BIN (pin: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0)"
         gosec -severity high -tests=false -nosec-require-justification -nosec-require-rules ./... && gsc_rc=0 || gsc_rc=$?
         if [ "$gsc_rc" = 126 ]; then
             echo "== gosec: SKIPPED (execution blocked by policy)" >&2

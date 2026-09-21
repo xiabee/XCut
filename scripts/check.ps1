@@ -246,6 +246,11 @@ if ($Mode -eq "full") {
     # suppression that leaves out either half, so the convention is enforced
     # rather than trusted to review.
     if (Get-Command gosec -ErrorAction SilentlyContinue) {
+        # Same attribution as check.sh: gosec reports "dev" for --version whatever
+        # it was built from, so the log names the bytes instead.
+        $gosecBin = (Get-Command gosec).Source
+        $gosecFp = (Get-FileHash -Algorithm SHA256 $gosecBin).Hash.Substring(0, 12).ToLowerInvariant()
+        Write-Host "== gosec scanner: $gosecFp at $gosecBin (pin: GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0)"
         Invoke-Step "gosec" { gosec -severity high -tests=false -nosec-require-justification -nosec-require-rules ./... }
     }
     else {
