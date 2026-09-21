@@ -250,6 +250,9 @@ it now has a test for both halves (evict what aged out at `authMaxPeers`; when
 everything in there is live, refuse to track rather than grow), killed by two
 mutations — evicting nothing leaves a fresh peer untracked among 4096 expired
 windows, and dropping the second cap check makes it displace live peers instead.
+Accepted at `b7c268d`: local fast gate 470/8, win-devops job
+`20260922-044746-e9c9a9` 471/7, Linux full gate 459/13 with the pinned scanner,
+`not run: nothing` and zero `DATA RACE` lines.
 The trap in that work was the fixture, not the product: the fill loop compared
 against `authMaxPeers - len(g.failures)` *inside* the condition, so the target
 shrank as the map grew and the fill stopped at exactly half the cap — visible
