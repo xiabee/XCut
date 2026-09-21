@@ -176,16 +176,18 @@ if [ "$mode" = "full" ]; then
     fi
 
     if command -v govulncheck >/dev/null 2>&1; then
-        if ! govulncheck ./...; then
-            rc=$?
-            if [ "$rc" = 126 ]; then
-                # Blocked by an Application Control policy: loud skip, use
-                # scripts/vuln-docker.sh for the scan instead.
-                echo "== govulncheck: SKIPPED (execution blocked by policy; use scripts/vuln-docker.sh)" >&2
-                NOT_RUN="$NOT_RUN govulncheck(policy-blocked)"
-            else
-                exit "$rc"
-            fi
+        # `if ! cmd; then rc=$?` reads the *negated* status, which is always 0,
+        # so a real finding used to exit the gate green without printing the
+        # verdict line. Assign from the command itself.
+        govulncheck ./... && gvc_rc=0 || gvc_rc=$?
+        if [ "$gvc_rc" = 126 ]; then
+            # Blocked by an Application Control policy: loud skip, use
+            # scripts/vuln-docker.sh for the scan instead.
+            echo "== govulncheck: SKIPPED (execution blocked by policy; use scripts/vuln-docker.sh)" >&2
+            NOT_RUN="$NOT_RUN govulncheck(policy-blocked)"
+        elif [ "$gvc_rc" != 0 ]; then
+            echo "== govulncheck: FAILED (rc=$gvc_rc) — see the scan output above" >&2
+            exit "$gvc_rc"
         fi
     else
         echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped" >&2
