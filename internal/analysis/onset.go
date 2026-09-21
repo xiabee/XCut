@@ -121,7 +121,7 @@ func (p *onsetProcessor) consume(chunk []byte) error {
 }
 
 func (p *onsetProcessor) absorb(raw uint16) {
-	v := int16(raw)
+	v := int16(raw) // #nosec G115 -- s16le PCM samples are two's-complement by definition
 	a := int32(v)
 	if a < 0 {
 		a = -a // int32 math: |−32768| overflows back to negative in int16

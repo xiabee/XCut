@@ -162,6 +162,36 @@ func TestCleanupPartials(t *testing.T) {
 	}
 }
 
+// TestCleanupPartialsRemovesALinkNotItsTarget pins the product behaviour the
+// scoped-root cleanup relies on: debris is matched by *name*, a name can be a
+// symlink, and unlinking it must not touch what it points at. This passes with
+// a plain os.Remove too — it is a behaviour pin next to the race fix, not
+// evidence that the fix was needed.
+func TestCleanupPartialsRemovesALinkNotItsTarget(t *testing.T) {
+	w := New(t.TempDir())
+	if err := w.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "keep-me.mp4")
+	if err := os.WriteFile(victim, []byte("user data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(w.ProjectsDir(), ".tmp-pointing-away")
+	if err := os.Symlink(victim, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	count, _, err := w.CleanupPartials(false)
+	if err != nil || count != 1 {
+		t.Fatalf("cleanup: count=%d err=%v", count, err)
+	}
+	if _, lerr := os.Lstat(link); !os.IsNotExist(lerr) {
+		t.Fatalf("the debris link is still there (%v)", lerr)
+	}
+	if _, serr := os.Stat(victim); serr != nil {
+		t.Fatalf("cleanup destroyed the link target instead of the link: %v", serr)
+	}
+}
+
 func TestNewTempDirBudget(t *testing.T) {
 	ws := newTestWS(t)
 	// Stuff temp/ beyond a tiny budget (simulates failed-run debris).

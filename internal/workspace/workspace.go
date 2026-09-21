@@ -295,6 +295,19 @@ func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err er
 	if _, serr := os.Stat(root); os.IsNotExist(serr) {
 		return 0, 0, nil
 	}
+	// Deletion goes through a scoped root instead of os.Remove(path). The walk
+	// resolves a name, and between that resolution and the unlink a parent
+	// directory could be swapped for a symlink pointing outside projects/ — the
+	// TOCTOU window gosec calls G122. os.Root refuses to traverse a symlinked
+	// parent, so a cleanup can only ever land inside projects/. That swap cannot
+	// be staged from a test, so treat it as a regression gate; the shape that
+	// can be staged (a debris *name* that is itself a symlink) is pinned by
+	// TestCleanupPartialsRemovesALinkNotItsTarget.
+	scoped, oerr := os.OpenRoot(root)
+	if oerr != nil {
+		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot open the projects folder for cleanup", oerr)
+	}
+	defer scoped.Close()
 	werr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -313,8 +326,12 @@ func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err er
 		count++
 		bytes += size
 		if !dryRun {
-			if rerr := os.Remove(path); rerr != nil {
-				return xcerr.E(xcerr.CodeInternal, "cannot remove partial "+filepath.Base(path), rerr)
+			rel, rerr := filepath.Rel(root, path)
+			if rerr != nil {
+				return rerr
+			}
+			if rerr := scoped.Remove(rel); rerr != nil {
+				return xcerr.E(xcerr.CodeInternal, "cannot remove partial "+d.Name(), rerr)
 			}
 		}
 		return nil

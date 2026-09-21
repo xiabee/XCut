@@ -206,21 +206,25 @@ if [ "$mode" = "full" ]; then
         NOT_RUN="$NOT_RUN govulncheck"
     fi
 
-    # Static security analysis at the same bar as the Windows gate: only HIGH
-    # severity + HIGH confidence findings fail, and suppressions stay inline in
-    # the source as `#nosec GXXX -- written reason`, never as rule exclusions.
+    # Static security analysis: HIGH-severity findings fail the gate. The bar was
+    # originally severity HIGH *and* confidence HIGH, which on this codebase
+    # matched nothing at all — 90 findings, none in that cell — so the step could
+    # not fail for want of a threshold. Suppression convention: `#nosec GXXX --
+    # written reason` inline, never a rule exclusion.
     if command -v gosec >/dev/null 2>&1; then
-        gosec -severity high -confidence high -tests=false ./... && gsc_rc=0 || gsc_rc=$?
+        gosec -severity high -tests=false ./... && gsc_rc=0 || gsc_rc=$?
         if [ "$gsc_rc" = 126 ]; then
             echo "== gosec: SKIPPED (execution blocked by policy)" >&2
             NOT_RUN="$NOT_RUN gosec(policy-blocked)"
         elif [ "$gsc_rc" != 0 ]; then
-            echo "== gosec: FAILED (rc=$gsc_rc) — HIGH findings above, or the scan itself failed" >&2
+            echo "== gosec: FAILED (rc=$gsc_rc) — HIGH-severity findings above, or the scan itself failed" >&2
             exit "$gsc_rc"
+        else
+            # Only the clean case announces itself: a line printed outside this
+            # branch also printed on the skip path, which is how a scan that
+            # never ran claimed there was nothing to find.
+            echo "== gosec: clean (severity=high, any confidence)"
         fi
-        # Announce the clean case: a step that says nothing on success cannot be
-        # told apart from one that was skipped when reading the log back.
-        echo "== gosec: no HIGH-severity x HIGH-confidence findings"
     else
         echo "== gosec: not installed (go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped" >&2
         NOT_RUN="$NOT_RUN gosec"

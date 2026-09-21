@@ -237,11 +237,14 @@ if ($Mode -eq "full") {
         $NotRun += "govulncheck"
     }
 
-    # Static security analysis: HIGH severity + HIGH confidence findings fail
-    # the gate. Suppressions live in the source as `#nosec GXXX -- reason`
-    # (each with a written justification), never as blanket rule exclusions.
+    # Static security analysis: HIGH-severity findings fail the gate. The
+    # severity+confidence pair used to be the filter, and on this codebase that
+    # cell was empty (90 findings, none HIGH x HIGH), so the step could not fail
+    # for want of a threshold. Suppressions stay in the source as
+    # `#nosec GXXX -- reason` (each with a written justification), never as
+    # blanket rule exclusions.
     if (Get-Command gosec -ErrorAction SilentlyContinue) {
-        Invoke-Step "gosec" { gosec -severity high -confidence high -tests=false ./... }
+        Invoke-Step "gosec" { gosec -severity high -tests=false ./... }
     }
     else {
         Write-Host "== gosec: not installed (GOBIN=.tools/bin go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped"

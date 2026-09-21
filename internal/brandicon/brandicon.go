@@ -2,10 +2,13 @@ package brandicon
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
+
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // brandIcon draws the xcut mark programmatically — a dark rounded tile
@@ -24,11 +27,17 @@ func Brand(size int) draw.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, size, size))
 	// Background tile with a subtle vertical two-tone (green→deep teal).
 	for y := 0; y < size; y++ {
-		t := float64(y) / float64(size-1)
+		// A one-pixel tile has no second row, so the gradient has no span to
+		// walk; dividing by zero would feed a NaN into an integer conversion,
+		// whose result the language leaves to the platform.
+		t := 0.0
+		if size > 1 {
+			t = float64(y) / float64(size-1)
+		}
 		bg := color.RGBA{
-			uint8(lerp(0x16, 0x0d, t)),
-			uint8(lerp(0x8f, 0x5c, t)),
-			uint8(lerp(0x8a, 0x71, t)),
+			uint8(lerp(0x16, 0x0d, t)), // #nosec G115 -- interpolates two uint8 colour endpoints over t in [0,1]
+			uint8(lerp(0x8f, 0x5c, t)), // #nosec G115 -- interpolates two uint8 colour endpoints over t in [0,1]
+			uint8(lerp(0x8a, 0x71, t)), // #nosec G115 -- interpolates two uint8 colour endpoints over t in [0,1]
 			0xff,
 		}
 		for x := 0; x < size; x++ {
@@ -102,8 +111,22 @@ func pointInPolygon(px, py float64, poly [][2]float64) bool {
 // entries, Vista+). Only the ICONDIR + ICONDIRENTRY framing is written
 // here; the entries are the PNG payloads verbatim.
 func ICO(imgs []image.Image) ([]byte, error) {
+	// Both bounds are about the container's fixed field widths: the entry count
+	// is a uint16, and each entry's width and height is one byte where 0 means
+	// 256. Before this check a 512 px image returned no error and wrote 0,0 —
+	// a header describing a different picture than the PNG behind it. The entry
+	// cap is tighter than the uint16 field allows because it is also what keeps
+	// the byte-offset arithmetic below 2^32; neither cap is a tested case at its
+	// own edge (65k PNG encodes cost more than the comparison they cover).
+	if len(imgs) == 0 || len(imgs) > 256 {
+		return nil, xcerr.E(xcerr.CodeValidation, "an icon needs between 1 and 256 images", nil)
+	}
 	var pngs [][]byte
 	for _, im := range imgs {
+		w, h := im.Bounds().Dx(), im.Bounds().Dy()
+		if w < 1 || w > 256 || h < 1 || h > 256 {
+			return nil, xcerr.E(xcerr.CodeValidation, fmt.Sprintf("icon image of %dx%d does not fit an ICO entry: dimensions are one byte each, and 256 is the largest size", w, h), nil)
+		}
 		b := image.NewRGBA(im.Bounds())
 		draw.Draw(b, b.Bounds(), im, image.Point{}, draw.Src)
 		var buf bytes.Buffer
@@ -114,9 +137,9 @@ func ICO(imgs []image.Image) ([]byte, error) {
 	}
 
 	var out bytes.Buffer
-	out.Write([]byte{0, 0}) // reserved
-	out.Write([]byte{1, 0}) // type: icon
-	writeLE16(&out, uint16(len(pngs)))
+	out.Write([]byte{0, 0})            // reserved
+	out.Write([]byte{1, 0})            // type: icon
+	writeLE16(&out, uint16(len(pngs))) // #nosec G115 -- the entry list is capped at 256 above
 
 	offset := 6 + 16*len(pngs)
 	for i, im := range imgs {
@@ -124,11 +147,11 @@ func ICO(imgs []image.Image) ([]byte, error) {
 		// size is far below that.
 		out.WriteByte(byte(im.Bounds().Dx() & 0xff))
 		out.WriteByte(byte(im.Bounds().Dy() & 0xff))
-		out.Write([]byte{0, 0})  // palette count, reserved
-		out.Write([]byte{1, 0})  // color planes
-		out.Write([]byte{32, 0}) // bits per pixel
-		writeLE32(&out, uint32(len(pngs[i])))
-		writeLE32(&out, uint32(offset))
+		out.Write([]byte{0, 0})               // palette count, reserved
+		out.Write([]byte{1, 0})               // color planes
+		out.Write([]byte{32, 0})              // bits per pixel
+		writeLE32(&out, uint32(len(pngs[i]))) // #nosec G115 -- one <=256 px PNG entry cannot reach 4 GiB
+		writeLE32(&out, uint32(offset))       // #nosec G115 -- bounded by the 256-entry cap and the size above
 		offset += len(pngs[i])
 	}
 	for _, p := range pngs {
@@ -138,13 +161,13 @@ func ICO(imgs []image.Image) ([]byte, error) {
 }
 
 func writeLE16(b *bytes.Buffer, v uint16) {
-	b.WriteByte(byte(v))
-	b.WriteByte(byte(v >> 8))
+	b.WriteByte(byte(v))      // #nosec G115 -- little-endian byte split of a uint16
+	b.WriteByte(byte(v >> 8)) // #nosec G115 -- little-endian byte split of a uint16
 }
 
 func writeLE32(b *bytes.Buffer, v uint32) {
-	b.WriteByte(byte(v))
-	b.WriteByte(byte(v >> 8))
-	b.WriteByte(byte(v >> 16))
-	b.WriteByte(byte(v >> 24))
+	b.WriteByte(byte(v))       // #nosec G115 -- little-endian byte split of a uint32
+	b.WriteByte(byte(v >> 8))  // #nosec G115 -- little-endian byte split of a uint32
+	b.WriteByte(byte(v >> 16)) // #nosec G115 -- little-endian byte split of a uint32
+	b.WriteByte(byte(v >> 24)) // #nosec G115 -- little-endian byte split of a uint32
 }

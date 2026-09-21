@@ -36,7 +36,7 @@ func Fingerprint(path string) (string, error) {
 
 	h := sha256.New()
 	var meta [16]byte
-	binary.LittleEndian.PutUint64(meta[0:8], uint64(fi.Size()))
+	binary.LittleEndian.PutUint64(meta[0:8], uint64(fi.Size())) // #nosec G115 -- hash input only: a negative stat value wraps consistently and never enters arithmetic
 	binary.LittleEndian.PutUint64(meta[8:16], uint64(fi.ModTime().UnixNano()))
 	h.Write(meta[:])
 

@@ -2,6 +2,8 @@ package brandicon
 
 import (
 	"image"
+	"image/color"
+	"strings"
 	"testing"
 )
 
@@ -72,6 +74,59 @@ func TestICOStructure(t *testing.T) {
 }
 
 func binaryLE16(b []byte) uint16 { return uint16(b[0]) | uint16(b[1])<<8 }
+
+// TestICORefusesWhatOneByteCannotHold: an entry's width and height are one byte
+// each, where 0 means 256. Before the guard, a 512 px image returned no error
+// and wrote dimension bytes 0,0 — a container that lies about its payload.
+func TestICORefusesWhatOneByteCannotHold(t *testing.T) {
+	for _, im := range []image.Image{flat(257, 257), flat(512, 512), flat(300, 10), flat(0, 0)} {
+		b := im.Bounds().Dx()
+		_, err := ICO([]image.Image{im})
+		if err == nil {
+			t.Fatalf("ICO accepted a %d px wide image: the one-byte field encodes it as %d", b, b&0xff)
+		}
+		// Name the guard, not any error: with the bound relaxed the 0 px case
+		// still fails later, inside png.Encode, and a test that accepted that
+		// would pass with the guard deleted.
+		if msg := err.Error(); !strings.Contains(msg, "does not fit an ICO entry") {
+			t.Fatalf("a %d px image failed for the wrong reason: %s", b, msg)
+		}
+	}
+	if _, err := ICO(nil); err == nil {
+		t.Fatal("ICO accepted no images: that is a container with zero entries")
+	}
+	// The other side of the bound, so the guard is a bound and not a ban.
+	ico, err := ICO([]image.Image{flat(256, 256)})
+	if err != nil {
+		t.Fatalf("256 px is expressible (0 means 256): %v", err)
+	}
+	if ico[6] != 0 || ico[7] != 0 {
+		t.Fatalf("256 px must encode as 0, got %d,%d", ico[6], ico[7])
+	}
+}
+
+// TestBrandOnePixelIsDefined pins behaviour the compiler does not define: at
+// size 1 the gradient denominator is zero, and converting that NaN to an integer
+// is implementation-defined (it happened to yield the t=0 colour on amd64 only
+// because int(NaN) is -2^63 there, which is divisible by 256).
+func TestBrandOnePixelIsDefined(t *testing.T) {
+	got := rgbaAt(Brand(1), 0, 0)
+	want := struct{ R, G, B, A uint8 }{0x16, 0x8f, 0x8a, 0xff}
+	if got != want {
+		t.Fatalf("Brand(1) = %02x %02x %02x %02x, want the top of the gradient %02x %02x %02x %02x",
+			got.R, got.G, got.B, got.A, want.R, want.G, want.B, want.A)
+	}
+}
+
+func flat(w, h int) image.Image {
+	im := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			im.Set(x, y, color.NRGBA{0x20, 0x40, 0x60, 0xff})
+		}
+	}
+	return im
+}
 
 func rgbaAt(img image.Image, x, y int) (c struct{ R, G, B, A uint8 }) {
 	r, g, b, a := img.At(x, y).RGBA()
