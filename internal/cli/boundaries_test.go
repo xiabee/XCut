@@ -16,8 +16,11 @@ import (
 // scan is genuinely optional, and so is this test.
 func boundariesSidecar(t *testing.T) string {
 	t.Helper()
-	if _, err := exec.LookPath("python"); err != nil {
-		t.Skip("python not on PATH")
+	// python3 first, the way worker.pythonInterpreter() resolves it: a Debian /
+	// Ubuntu node has no bare `python`, and looking that up alone would skip
+	// this path on the second platform instead of exercising it.
+	if !commandOnPath("python3") && !commandOnPath("python") {
+		t.Skip("no python interpreter on PATH")
 	}
 	if !testmedia.HasFFmpeg() {
 		t.Skip("ffmpeg not available")
@@ -28,6 +31,11 @@ func boundariesSidecar(t *testing.T) string {
 	}
 	return filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))),
 		"scripts", "xcut-ai-sidecar.py")
+}
+
+func commandOnPath(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // TestBoundariesScanListClear walks the operator's whole path on a fixture whose

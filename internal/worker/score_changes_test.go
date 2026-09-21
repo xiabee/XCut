@@ -17,8 +17,11 @@ import (
 // cross-language contract.
 func scoreChangesSidecar(t *testing.T) string {
 	t.Helper()
-	if _, err := exec.LookPath("python"); err != nil {
-		t.Skip("python not on PATH")
+	// The same interpreter resolution the product uses (python3 first: a
+	// Debian/Ubuntu node has no bare `python`, and looking that up alone would
+	// silently skip the cross-language contract on the platform it matters for).
+	if pythonInterpreter() == "" {
+		t.Skip("no python interpreter on PATH")
 	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not on PATH")
