@@ -92,8 +92,15 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 	if err != nil || len(assets) != 1 {
 		t.Fatalf("assets: %+v, %v", assets, err)
 	}
+	crop := []float64{0.7, 0, 0.25, 0.15}
+	// The region is what the user asked for; the marks are the measurement of
+	// that region. Writing them in this order is the product's order too (the
+	// crop write is what invalidates an older measurement).
+	if err := d.DB.SetAssetScoreCrop(ctx, assets[0].ID, crop); err != nil {
+		t.Fatal(err)
+	}
 	if err := d.DB.SetAssetScoreMarks(ctx, assets[0].ID, &storage.ScoreMarks{
-		Crop: []float64{0.7, 0, 0.25, 0.15}, Times: []float64{mark}, At: 1,
+		Crop: crop, Times: []float64{mark}, At: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +121,26 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 	// The start is untouched: the mark shortens the clip, it does not move it.
 	if startsAt(marked, first.SourceStart) != 1 {
 		t.Fatalf("the trimmed clip lost its start at %.2f: %s", first.SourceStart, ends(marked))
+	}
+
+	// Marks measured against a DIFFERENT region must be ignored by the consumer,
+	// not just dropped by the writer: they would end clips at points that belong
+	// to another part of the frame. This is the state a region change cannot
+	// leave behind today, and the assertion is what keeps it that way.
+	if err := d.DB.SetAssetScoreMarks(ctx, assets[0].ID, &storage.ScoreMarks{
+		Crop: []float64{0.1, 0.1, 0.2, 0.2}, Times: []float64{mark}, At: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := d.BuildTimeline(p, Style("badminton_highlight"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endsAt(stale, mark) != 0 {
+		t.Fatalf("stale-region marks still shaped a clip (end %.2f): %s", mark, ends(stale))
+	}
+	if endsAt(stale, first.SourceEnd) == 0 {
+		t.Fatalf("ignoring stale marks must return to the untrimmed ends: %s", ends(stale))
 	}
 }
 

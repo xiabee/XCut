@@ -80,6 +80,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **The timeline refuses boundaries it cannot vouch for.** Marks are consumed
+  only when they were measured against the region the asset carries *now*. The
+  storage layer already dropped them on a region change, so nothing could go
+  wrong today — which is exactly why the consumer now checks: the guarantee held
+  only as long as every future writer behaved. A stale row is logged with both
+  regions rather than used or ignored silently.
 - **The region panel cannot show the other region's state.** Switching the
   picker's target fired two overlapping requests, and whichever resolved last
   wrote the status line — so the scoreboard view could end up reading "full

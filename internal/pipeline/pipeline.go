@@ -500,12 +500,21 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				return err
 			}
 			logSegmentation(d.Log, asset.ID, preset.Name, estat, len(segs))
-			// Scoreboard marks, if the user pointed a detector at this source.
-			// nil (not an empty slice) when there are none, so a project that
-			// never opted in selects exactly as it did before the field existed.
+			// Scoreboard marks, and only marks that were measured against the
+			// region this asset now carries: boundaries from an older rect would
+			// end clips at points belonging to a different part of the frame.
+			// Storage drops them on a region change, but the consumer is where
+			// the rule has to hold — otherwise the guarantee only lasts until
+			// the next writer. nil (not an empty slice) when there are none, so
+			// a project that never opted in selects exactly as it did before.
 			var marks []float64
-			if asset.ScoreMarks != nil {
-				marks = asset.ScoreMarks.Times
+			if m := asset.ScoreMarks; m != nil {
+				if storage.SameCrop(m.Crop, asset.ScoreCrop) {
+					marks = m.Times
+				} else {
+					d.Log.Warn("scoreboard marks are stale for this asset; ignoring them",
+						"asset", asset.ID, "marksCrop", m.Crop, "region", asset.ScoreCrop)
+				}
 			}
 			items = append(items, style.AssetEvents{
 				Asset: style.AssetInfo{
