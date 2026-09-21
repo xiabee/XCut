@@ -3,7 +3,8 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [Unreleased] — 2026-09-21 early session #17 (secret-scan honesty, tailnet recipe, reel cost)
+## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
+tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 ### Security
 - **A gate that skipped tools now says so.** The verdict line lists the steps

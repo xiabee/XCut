@@ -3,8 +3,12 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-21 (late morning) — session #18: the rally-end gap closed with
-imported data instead of a new heuristic. The sidecar can now read a burned-in
+Updated: 2026-09-22 (early morning). This section is a session log, read oldest
+first: the state that holds now is the last paragraph before
+`## Version / HEAD`.
+
+Session #18: the rally-end gap closed with imported data instead of a new
+heuristic. The sidecar can now read a burned-in
 scoreboard (`score_changes`), `xcut boundaries` stores the point ends per asset,
 and the style engine ends a clip at the nearest reachable mark — measured on the
 owner's match: P 0.886 → **0.998**, all 8 clips ending within 0.05 s of a point
@@ -96,8 +100,6 @@ leg PASS with `-race` clean and the Rust worker actually run this time
 (`cargo test` rc=0, 3 passed) because the dispatch appended to `PATH` instead of
 replacing it.
 
-## Version / HEAD
-
 **The one-shot was run end to end on the owner's match** (`xcut auto … --style
 badminton_highlight --duration 240 --score-crop 0.4297,0.7778,0.1406,0.0972`):
 77.6 s wall on the laptop for import → analyze (44 scoreboard marks measured in
@@ -127,26 +129,21 @@ judgement — "sample every phase" against "take the best eight wherever they fa
 — so it is recorded as an open question for the owner, with the numbers in
 docs/EVAL.md, rather than tuned in passing.
 
+Both halves of the Windows 500 fix were then accepted on all three channels at
+`5c63ffe`: local fast gate PASS (464 passed / 7 skipped), win-devops PASS (job
+`20260922-014911-99fb0e`, the same 464/7). The count is the evidence that the
+node ran this code rather than the previous leg's: `c1af91b`, whose win-devops
+leg reported 459, gained exactly five test functions between it and here — two
+`internal/eval` missed-run tests and three `internal/workspace` retry tests —
+and 459 + 5 is 464. The Linux full gate PASSed on a clean `git archive` snapshot
+(`452 passed, 13 skipped`, zero `DATA RACE` lines, `cargo test` rc=0 with 3
+passed, `not run: govulncheck`). Scope of that Linux claim, stated plainly
+because the skip list is what shows it: all four retry tests are
+Windows-semantics tests and skip there, so the Linux leg proves only that the
+change did not break POSIX (where a rename over an open file simply succeeds) —
+the 2 s sharing-class budget is guarded by the two Windows channels alone.
+
 ## Version / HEAD
-
-**The one-shot was run end to end on the owner's match** (`xcut auto … --style
-badminton_highlight --duration 240 --score-crop 0.4297,0.7778,0.1406,0.0972`):
-77.6 s wall on the laptop for import → analyze (44 scoreboard marks measured in
-the same pass) → timeline → a 158.6 s / 39.0 MB reel, 23 clips of which 22 end on
-a scored point, and it printed the footage note. That run is what surfaced two
-gaps now fixed: `xcut auto` had been the one path that reported a short reel
-without explaining it, and an unreadable worker answer (a mis-set
-`workers.ai_bin`) named no binary. docs/PERFORMANCE.md carries the row.
-Accepted at `c1af91b` on all three channels: local fast gate PASS (459 passed /
-7 skipped), win-devops PASS (job `20260921-225624-b28f3e`, the same 459/7), Linux
-full gate PASS with zero `DATA RACE` lines and the Rust worker run.
-
-The follow-up hypothesis — let clips be shorter so more rallies fit the same
-seconds — was measured on the marked manifest and **rejected**: at 60 s the
-`max_clip_duration` arms 8/6/4 s give F1 0.225/0.219/0.224 with 8/10/15 clips,
-and at 120 s the shipped 8 s wins outright (0.389 vs 0.341/0.367). The reel's
-seconds are the budget, so splitting them redistributes rather than adds. No
-preset changed; the table is in docs/EVAL.md.
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session
