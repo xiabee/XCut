@@ -69,6 +69,59 @@ func TestScoreEmptySelection(t *testing.T) {
 	}
 }
 
+// TestScoreLongestSkipSeparatesWhatPRTakesAsEqual: the point of the metric is
+// that two reels can agree on every existing number and differ on the one that
+// says whether the match was actually watched end to end. Both selections below
+// score P 1, R 1/3, F1 0.5 and hit two of three ranges — by hand, over expected
+// [0,10] [30,40] [60,70]:
+//
+//	end to end: [0,5] + [60,65]  → steps over 30..60, i.e. 55 s
+//	first half: [0,5] + [30,35]  → steps over 35..70, i.e. 35 s
+func TestScoreLongestSkipSeparatesWhatPRTakesAsEqual(t *testing.T) {
+	expected := []Range{{Start: 0, End: 10}, {Start: 30, End: 40}, {Start: 60, End: 70}}
+	spread := Score([]Interval{fsec(0, 5), fsec(60, 65)}, expected, DefaultMetricsConfig())
+	clumped := Score([]Interval{fsec(0, 5), fsec(30, 35)}, expected, DefaultMetricsConfig())
+
+	for _, pair := range []struct{ a, b CaseMetrics }{{spread, clumped}, {clumped, spread}} {
+		if pair.a.Precision != pair.b.Precision || pair.a.Recall != pair.b.Recall ||
+			pair.a.F1 != pair.b.F1 || pair.a.RangesHit != pair.b.RangesHit {
+			t.Fatalf("the two selections were supposed to tie on the existing metrics: %+v vs %+v", pair.a, pair.b)
+		}
+	}
+	if spread.LongestSkip != 55 {
+		t.Errorf("end-to-end reel: longest skip %g, want 55 (the 30..60 gap to the last range's start)", spread.LongestSkip)
+	}
+	if clumped.LongestSkip != 35 {
+		t.Errorf("first-half reel: longest skip %g, want 35 (nothing picked after 35)", clumped.LongestSkip)
+	}
+}
+
+// TestScoreLongestSkipMergesBeforeMeasuring: the gap has to be computed over the
+// union of picks. [0,60]+[10,70] covers 0..70, so a 0..100 span leaves 30 s over
+// — and [0,100]+[10,20] covers the whole span, so it leaves nothing, where
+// subtracting per-pick ends would invent an 80 s hole out of a contained clip.
+// The two orders of the first pair are the same case seen from the other side.
+func TestScoreLongestSkipMergesBeforeMeasuring(t *testing.T) {
+	expected := []Range{{Start: 0, End: 100}}
+	cases := []struct {
+		name  string
+		picks []Interval
+		want  float64
+	}{
+		{"overlapping pair", []Interval{fsec(0, 60), fsec(10, 70)}, 30},
+		{"same pair, reversed order", []Interval{fsec(10, 70), fsec(0, 60)}, 30},
+		{"contained clip", []Interval{fsec(0, 100), fsec(10, 20)}, 0},
+	}
+	for _, c := range cases {
+		if got := Score(c.picks, expected, DefaultMetricsConfig()).LongestSkip; got != c.want {
+			t.Errorf("%s: longest skip %g, want %g", c.name, got, c.want)
+		}
+	}
+	if s := Score(nil, expected, DefaultMetricsConfig()); s.LongestSkip != 100 {
+		t.Errorf("no picks: longest skip %g, want the whole 100 s span", s.LongestSkip)
+	}
+}
+
 func TestScoreDuplicates(t *testing.T) {
 	// Two heavily overlapping picks of the same moment.
 	selected := []Interval{fsec(10, 18), fsec(11, 19), fsec(30, 32)}

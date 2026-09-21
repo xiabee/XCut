@@ -138,6 +138,54 @@ type CaseMetrics struct {
 	// Duplicate rate: fraction of selected intervals involved in a
 	// near-duplicate pair (IoU > DuplicateIoU). 0 = no redundant picks.
 	DuplicateRate float64 `json:"duplicate_rate"`
+
+	// LongestSkip is the widest stretch of source time, in seconds, that the
+	// reel stepped over between its picks — measured across the span the
+	// annotations cover, ends included. Precision, recall and range hits are all
+	// indifferent to *where* the picks fall: eight clips packed into the first
+	// two minutes of a ten-minute match score the same as eight spread over it.
+	// A highlight reel is not supposed to be one long opening rally.
+	LongestSkip float64 `json:"longest_skip"`
+}
+
+// longestSkip returns the widest stretch of [lo,hi] that no pick covers, where
+// lo/hi are the first and last edges of the annotated ranges. The picks are
+// clipped to that span and merged first, so overlapping or contained clips
+// cannot hide a gap or invent one.
+func longestSkip(selected, expected []Interval) float64 {
+	if len(expected) == 0 {
+		return 0
+	}
+	lo, hi := expected[0].Start, expected[0].End
+	for _, e := range expected {
+		if e.Start < lo {
+			lo = e.Start
+		}
+		if e.End > hi {
+			hi = e.End
+		}
+	}
+	if hi <= lo {
+		return 0
+	}
+	span := Interval{Start: lo, End: hi}
+	clipped := make([]Interval, 0, len(selected))
+	for _, s := range selected {
+		if c, ok := s.intersect(span); ok {
+			clipped = append(clipped, c)
+		}
+	}
+	merged := mergeIntervals(clipped)
+	if len(merged) == 0 {
+		return round4(hi - lo)
+	}
+	gap := math.Max(merged[0].Start-lo, hi-merged[len(merged)-1].End)
+	for i := 1; i < len(merged); i++ {
+		if g := merged[i].Start - merged[i-1].End; g > gap {
+			gap = g
+		}
+	}
+	return round4(math.Max(gap, 0))
 }
 
 // RangeMatch is one expected range against the best-matching selection.
@@ -196,6 +244,8 @@ func Score(selected []Interval, expected []Range, cfg Config) CaseMetrics {
 	m.Clips = len(selected)
 	m.SelectedSeconds = round4(selSecs)
 	m.ExpectedSeconds = round4(expSecs)
+	m.LongestSkip = longestSkip(selected, expIntervals)
+	m.LongestSkip = longestSkip(selected, expIntervals)
 	if selSecs > 0 && expSecs > 0 {
 		inter := intersectionLength(selected, expIntervals)
 		m.Precision = round4(inter / selSecs)

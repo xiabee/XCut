@@ -34,6 +34,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **The eval harness now reports `longest skip`** — the widest stretch of source
+  time inside the annotated span that no clip covers, measured over the union of
+  picks. Precision, recall, F1 and range hits are all indifferent to *where* the
+  picks fall, so a reel of eight clips taken from the opening minutes of a
+  ten-minute match scores identically to one spread across it; the two
+  `Score` tests are built on such a pair. Measured on the owner's match: the
+  60 s default leaves a 164 s stretch unrepresented (120 s: 60 s, 240 s: 31 s),
+  which is what a phase quota that caps visits — never requires them — permits.
+  It is recorded rather than "fixed": precision at 60 s is 0.998, so every pick
+  is already inside a real rally, and forcing spread changes *which* rallies the
+  eight are without adding any highlight time. docs/EVAL.md carries the table.
 - **A long reel now gets finer rally slices, a short one does not.** The dense
   span the analyzer finds is cut at `rally_chunk` (default 30 s), so
   candidates = footage ÷ slice — on the owner's 603 s match that pinned the pool

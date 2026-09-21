@@ -15,6 +15,33 @@ Measured metrics (per case, deterministic):
   clip's temporal IoU ≥ `--iou` (default 0.3).
 - **Duplicate rate** — fraction of selected clips that overlap another clip
   with IoU > 0.5. High duplicate rate = a reel of near-identical moments.
+- **Longest skip** — the widest stretch of source time inside the annotated span
+  that no clip covers, ends included, measured over the *union* of picks.
+  Everything above is indifferent to where the picks fall: eight clips packed
+  into the first two minutes of a ten-minute match score identically to eight
+  spread across it. `TestScoreLongestSkipSeparatesWhatPRTakesAsEqual` is written
+  against exactly that pair.
+
+Measured on the owner's match (annotated span 0.2..602.5 s, 43 ranges, scoreboard
+marks in place, the shipped slice rule):
+
+| asked | clips | F1 | longest skip | on a point |
+| --- | --- | --- | --- | --- |
+| 60 s (default) | 8 | 0.225 | **164 s** | 8/8 |
+| 120 s | 16 | 0.389 | 60 s | 16/16 |
+| 240 s | 27 | 0.562 | 31 s | 26/27 |
+
+The 60 s reel leaves one stretch of nearly three minutes unrepresented, which is
+what a 5-phase × 2-per-phase quota permits: the rule caps how often a window may
+be visited, it never requires a window to be visited. **This is not being
+treated as a defect**, and the reason is on the same line as the number:
+precision at 60 s is 0.998 — every clip already sits inside a real rally, so
+forcing spread re-chooses *which* rallies the eight are, not how much highlight
+time the reel contains (recall is capped by the 60 s budget, not by clustering).
+Whether a recap that samples every phase beats one that takes the eight best
+moments wherever they fall is a taste call for the owner; the metric is here so
+the choice is made against a number, and so a future change that *does* cluster
+the picks cannot pass unnoticed.
 - Macro averages across cases are reported at the end (failed cases counted
   separately, never silently dropped).
 

@@ -117,6 +117,16 @@ and at 120 s the shipped 8 s wins outright (0.389 vs 0.341/0.367). The reel's
 seconds are the budget, so splitting them redistributes rather than adds. No
 preset changed; the table is in docs/EVAL.md.
 
+A new eval metric, `longest skip` (the widest annotated stretch no clip covers),
+exists because the existing four are blind to *where* picks land: the 60 s
+default leaves 164 s of the match unrepresented while scoring P 0.998 / F1 0.225
+and 8/8 clips on a scored point. Recorded, deliberately not "fixed" — the phase
+quota caps visits per window and never requires one, and with precision already at
+0.998 forcing spread swaps which rallies the eight picks are rather than adding
+highlight time. If the owner wants a recap that samples every phase, that is the
+knob, and this number is how the trade gets checked. docs/EVAL.md has the table
+for 60/120/240 s.
+
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session
 - HEAD: session #16/#17 (2026-09-20 night) — the auth-gate failure budget
