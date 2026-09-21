@@ -79,6 +79,7 @@ type selectedClipJSON struct {
 	Breakdown  string   `json:"score_breakdown,omitempty"`
 	HitCount   *int     `json:"hit_count,omitempty"`
 	HitDensity *float64 `json:"hit_density,omitempty"`
+	PointEnd   *float64 `json:"point_end,omitempty"`
 }
 
 type evalResults struct {
@@ -392,6 +393,13 @@ func toJsonSelectedClips(clips []timeline.Clip) []selectedClipJSON {
 		}
 		if v, err := strconv.ParseFloat(c.Metadata["hit_density"], 64); err == nil {
 			sel.HitDensity = &v
+		}
+		// Which point boundary ended this clip, if one did. `score_marks` says
+		// how many boundaries were available; this says how many were used —
+		// without it a scan that measured everything and shaped nothing would
+		// still print a marked-looking row.
+		if v, err := strconv.ParseFloat(c.Metadata["point_end"], 64); err == nil {
+			sel.PointEnd = &v
 		}
 		out = append(out, sel)
 	}

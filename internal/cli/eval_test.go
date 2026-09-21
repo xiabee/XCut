@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/xiabee/XCut/internal/testmedia"
+	"github.com/xiabee/XCut/internal/timeline"
 )
 
 // TestEvalHarness runs the evaluation command end-to-end against a synthetic
@@ -358,5 +359,36 @@ func TestEvalCheckMode(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "unknown style: mystyle") {
 		t.Fatalf("check must reject the workspace-only style:\n%s", stdout.String())
+	}
+}
+
+// TestSelectedClipsReportWhichBoundariesWereUsed: the results row must separate
+// "boundaries were available" from "a boundary ended this clip". Both directions
+// are asserted — a mapping that always wrote the key would satisfy the positive
+// case and lie in the negative one.
+func TestSelectedClipsReportWhichBoundariesWereUsed(t *testing.T) {
+	out := toJsonSelectedClips([]timeline.Clip{
+		{SourceStart: 10, SourceEnd: 17.25, Metadata: map[string]string{"point_end": "17.25", "score": "0.9"}},
+		{SourceStart: 100, SourceEnd: 108, Metadata: map[string]string{"score": "0.8"}},
+		{SourceStart: 200, SourceEnd: 208, Metadata: map[string]string{"point_end": "not-a-time"}},
+	})
+	if len(out) != 3 {
+		t.Fatalf("all three clips map, got %d", len(out))
+	}
+	if out[0].PointEnd == nil || *out[0].PointEnd != 17.25 {
+		t.Errorf("shaped clip lost its boundary: %+v", out[0])
+	}
+	if out[1].PointEnd != nil {
+		t.Errorf("unshaped clip claims a boundary: %+v", out[1])
+	}
+	if out[2].PointEnd != nil {
+		t.Errorf("an unparseable boundary must be absent, not a false zero: %+v", out[2])
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(b), `"point_end"`) != 1 {
+		t.Errorf("point_end must appear exactly once in %s", b)
 	}
 }
