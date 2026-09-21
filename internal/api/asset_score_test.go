@@ -68,7 +68,9 @@ func TestAssetScoreRoundTrip(t *testing.T) {
 
 // TestAssetScoreReportsStale: marks measured against a different region than the
 // one now stored are reported as stale, which is what tells the UI to say
-// "re-analyze" instead of looking satisfied.
+// "re-analyze" instead of looking satisfied. Storage refuses to write that pair
+// apart (a measurement stamps its own region), so the row is built the way a
+// legacy one would exist: the marks replaced underneath the crop.
 func TestAssetScoreReportsStale(t *testing.T) {
 	s := testServer(t)
 	pid, aid := seedAsset(t, s, "score-stale", "match.mp4")
@@ -76,9 +78,8 @@ func TestAssetScoreReportsStale(t *testing.T) {
 	if err := s.DB.SetAssetScoreCrop(ctx, aid, []float64{0.1, 0.1, 0.2, 0.2}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DB.SetAssetScoreMarks(ctx, aid, &storage.ScoreMarks{
-		Crop: []float64{0.6, 0.6, 0.2, 0.2}, Times: []float64{4}, At: 1,
-	}); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`,
+		`{"crop":[0.6,0.6,0.2,0.2],"times":[4],"at":1}`, aid); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,6 +89,15 @@ func TestAssetScoreReportsStale(t *testing.T) {
 	}
 	if out["stale"] != true || out["marks"].(float64) != 1 {
 		t.Fatalf("stale region/marks mismatch: %v", out)
+	}
+	// The guard has teeth: a self-consistent row must NOT read as stale.
+	if _, err := s.DB.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`,
+		`{"crop":[0.1,0.1,0.2,0.2],"times":[4],"at":1}`, aid); err != nil {
+		t.Fatal(err)
+	}
+	_, fresh := do(t, s, "GET", "/api/v1/projects/"+pid+"/assets/"+aid+"/score", "")
+	if fresh["stale"] != false || fresh["marks"].(float64) != 1 {
+		t.Fatalf("consistent row reported stale: %v", fresh)
 	}
 }
 

@@ -53,14 +53,18 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   to be a measurement: the response reports `marks: 0` until an analyze has run,
   and marks measured against a moved region read `stale` (changing the region
   drops the old boundaries rather than silently reusing them).
-- **The gate now says which optional legs actually ran.** `go test` reports
-  `N passed, M skipped` and lists every skipped test by name, and the verdict
-  line carries the count. Verified both directions on the same host: with
-  python on PATH 438 pass / 7 skip (no sidecar test listed); with every
-  python-bearing PATH entry removed 425 pass / 20 skip, naming
+- **The gate now says which optional legs actually ran, and why a test failed.**
+  `go test` reports `N passed, M skipped`, lists every skipped test by name in
+  the verdict line, and replays the output (file, line, message) of each failing
+  test before declaring the step red. Both directions were checked on one host:
+  with python on PATH the sidecar tests are absent from the skip list; with every
+  python-bearing PATH entry removed the list names
   `worker/TestScoreChanges*` and `cli/TestBoundariesScanListClear` — so a green
   gate on a python-less node can no longer read as "the cross-language contract
-  was exercised". `scripts/check.sh` (the Linux leg) carries the same accounting.
+  was exercised". The failure replay was checked by injecting an assertion
+  failure and reading it back out of the gate's own output; the numbers in the
+  verdict are not quoted here on purpose, because they move with every test
+  added. `scripts/check.sh` (the Linux leg) carries the same accounting.
 - **Clips can stop where the point stopped.** The core's own signals were
   measured and cannot find rally ends (docs/EVAL.md), so the one source that
   can — a burned-in scoreboard — is now readable: a `score_changes` op in the

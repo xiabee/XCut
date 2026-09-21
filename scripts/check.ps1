@@ -129,19 +129,43 @@ $testExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 $TestPass = 0
 $TestSkips = @()
+# A failing test's text arrives as `output` events; the `fail` event that closes
+# it carries none. The lines are buffered per test and replayed only for the
+# tests that failed — without this the gate said "go test failed with exit code
+# 1" and printed no reason at all, which is the exact silence this step exists
+# to remove (measured: an internal/api assertion failure reached the console as
+# zero lines).
+$Outputs = @{}
+$FailedKeys = @()
 foreach ($line in $testLines) {
     if (-not $line.StartsWith("{")) { continue }
     $ev = $null
     try { $ev = $line | ConvertFrom-Json } catch { continue }
-    if (-not $ev -or -not $ev.Test) { continue }
+    if (-not $ev -or -not $ev.Action) { continue }
     $pkg = ($ev.Package -split "/")[-1]
-    if ($ev.Action -eq "pass") { $TestPass = $TestPass + 1 }
-    if ($ev.Action -eq "skip") {
+    $key = "$($ev.Package)|$($ev.Test)"
+    if ($ev.Action -eq "pass" -and $ev.Test) { $TestPass = $TestPass + 1 }
+    if ($ev.Action -eq "skip" -and $ev.Test) {
         $TestSkips = $TestSkips + "$($pkg)/$($ev.Test)"
     }
-    if ($ev.Action -eq "fail" -and $ev.Output) { Write-Host $ev.Output.TrimEnd() }
+    if ($ev.Action -eq "fail" -and $ev.Test) { $FailedKeys = $FailedKeys + $key }
+    if ($ev.Action -eq "output" -and $ev.Test -and $ev.Output) {
+        if (-not $Outputs[$key]) { $Outputs[$key] = @() }
+        if ($Outputs[$key].Count -lt 30) { $Outputs[$key] = $Outputs[$key] + $ev.Output }
+    }
+    # Package-level build failures have no Test at all, so they would miss every
+    # branch above; their text arrives as build-output events.
+    if (($ev.Action -eq "build-fail" -or $ev.Action -eq "build-output") -and $ev.Output) {
+        Write-Host "   build: $($ev.Output.TrimEnd())"
+    }
 }
 if ($testExit -ne 0) {
+    Write-Host "== go test: output of the failing tests"
+    foreach ($k in $FailedKeys) {
+        $parts = $k -split "\|"
+        Write-Host "--- $((($parts[0]) -split '/')[-1])/$($parts[1])"
+        foreach ($l in $Outputs[$k]) { Write-Host "    $($l.TrimEnd())" }
+    }
     Write-Host "go test stderr tail:"
     Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
     throw "go test failed with exit code $testExit"
