@@ -17,6 +17,7 @@ import (
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/style"
 	"github.com/xiabee/XCut/internal/timeline"
+	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -36,6 +37,34 @@ type evalCaseResult struct {
 	// WHY each moment was picked matters for tuning as much as the metrics.
 	Selected []selectedClipJSON `json:"selected,omitempty"`
 	Metrics  *eval.CaseMetrics  `json:"metrics,omitempty"`
+	// ScoreMarks records how many scoreboard boundaries this case's clips were
+	// allowed to stop at. Without it a "score_roi" run that scanned nothing
+	// would read exactly like one that scanned everything.
+	ScoreMarks int `json:"score_marks,omitempty"`
+}
+
+// scanScoreMarks measures point ends off the burned-in scoreboard and stores
+// them on the case's asset — the same production write `xcut boundaries` does,
+// so the A/B measures the feature rather than a harness stand-in. It returns
+// the count it stored. Refusing loudly when no sidecar exists is the point:
+// score_roi is a request for a measurement, not a hint.
+func scanScoreMarks(ea *App, db *storage.DB, c eval.Case, assetID string) (int, error) {
+	crop := []float64{c.ScoreROI.X, c.ScoreROI.Y, c.ScoreROI.W, c.ScoreROI.H}
+	bin := worker.ResolveAIBin(ea.Cfg.Workers.AIBin)
+	if bin == "" {
+		return 0, xcerr.E(xcerr.CodeNotFound,
+			fmt.Sprintf("case %q asks for score_roi, which needs a scoreboard-capable AI sidecar (set workers.ai_bin)", c.Name), nil)
+	}
+	times, err := worker.ScoreChanges(ea.Ctx, bin, c.Media, crop, scoreScanTimeout)
+	if err != nil {
+		return 0, err
+	}
+	if err := db.SetAssetScoreMarks(ea.Ctx, assetID, &storage.ScoreMarks{
+		Crop: crop, Times: times, At: time.Now().Unix(),
+	}); err != nil {
+		return 0, err
+	}
+	return len(times), nil
 }
 
 // selectedClipJSON is one selected source interval in the results document.
@@ -198,7 +227,8 @@ func cmdEval(a *App, args []string) error {
 		fmt.Fprintf(a.Stdout, "  [%d/%d] %s  (%s)\n", i+1, len(manifest.Cases), c.Name, styleName)
 		res := evalCaseResult{Name: c.Name, Style: styleName, Media: c.Media}
 
-		clips, terr := evalRunCase(&ea, db, c, styleName, duration)
+		clips, marks, terr := evalRunCase(&ea, db, c, styleName, duration)
+		res.ScoreMarks = marks
 		var cm *eval.CaseMetrics
 		if terr != nil {
 			res.Error = terr.Error()
@@ -264,10 +294,11 @@ func cmdEval(a *App, args []string) error {
 // so source times are comparable.
 // duration overrides each case's reel length for this run (0 = the style's own
 // target), which is what lets the harness measure the length/coverage trade-off
-// instead of arguing about it.
-func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duration float64) ([]timeline.Clip, error) {
+// instead of arguing about it. The second result is how many scoreboard marks
+// the case ran with (0 when the manifest asked for none).
+func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duration float64) ([]timeline.Clip, int, error) {
 	if _, err := os.Stat(c.Media); err != nil {
-		return nil, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
+		return nil, 0, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
 	}
 	// Sanitized names can collide ("a b" and "a/b" both → "a_b") and the
 	// projects table enforces unique names; disambiguate with a counter
@@ -277,7 +308,7 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 	for i := 2; ; i++ {
 		existing, err := db.GetProjectByName(ea.Ctx, projectName)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if existing == nil {
 			break
@@ -285,39 +316,46 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 		projectName = fmt.Sprintf("%s_%d", base, i)
 	}
 	if _, err := db.CreateProject(ea.Ctx, projectName); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	p, err := db.GetProjectByName(ea.Ctx, projectName)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	d := ea.Pipeline(db)
 	asset, err := d.ImportAsset(p, c.Media)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	// Per-case court ROI: applied to the imported asset so the timeline
 	// segments THIS case from its own region (manifest A/B support).
 	if c.AssetROI != nil {
 		if !c.AssetROI.Valid() {
-			return nil, xcerr.E(xcerr.CodeValidation,
+			return nil, 0, xcerr.E(xcerr.CodeValidation,
 				fmt.Sprintf("case %s: asset_roi must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1", c.Name), nil)
 		}
 		if err := db.SetAssetROI(ea.Ctx, asset.ID, &storage.MotionROI{
 			X: c.AssetROI.X, Y: c.AssetROI.Y, W: c.AssetROI.W, H: c.AssetROI.H,
 		}); err != nil {
-			return nil, err
+			return nil, 0, err
+		}
+	}
+	marks := 0
+	if c.ScoreROI != nil {
+		var serr error
+		if marks, serr = scanScoreMarks(ea, db, c, asset.ID); serr != nil {
+			return nil, 0, serr
 		}
 	}
 	tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var clips []timeline.Clip
 	for _, tr := range tl.Tracks {
 		clips = append(clips, tr.Clips...)
 	}
-	return clips, nil
+	return clips, marks, nil
 }
 
 // clipsToIntervals maps clips to source-time intervals for scoring. A valid

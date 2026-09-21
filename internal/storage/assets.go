@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"time"
 
@@ -34,6 +35,52 @@ func (r *MotionROI) Valid() bool {
 	return r.X >= 0 && r.Y >= 0 && r.W > 0 && r.H > 0 && r.X+r.W <= 1 && r.Y+r.H <= 1
 }
 
+// MaxScoreMarks bounds what one asset may carry. A mark is a float in a TEXT
+// column, and the detector that produces them is aimed by a threshold the user
+// picks: an unreasonably low one on long footage must not turn the project row
+// into an unbounded blob (rule 4 — nothing unbounded). 4096 is far past the
+// 43 marks a real 8-minute match produced.
+const MaxScoreMarks = 4096
+
+// ScoreMarks are the source-time seconds where a burned-in scoreboard changed
+// — one per finished point — together with the normalized crop they were read
+// from and when. Stored as JSON in the assets.score_marks column (” = unset)
+// because they are the user's annotation of *this* source, not a derived cache
+// entry that may be evicted between runs.
+type ScoreMarks struct {
+	// Crop is [x, y, w, h] in 0..1 fractions of the frame — the region the
+	// scoreboard digits occupy. Kept so a later scan can be compared, and so
+	// `xcut boundaries list` can say where the marks came from.
+	Crop  []float64 `json:"crop"`
+	Times []float64 `json:"times"`
+	At    int64     `json:"at"`
+}
+
+// Valid reports whether the marks are storable: a sane crop and a bounded,
+// finite, strictly increasing set of times. An empty set is valid — "scanned
+// this region and the score never changed" is a result worth keeping, and it
+// reads differently from never scanned. Callers get a validation error naming
+// the offending part rather than a blob the timeline must defend itself
+// against.
+func (m *ScoreMarks) Valid() bool {
+	if m == nil || len(m.Crop) != 4 || len(m.Times) > MaxScoreMarks {
+		return false
+	}
+	x, y, w, h := m.Crop[0], m.Crop[1], m.Crop[2], m.Crop[3]
+	roi := &MotionROI{X: x, Y: y, W: w, H: h}
+	if !roi.Valid() {
+		return false
+	}
+	prev := math.Inf(-1)
+	for _, t := range m.Times {
+		if math.IsNaN(t) || math.IsInf(t, 0) || t < 0 || !(t > prev) {
+			return false
+		}
+		prev = t
+	}
+	return true
+}
+
 // Asset is an imported media file within a project.
 type Asset struct {
 	ID          string  `json:"id"`
@@ -58,19 +105,24 @@ type Asset struct {
 	ProbeJSON string     `json:"-"`
 	CreatedAt int64      `json:"created_at"`
 	MotionROI *MotionROI `json:"motion_roi,omitempty"`
+	// ScoreMarks is nil unless the user pointed the scoreboard detector at
+	// this source; it rides the asset because the crop belongs to the camera,
+	// not to the style.
+	ScoreMarks *ScoreMarks `json:"score_marks,omitempty"`
 }
 
 const assetCols = `id, project_id, path, filename, fingerprint, duration_s, width, height,
-fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at, motion_roi`
+fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at, motion_roi,
+score_marks`
 
 func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 	var a Asset
 	var hasAudio int
-	var roiJSON string
+	var roiJSON, marksJSON string
 	err := row.Scan(&a.ID, &a.ProjectID, &a.Path, &a.Filename, &a.Fingerprint,
 		&a.DurationSec, &a.Width, &a.Height, &a.FPS,
 		&a.VideoCodec, &a.AudioCodec, &hasAudio, &a.Bitrate, &a.SizeBytes,
-		&a.ProbeJSON, &a.CreatedAt, &roiJSON)
+		&a.ProbeJSON, &a.CreatedAt, &roiJSON, &marksJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -85,6 +137,14 @@ func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 				"asset "+a.ID+" has a corrupt motion_roi", err)
 		}
 		a.MotionROI = roi
+	}
+	if marksJSON != "" {
+		marks := &ScoreMarks{}
+		if err := json.Unmarshal([]byte(marksJSON), marks); err != nil {
+			return nil, xcerr.E(xcerr.CodeStorageFailure,
+				"asset "+a.ID+" has a corrupt score_marks", err)
+		}
+		a.ScoreMarks = marks
 	}
 	return &a, nil
 }
@@ -190,6 +250,33 @@ func (d *DB) SetAssetROI(ctx context.Context, assetID string, roi *MotionROI) er
 	res, err := d.ExecContext(ctx, `UPDATE assets SET motion_roi = ? WHERE id = ?`, value, assetID)
 	if err != nil {
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset roi", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return xcerr.E(xcerr.CodeNotFound, "asset not found", nil)
+	}
+	return nil
+}
+
+// SetAssetScoreMarks stores (marks != nil) or clears (marks == nil) the
+// scoreboard marks read off one asset. Reports NotFound when the asset id is
+// unknown.
+func (d *DB) SetAssetScoreMarks(ctx context.Context, assetID string, marks *ScoreMarks) error {
+	if marks != nil && !marks.Valid() {
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("score marks need a normalized crop x,y,w,h with x+w,y+h<=1, at most %d finite increasing times",
+				MaxScoreMarks), nil)
+	}
+	value := ""
+	if marks != nil {
+		b, err := json.Marshal(marks)
+		if err != nil {
+			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize score marks", err)
+		}
+		value = string(b)
+	}
+	res, err := d.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`, value, assetID)
+	if err != nil {
+		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset score marks", err)
 	}
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return xcerr.E(xcerr.CodeNotFound, "asset not found", nil)

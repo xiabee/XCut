@@ -28,6 +28,11 @@ type Case struct {
 	// single asset before the timeline runs — letting manifests A/B the
 	// court-ROI override the same way styles are A/B'd.
 	AssetROI *ROI `json:"asset_roi,omitempty"`
+	// ScoreROI (optional) is the region the burned-in scoreboard occupies. When
+	// set, the case's clips may stop at point ends measured from that overlay
+	// (via the AI sidecar) instead of running past them — the A/B that decides
+	// whether scoreboard marks are worth the extra scan.
+	ScoreROI *ROI `json:"score_roi,omitempty"`
 }
 
 // ROI is a normalized region of interest (0..1). Same rule as the
@@ -129,6 +134,19 @@ func (m *Manifest) Validate() error {
 				return xcerr.E(xcerr.CodeValidation,
 					fmt.Sprintf("case %q: expected range %d must have 0 <= start < end (got %g..%g)",
 						c.Name, j, r.Start, r.End), nil)
+			}
+		}
+		// Both regions are checked here rather than at timeline time so `--check`
+		// catches a typo in seconds, instead of after an import and a full
+		// analysis pass.
+		for _, region := range []struct {
+			name string
+			r    *ROI
+		}{{"asset_roi", c.AssetROI}, {"score_roi", c.ScoreROI}} {
+			if region.r != nil && !region.r.Valid() {
+				return xcerr.E(xcerr.CodeValidation,
+					fmt.Sprintf("case %q: %s must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 (got %v)",
+						c.Name, region.name, *region.r), nil)
 			}
 		}
 	}

@@ -167,6 +167,14 @@ WHERE status IN ('queued', 'running')
 	{id: 4, name: "asset-motion-roi", stmt: `
 ALTER TABLE assets ADD COLUMN motion_roi TEXT NOT NULL DEFAULT '';
 `},
+	// v5: scoreboard marks. The core's own signals were measured and cannot
+	// tell where a point ended (docs/EVAL.md), so the one source that can —
+	// a burned-in scoreboard, read by the optional AI sidecar — is stored per
+	// asset next to the crop it was read from. JSON or '' when unset; the
+	// timeline then ends clips at a mark instead of running past the point.
+	{id: 5, name: "asset-score-marks", stmt: `
+ALTER TABLE assets ADD COLUMN score_marks TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is

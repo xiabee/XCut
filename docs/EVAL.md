@@ -264,6 +264,59 @@ by the reel budget, not by selection quality.
 Separating our strokes from the hall's needs to know *which* strokes are ours —
 that is the vision sidecar's job (`frame_describe`), not a threshold.
 
+### The scoreboard boundary, as a product feature
+
+The recipe above stopped being a shell pipeline: the sidecar now has a
+`score_changes` op, `xcut boundaries <project> --crop x,y,w,h` stores the result
+per asset, an eval manifest takes `score_roi` to A/B it, and the style engine
+ends a clip at the nearest reachable mark inside its window
+(`style.AssetEvents.Boundaries` → `trimSegment`). Everything is optional — no
+marks stored, selection is what it always was, and a test pins that equality.
+
+Measured on the owner's match (2026-09-21, same binary, same manifest, the only
+difference being `score_roi` over the digits, `--duration` at the style default):
+
+| run | P | R | F1 | ranges | clips | marks used |
+| --- | --- | --- | --- | --- | --- | --- |
+| no scoreboard | 0.886 | 0.112 | 0.199 | 6/43 | 8 | — |
+| 44 marks | **0.998** | 0.127 | **0.225** | **7/43** | 8 | 44 |
+
+What moved is placement, not ranking: **all 8** marked clips end within 0.05 s
+of an annotated point end (that residual is the manifest's one-decimal
+rounding), while the same 8 unmarked clips miss a point end by 0.5–5.6 s, and
+the first of them sits at `0.0..8.0` — inside the overlay's own fade-in — where
+the marked run plays `9.2..17.2`, ending exactly as the point ends. So the
+feature does the one thing it claims: the reel stops when the rally stops.
+
+Four things this number cannot say, and should never be quoted as if it could:
+
+1. **It is partly circular.** The annotations were derived from the same
+   scoreboard recipe (step 2 above), so P/R/F1 here measure agreement with the
+   score overlay, not with a judge. What is *not* circular is the mechanism: a
+   signal the selector never used (the digits) is what moved the cut, and the
+   montage check (step 5) is still the arbiter of whether a rally ending on a
+   point is what the operator wants.
+2. **Recall is unmoved** (0.112 → 0.127) because it is budget-bound, not
+   placement-bound — see the reel-length section. Better ends do not buy more
+   coverage out of the same 60 s.
+3. **It needs a burned-in scoreboard** and an optional sidecar. Cost measured:
+   8.6 s of scanning for this 10:03 720p source, once per asset, stored; the
+   timeline read is free.
+4. **A cross-fading overlay is sampled, not read** — at `fps=4` a mark can be up
+   to ~0.25 s late, and one point can emit several raw changes until clustering
+   merges them.
+
+Finding it, in passing: the sidecar runs ffmpeg with its own temp dir as cwd
+(its metadata dump must be a relative path), so a **relative** media path failed
+as "No such file or directory" on a file that exists — which is exactly what a
+manifest-relative eval case hands it. `worker.ScoreChanges` now resolves the
+path before the boundary; the eval A/B is what caught it, not the unit tests.
+
+The open half is unchanged: `hits`/`density` still rank "when the hall was
+busiest", so the scoreboard fixes **where** a clip ends, not **which** rally is
+worth cutting. And the crop is a terminal-only operation today; a UI picker is
+the obvious next step.
+
 ## Workflow for algorithm changes
 
 1. Annotate a small set of representative clips (a handful of ranges each is

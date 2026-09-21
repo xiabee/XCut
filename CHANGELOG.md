@@ -34,6 +34,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **Clips can stop where the point stopped.** The core's own signals were
+  measured and cannot find rally ends (docs/EVAL.md), so the one source that
+  can — a burned-in scoreboard — is now readable: a `score_changes` op in the
+  reference sidecar, `xcut boundaries <project> --crop x,y,w,h` to scan and
+  store the marks per asset, and `score_roi` in an eval manifest to A/B them.
+  Optional by construction: with no marks stored, selection is what it was.
+- **`xcut eval` records how many marks a case ran with** (`score_marks`), so a
+  "scored with the scoreboard" result cannot silently mean "scanned nothing".
 - **`resource.ffmpeg_max_memory_mb` — a per-ffmpeg memory cap** (phase-4
   "sandbox options for FFmpeg", second rung). The kill-on-close job object
   every child already joins now also enforces `JOB_OBJECT_LIMIT_PROCESS_MEMORY`

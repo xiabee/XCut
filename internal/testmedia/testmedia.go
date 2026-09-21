@@ -143,6 +143,51 @@ func GenerateMotionCorner(dir, name string, width, height, fps, seconds int) (st
 	return out, nil
 }
 
+// scoreboardColors cycle the synthetic "score" through values that differ from
+// each other and from the black canvas, so consecutive marks always change
+// pixels (an odd count keeps two adjacent intervals distinct).
+var scoreboardColors = []string{"white", "red", "lime", "blue", "yellow"}
+
+// GenerateScoreboard builds a silent fixture whose only pixel change is a boxed
+// value in the TOP-LEFT corner flipping colour at each mark second — the
+// synthetic shape for scoreboard boundary detection. The rest of the canvas
+// stays still, so a detector that reports a change outside the crop proved it
+// ignored the region it was aimed at, and one that reports the corner while
+// aimed elsewhere proved it invented the mark.
+func GenerateScoreboard(dir, name string, width, height, fps int, seconds float64, marks []float64) (string, error) {
+	out := filepath.Join(dir, name)
+	bw, bh := width/3, height/5
+	var filters []string
+	for i, m := range marks {
+		end := seconds + 1
+		if i+1 < len(marks) {
+			end = marks[i+1]
+		}
+		filters = append(filters, fmt.Sprintf(
+			"drawbox=x=8:y=8:w=%d:h=%d:color=%s:t=fill:enable='between(t,%s,%s)'",
+			bw, bh, scoreboardColors[i%len(scoreboardColors)],
+			formatFloat(m), formatFloat(end)))
+	}
+	args := []string{
+		"-hide_banner", "-v", "error",
+		"-f", "lavfi", "-i", fmt.Sprintf("color=c=black:s=%dx%d:r=%d:d=%s",
+			width, height, fps, formatFloat(seconds)),
+	}
+	if len(filters) > 0 {
+		args = append(args, "-vf", strings.Join(filters, ","))
+	}
+	args = append(args, "-c:v", "libx264", "-preset", "ultrafast",
+		"-pix_fmt", "yuv420p", "-y", out)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}
+
 func errFFmpeg(out []byte, err error) error {
 	snippet := string(out)
 	if len(snippet) > 2000 {

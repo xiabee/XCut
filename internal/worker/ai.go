@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -104,6 +105,39 @@ func Health(ctx context.Context, bin string) (*AIHealth, error) {
 		return nil, xcerr.E(xcerr.CodeInternal, "sidecar health unparseable", err)
 	}
 	return &h, nil
+}
+
+// ScoreChanges asks the sidecar for the times at which a burned-in score
+// overlay changed — i.e. where each point ended. The core cannot infer this
+// from its own signals (docs/EVAL.md measures audio onsets, court-ROI motion
+// decay and the detector's segment end, and all three fail), so it is one of
+// the few facts worth importing from outside, and it stays optional: callers
+// without a sidecar simply build timelines without boundaries.
+func ScoreChanges(ctx context.Context, bin, mediaPath string, crop []float64, timeout time.Duration) ([]float64, error) {
+	if len(crop) != 4 {
+		return nil, xcerr.E(xcerr.CodeValidation, "score crop must be [x, y, w, h] fractions", nil)
+	}
+	// Absolute, before it ever leaves this process: the sidecar runs ffmpeg
+	// with its own temp dir as cwd (its metadata dump must be a relative path,
+	// because a Windows drive colon is a filter-argument separator), so a
+	// relative input would be resolved against a directory the caller never
+	// chose — and "No such file or directory" would name a file that exists.
+	abs, err := filepath.Abs(mediaPath)
+	if err != nil {
+		return nil, xcerr.E(xcerr.CodeValidation, "cannot resolve media path: "+mediaPath, err)
+	}
+	raw, err := AIAnalyze(ctx, bin, "score_changes", abs,
+		map[string]any{"crop": crop}, timeout)
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Times []float64 `json:"times"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, xcerr.E(xcerr.CodeInternal, "score_changes result unparseable", err)
+	}
+	return res.Times, nil
 }
 
 // AIAnalyze runs an analyze-style op against the sidecar with an explicit

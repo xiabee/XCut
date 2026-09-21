@@ -16,6 +16,13 @@ usage: xcut analyze <project> [assetID...]
 run baseline analyzers over project assets
 ```
 
+## xcut boundaries
+```
+usage: xcut boundaries <project> [--asset id] [--crop x,y,w,h] [--clear]
+
+read point ends off a burned-in scoreboard, so clips can stop there
+```
+
 ## xcut client
 ```
 usage: xcut client [--addr host:port] [--browser]

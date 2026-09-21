@@ -244,3 +244,44 @@ serve has no TLS, and the session id is a bearer credential for reads, so a
 same-origin XSS would still read data through it (the UI's textContent-only
 rendering is what holds that line, not this).
 
+## D15: point boundaries are imported, and stay optional
+
+**Status**: accepted (2026-09-21)
+
+**Context**: three sessions of measurement (docs/EVAL.md) established that
+where a rally *ends* is not recoverable from the core's own signals: audio
+onsets are not court-specific in a shared hall, court-ROI motion decay landed
++4.90 s off, and the detector's own segment end reached only F1 0.759 against
+an 0.963 oracle. The oracle gap has a price tag: ending clips at true point ends
+is worth ~11 points of precision, and nothing inside the signal set can pay it.
+One signal outside the signal set can: a burned-in scoreboard changes exactly
+once per finished point.
+
+**Decision**: import the fact, do not infer it. The scoreboard is read by the
+optional AI sidecar (`score_changes` op); the times arrive as
+`style.AssetEvents.Boundaries`, are stored per asset (`assets.score_marks`, with
+the crop that produced them), and are consumed by one rule in `trimSegment` that
+either trims a clip's dead tail or shifts it to end at a reachable mark. No
+in-core vision, no model, no new dependency — D3 keeps recognition outside the
+core, and the core keeps its "media is untrusted input" posture because the scan
+is one more argv-bounded sidecar call.
+
+**Alternatives rejected**:
+- *Teach the event detector to find rally ends* — measured twice on two
+  candidate signals; both are worse than the segment end it already has.
+- *Ship a model in the core* — breaks D1 (Go core, optional workers) and the
+  release-size and license story for one field of one sport.
+- *Put the marks in the analysis cache* — they would evict under
+  `resource.analysis_cache_mb` and selection would degrade silently between two
+  runs of the same project. They are the user's annotation of a camera, like
+  `motion_roi`, so they live in the row.
+
+**Consequences**: a project either has marks or it does not, and the two paths
+are byte-identical to the pre-feature behaviour when absent (pinned by test).
+A misaimed crop is a silent quality loss, so the tools refuse to hide it:
+`xcut boundaries` prints a note when a region never changed, and `xcut eval`
+records `score_marks` per case so "ran with the scoreboard" cannot mean "scanned
+nothing". The column is capped (`storage.MaxScoreMarks`) because the threshold
+that produces marks is user-chosen. What it does not buy: which rally is worth
+cutting — that ranking problem is unchanged and still the sidecar's to solve.
+

@@ -27,6 +27,9 @@ import json
 import mimetypes
 import os
 import platform
+import re
+import subprocess
+import tempfile
 import shutil
 import sys
 import urllib.error
@@ -271,12 +274,113 @@ ANALYZERS = {"transcript": op_transcript, "frame_describe": op_frame_describe}
 MODELS = [_model_entry(), _frame_describe_entry()]
 
 
+def op_score_changes(req):
+    """Point boundaries from a burned-in scoreboard.
+
+    Every score change is exactly one finished rally, and an overlay changes
+    only when the score does, so a scene-difference detector aimed at the
+    digits produces the boundaries — the recipe docs/EVAL.md documents, with
+    its three traps built in: the comma inside gt() must be quoted (modern
+    ffmpeg rejects `\\,`), `metadata=print:file=` must be a *relative* path
+    (a Windows drive-letter colon is a filter-argument separator), and the
+    threshold must be low because the overlay cross-fades.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return err(req, "not_implemented", "ffmpeg is not installed")
+    path = req.get("input") or ""
+    if not path or not os.path.isfile(path):
+        return err(req, "bad_request",
+                   "input media file %r does not exist" % path)
+    params = req.get("params") or {}
+    crop = params.get("crop")  # normalized x,y,w,h like the court ROI
+    if not isinstance(crop, (list, tuple)) or len(crop) != 4:
+        return err(req, "bad_request",
+                   "params.crop must be [x, y, w, h] in 0..1 fractions")
+    try:
+        fx, fy, fw, fh = [float(v) for v in crop]
+    except (TypeError, ValueError):
+        return err(req, "bad_request", "params.crop must hold four numbers")
+    if not all(0.0 <= v <= 1.0 for v in (fx, fy, fw, fh)) or fw <= 0 or fh <= 0:
+        return err(req, "bad_request", "crop values must be fractions within 0..1")
+    threshold = float(params.get("threshold", 0.03))
+    rate = float(params.get("fps", 4))
+    gap = float(params.get("cluster_gap", 5.0))
+
+    dims = _media_size(ffmpeg, path)
+    if dims is None:
+        return err(req, "analyze_failed", "cannot read the video dimensions")
+    w, h = dims
+    x, y = int(fx * w), int(fy * h)
+    cw, ch = max(2, int(fw * w)), max(2, int(fh * h))
+    if x + cw > w or y + ch > h:
+        return err(req, "bad_request", "crop extends past the frame")
+
+    # The dump path stays relative and the cwd is the temp dir: an absolute
+    # Windows path would be split at its drive colon by the filter parser.
+    tmp = tempfile.mkdtemp(prefix="xcut-score-")
+    try:
+        graph = ("crop=%d:%d:%d:%d,fps=%g,select='gt(scene,%g)',"
+                 "metadata=print:file=board.txt" % (cw, ch, x, y, rate, threshold))
+        p = subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-i", path,
+                            "-an", "-sn", "-vf", graph, "-f", "null", "-"],
+                           cwd=tmp, capture_output=True, text=True, timeout=900)
+        if p.returncode != 0:
+            return err(req, "analyze_failed",
+                       "score-change scan failed: %s" % (p.stderr or "")[-400:])
+        times = _scene_times(os.path.join(tmp, "board.txt"))
+    except subprocess.TimeoutExpired:
+        return err(req, "analyze_failed", "score-change scan timed out")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    return ok(req, {"times": _cluster(times, gap), "raw": len(times),
+                    "crop": [x, y, cw, ch], "threshold": threshold})
+
+
+def _media_size(ffmpeg, path):
+    """Frame width/height via ffmpeg (ffprobe is not always the tool present)."""
+    try:
+        p = subprocess.run([ffmpeg, "-hide_banner", "-i", path],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r", (\d{2,6})x(\d{2,6})(?:[ ,])", p.stderr or "")
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def _scene_times(dump_path):
+    if not os.path.isfile(dump_path):
+        return []
+    out = []
+    with open(dump_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            m = re.search(r"pts_time:([0-9.]+)", line)
+            if m:
+                out.append(float(m.group(1)))
+    return out
+
+
+def _cluster(times, gap):
+    """The overlay cross-fades, so one point spans several frames: keep the
+    first time of each run separated by more than `gap` seconds."""
+    out = []
+    prev = None
+    for t in sorted(times):
+        if prev is None or t - prev > gap:
+            out.append(round(t, 3))
+        prev = t
+    return out
+
+
 def op_describe(req):
     return ok(req, {
         "name": "xcut-ai-sidecar",
         "version": "0.3.0",
         "protocol": PROTOCOL,
-        "ops": ["describe", "capabilities", "health", "analyze"],
+        "ops": ["describe", "capabilities", "health", "analyze", "score_changes"],
     })
 
 
@@ -287,6 +391,8 @@ def op_capabilities(req):
             {"op": "capabilities", "desc": "advertised analyzers and models"},
             {"op": "health", "desc": "readiness probe"},
             {"op": "analyze", "desc": "run one advertised analyzer"},
+            {"op": "score_changes", "desc": "point boundaries from a burned-in "
+                                            "score overlay (params.crop=[x,y,w,h])"},
         ],
         "models": MODELS,
         "device": "cpu",
@@ -316,6 +422,7 @@ OPS = {
     "capabilities": op_capabilities,
     "health": op_health,
     "analyze": op_analyze,
+    "score_changes": op_score_changes,
 }
 
 

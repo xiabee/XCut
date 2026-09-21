@@ -497,13 +497,21 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				return err
 			}
 			logSegmentation(d.Log, asset.ID, preset.Name, estat, len(segs))
+			// Scoreboard marks, if the user pointed a detector at this source.
+			// nil (not an empty slice) when there are none, so a project that
+			// never opted in selects exactly as it did before the field existed.
+			var marks []float64
+			if asset.ScoreMarks != nil {
+				marks = asset.ScoreMarks.Times
+			}
 			items = append(items, style.AssetEvents{
 				Asset: style.AssetInfo{
 					ID:          asset.ID,
 					Path:        asset.Path,
 					DurationSec: asset.DurationSec,
 				},
-				Segments: segs,
+				Segments:   segs,
+				Boundaries: marks,
 			})
 			progress(float64(i+1) / float64(len(assets)+1))
 		}
