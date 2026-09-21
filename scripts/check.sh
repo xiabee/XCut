@@ -3,7 +3,7 @@
 # (DECISIONS.md D11). Usage:
 #
 #   scripts/check.sh fast   # fmt + vet + build + go test (no race)
-#   scripts/check.sh full   # + race, cross-compile, Rust, govulncheck
+#   scripts/check.sh full   # + race, cross-compile, Rust, govulncheck, gosec
 #
 # Exit code 0 = gate green. A local FFmpeg under .tools/ is used when present;
 # integration tests skip automatically when FFmpeg is unavailable.
@@ -204,6 +204,20 @@ if [ "$mode" = "full" ]; then
     else
         echo "== govulncheck: not installed (go install golang.org/x/vuln/cmd/govulncheck@latest), skipped" >&2
         NOT_RUN="$NOT_RUN govulncheck"
+    fi
+
+    # Static security analysis at the same bar as the Windows gate: only HIGH
+    # severity + HIGH confidence findings fail, and suppressions stay inline in
+    # the source as `#nosec GXXX -- written reason`, never as rule exclusions.
+    if command -v gosec >/dev/null 2>&1; then
+        gosec -severity high -confidence high -tests=false ./... && gsc_rc=0 || gsc_rc=$?
+        if [ "$gsc_rc" != 0 ]; then
+            echo "== gosec: FAILED (rc=$gsc_rc) — HIGH findings above, or the scan itself failed" >&2
+            exit "$gsc_rc"
+        fi
+    else
+        echo "== gosec: not installed (go install github.com/securego/gosec/v2/cmd/gosec@latest), skipped" >&2
+        NOT_RUN="$NOT_RUN gosec"
     fi
 fi
 
