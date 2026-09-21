@@ -301,12 +301,11 @@ func (d *DB) SetAssetScoreMarks(ctx context.Context, assetID string, marks *Scor
 		}
 		cropValue = string(cb)
 	}
-	query, args := `UPDATE assets SET score_marks = ? WHERE id = ?`, []any{value, assetID}
-	if marks != nil {
-		query = `UPDATE assets SET score_marks = ?, score_crop = ? WHERE id = ?`
-		args = []any{value, cropValue, assetID}
-	}
-	res, err := d.ExecContext(ctx, query, args...)
+	res, err := d.ExecContext(ctx, `
+UPDATE assets SET
+	score_marks = ?,
+	score_crop = CASE WHEN ? = '' THEN score_crop ELSE ? END
+WHERE id = ?`, value, cropValue, cropValue, assetID)
 	if err != nil {
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset score marks", err)
 	}
