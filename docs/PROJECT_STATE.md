@@ -170,11 +170,39 @@ lines, `cargo test` 3 passed). Looking there also inverted the documented pinnin
 order — a `.tools/bin` stub got shadowed by the node's own binary and reported a
 green gate, which is how the inversion was caught — repaired at `15a1712`, where
 the stub wins again and still fails the gate with rc=3. Scope, so this entry is
-not over-read: `gosec` is not in the Linux gate and not on the node, so static
-security analysis remains a Windows-nightly pass, and the Windows channel needed
-no change because its `.tools/bin` already carries both tools. Those three
+not over-read: `check.sh` had no `gosec` step at all then, so static security
+analysis was a Windows-nightly affair (the next entry closes that, and finds the
+node had a system `gosec` waiting unused), while the Windows channel already
+carries both tools in its `.tools/bin`. Those three
 commits touch only `scripts/check.sh`, so no Windows leg was re-run — the Go tree
 is byte-identical to `5c63ffe`, accepted in the paragraph above.
+
+The next step was the missing half, and measuring it changed what was worth
+adding. `gosec` turned out to be installed system-wide on the node already
+(`/usr/local/bin/gosec`), so the only work was a step in `check.sh`; configured
+as the Windows gate had it — severity HIGH *and* confidence HIGH — a scan of this
+repository reports **90 findings and none in that cell**, which means the step
+cannot fail for lack of a threshold. Proof, not inference: a scratch module
+narrowing `uint8(v)` with no bound exits 0 under the old flags and 1 naming
+`G115 … int -> uint8` under severity-only filtering. So the 14 HIGH-severity
+findings were triaged first and the bar then raised in both gates (`90b7f41`):
+`brandicon.ICO` no longer writes a header that lies (a 512 px image used to
+return no error with dimension bytes `0,0` — measured), `Brand(1)` no longer
+feeds a division-by-zero NaN into a platform-defined integer conversion,
+`workspace.CleanupPartials` deletes through `os.OpenRoot` instead of a walk
+resolved path (the G122 symlink-swap window), and `DiskFree` refuses a
+non-positive block size rather than turning it into an enormous free-space
+figure. The rest carry `#nosec G115` with the reason on the line. Accepted on all
+three channels: local fast gate 466/8 PASS, win-devops job
+`20260922-032420-7d7ccd` 467/7 PASS — one more passing test than the laptop,
+because the symlink cases that skip under a plain developer session run there,
+which is the `os.Root` cleanup behaving on a real symlink — and the Linux full
+leg at `b839c95` reporting 455/13, `== gosec: clean (severity=high, any
+confidence)`, `not run: nothing`, zero `DATA RACE` lines. Disclosed as required:
+that win-devops snapshot was taken while one documentation sentence was still
+uncommitted (it is `b839c95`, prose only, no code difference from `90b7f41`),
+because I stopped the client after it had already uploaded and killing the client
+does not stop the node.
 
 ## Version / HEAD
 

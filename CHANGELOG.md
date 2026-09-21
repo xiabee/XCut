@@ -7,6 +7,32 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 ### Security
+- **Every HIGH-severity static-analysis finding triaged, and the bar raised to
+  match.** `gosec` on this tree reports 90 findings and had none at
+  severity HIGH × confidence HIGH — the only cell the gate looked at, which made
+  the step unable to fail. The 14 findings that *are* HIGH severity were worked
+  through: `brandicon.ICO` accepted any image and wrote the one-byte width/height
+  fields with `& 0xff`, so a 512 px icon (measured: no error, bytes `0,0`)
+  produced a container claiming 256 px around a 512 px payload — now refused,
+  with the entry list capped at 256 so the offsets cannot reach 2^32;
+  `Brand(1)` fed a division-by-zero NaN into an integer conversion whose result
+  the language leaves to the platform (right on amd64 only because `int(NaN)` is
+  −2^63 there, divisible by 256) — now a defined gradient start;
+  `workspace.CleanupPartials` deleted files by a path resolved from a walk, so a
+  parent swapped for a symlink between the walk and the unlink could reach outside
+  `projects/` — deletion now goes through `os.OpenRoot`, which refuses symlinked
+  parents; and `workspace.DiskFree` would have turned a negative `Bsize` into an
+  astronomically large free-space figure, opening every disk guard that reads it —
+  now refused. The rest (s16le sample decode, fingerprint hash input, the
+  little-endian byte splits, the colour lerp) are correct by construction and carry
+  `#nosec G115` with the reason written out. Both gates now filter on severity
+  alone, proven by a differential: an unbounded `uint8(v)` exits 0 under the old
+  flags and 1 naming G115 under the new ones.
+- **The Linux gate gained the static-analysis step the Windows gate had**
+  (`gosec -severity high`, same suppression convention), and a clean run now
+  announces itself — the first version printed its clean line on the
+  policy-skip path as well, so a scan that never ran claimed there was nothing to
+  find; the exit-126 leg caught that in its own log.
 - **A vulnerability finding could not fail the gate.** `check.sh` read the scan
   status as `if ! govulncheck ./...; then rc=$?` — and `$?` after a negated
   command is the *negation*, always 0 — so every non-zero scan landed in
