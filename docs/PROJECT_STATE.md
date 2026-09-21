@@ -835,7 +835,18 @@ Windows gate on the laptop.
    `analysis.tailStr` (the text a user sees when FFmpeg fails),
    `api.purgeLocked` (the auth failure tracker's expiry path),
    `cli.scanScoreMarks`, and the `*Async` pipeline wrappers, which the job
-   runner may reach by another route. A first pass at the HTTP layer added
+   runner may reach by another route. `render.tail` has since been covered at
+   `3cbf11d`: `runFFmpeg`'s failure branch had never run either (both existing
+   "render failure" tests return before FFmpeg is spawned), so the test binary
+   now plays a chatty failing FFmpeg through `TestMain` + an env var — the same
+   trick `internal/media` uses — and three mutations were killed with the test
+   proven to have executed (`ran=1`): dropping the tail, taking the head instead
+   of it, and widening the 500-byte budget tenfold. Accepted at `3cbf11d` on all
+   three channels — local 469/8, win-devops job `20260922-043143-38722e` 470/7,
+   Linux full gate 458/13 with the pinned scanner, `not run: nothing` and zero
+   `DATA RACE` lines — and the fake-FFmpeg test was run explicitly on the node
+   because the gate has no per-test output: `ran=1 verdict=--- PASS`, so the
+   mechanism is good on Windows and Linux alike. A first pass at the HTTP layer added
    `TestRenderDownloadHeaderCarriesNoUserBytes` (project names are length-checked
    only, and the name goes into `Content-Disposition` — mutation-checked: letting
    a quote or a raw CR/LF through the sanitizer fails the assertion) and
