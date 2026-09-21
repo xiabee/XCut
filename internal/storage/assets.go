@@ -284,15 +284,29 @@ func (d *DB) SetAssetScoreMarks(ctx context.Context, assetID string, marks *Scor
 			fmt.Sprintf("score marks need a normalized crop x,y,w,h with x+w,y+h<=1, at most %d finite increasing times",
 				MaxScoreMarks), nil)
 	}
-	value := ""
+	value, cropValue := "", ""
 	if marks != nil {
 		b, err := json.Marshal(marks)
 		if err != nil {
 			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize score marks", err)
 		}
 		value = string(b)
+		// The region travels with its measurement: a row holding marks without
+		// the matching score_crop is a row the timeline must ignore, and writing
+		// the pair apart is how that state gets created by accident (the eval
+		// harness did exactly that, and silently stopped using its own scan).
+		cb, err := json.Marshal(marks.Crop)
+		if err != nil {
+			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize score crop", err)
+		}
+		cropValue = string(cb)
 	}
-	res, err := d.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`, value, assetID)
+	query, args := `UPDATE assets SET score_marks = ? WHERE id = ?`, []any{value, assetID}
+	if marks != nil {
+		query = `UPDATE assets SET score_marks = ?, score_crop = ? WHERE id = ?`
+		args = []any{value, cropValue, assetID}
+	}
+	res, err := d.ExecContext(ctx, query, args...)
 	if err != nil {
 		return xcerr.E(xcerr.CodeStorageFailure, "cannot save asset score marks", err)
 	}

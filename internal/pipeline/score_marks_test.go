@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -125,11 +126,12 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 
 	// Marks measured against a DIFFERENT region must be ignored by the consumer,
 	// not just dropped by the writer: they would end clips at points that belong
-	// to another part of the frame. This is the state a region change cannot
-	// leave behind today, and the assertion is what keeps it that way.
-	if err := d.DB.SetAssetScoreMarks(ctx, assets[0].ID, &storage.ScoreMarks{
-		Crop: []float64{0.1, 0.1, 0.2, 0.2}, Times: []float64{mark}, At: 2,
-	}); err != nil {
+	// to another part of the frame. Writing the pair apart is no longer possible
+	// through the storage API (a measurement stamps its own region), so this row
+	// stands in for one left by an older build — the state the guard exists for.
+	if _, err := d.DB.ExecContext(ctx, `UPDATE assets SET score_marks = ? WHERE id = ?`,
+		`{"crop":[0.1,0.1,0.2,0.2],"times":[`+strconv.FormatFloat(mark, 'f', 4, 64)+`],"at":2}`,
+		assets[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	stale, err := d.BuildTimeline(p, Style("badminton_highlight"))

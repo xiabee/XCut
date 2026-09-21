@@ -249,8 +249,9 @@ func cmdEval(a *App, args []string) error {
 			continue
 		}
 		m := res.Metrics
-		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d\n",
-			c.Name, m.Precision, m.Recall, m.F1, m.RangesHit, m.RangesTotal, m.DuplicateRate, m.Clips)
+		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d%s\n",
+			c.Name, m.Precision, m.Recall, m.F1, m.RangesHit, m.RangesTotal, m.DuplicateRate, m.Clips,
+			boundaryShaped(res))
 	}
 
 	totalRanges := 0
@@ -376,6 +377,24 @@ func clipsToIntervals(clips []timeline.Clip) []eval.Interval {
 // lifting the style engine's explanation out of the clip metadata. Metadata
 // values are strings (the timeline IR stores metadata as map[string]string);
 // unparseable values are omitted rather than reported as false zeros.
+// boundaryShaped renders "  boundaries 8/8" for a case that scanned a
+// scoreboard: how many of its clips were actually ended by a mark. It prints
+// nothing when no scan ran, so an unmarked case's line is exactly what it was
+// before — and a marked run that used nothing says so out loud (0/8) rather
+// than letting the improved-looking numbers stand unexplained.
+func boundaryShaped(res evalCaseResult) string {
+	if res.ScoreMarks == 0 || len(res.Selected) == 0 {
+		return ""
+	}
+	used := 0
+	for _, s := range res.Selected {
+		if s.PointEnd != nil {
+			used++
+		}
+	}
+	return fmt.Sprintf("  boundaries %d/%d", used, len(res.Selected))
+}
+
 func toJsonSelectedClips(clips []timeline.Clip) []selectedClipJSON {
 	out := make([]selectedClipJSON, 0, len(clips))
 	for _, c := range clips {

@@ -238,3 +238,31 @@ func mustAsset(t *testing.T, db *DB, ctx context.Context, id string) *Asset {
 	}
 	return a
 }
+
+// TestScoreMarksStampTheirRegion: a measurement carries the region it belongs
+// to into the row, so no writer can leave marks the timeline must distrust.
+// The eval harness did exactly that (stored marks without the crop) and the
+// pipeline then correctly ignored them — a feature silently off, with a green
+// gate.
+func TestScoreMarksStampTheirRegion(t *testing.T) {
+	db, _, assetID := marksAsset(t, "marks-stamp")
+	ctx := context.Background()
+	crop := []float64{0.42, 0.77, 0.14, 0.1}
+
+	if err := db.SetAssetScoreMarks(ctx, assetID, &ScoreMarks{Crop: crop, Times: []float64{4, 12}}); err != nil {
+		t.Fatal(err)
+	}
+	got := mustAsset(t, db, ctx, assetID)
+	if !SameCrop(got.ScoreCrop, crop) {
+		t.Fatalf("storing marks did not record their region: crop=%v", got.ScoreCrop)
+	}
+	// Clearing only the measurement keeps the request, which is the state the UI
+	// leaves behind: region drawn, nothing measured yet.
+	if err := db.SetAssetScoreMarks(ctx, assetID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got = mustAsset(t, db, ctx, assetID)
+	if got.ScoreMarks != nil || !SameCrop(got.ScoreCrop, crop) {
+		t.Fatalf("clearing marks dropped the region: marks=%+v crop=%v", got.ScoreMarks, got.ScoreCrop)
+	}
+}

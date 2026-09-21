@@ -99,6 +99,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   owner's match (the scoreboard line then reads "44 point boundaries measured at
   0.43, 0.78, 0.14, 0.10"). The panel heading and button also stopped claiming
   "Court ROI" while drawing the scoreboard.
+- **A scoreboard scan and its region can no longer be written apart.** Storing
+  marks now stamps the region they were measured from in the same statement.
+  The eval harness had been writing one without the other, and the consumer
+  guard added the same day (ignore marks whose region is not the stored one) did
+  its job and dropped them — so `score_roi` cases ran with the boundaries
+  switched off and still printed a green gate. The new `boundaries n/m` field is
+  what surfaced it: the eval line read `boundaries 0/8` at the old precision.
+  Re-measured on the match after the fix: P 0.998, 8/8 clips boundary-shaped.
 - **A reel length below the style's minimum clip fails with the real reason.**
   `--duration` under the style's `min_clip_duration` could not hold a single
   candidate, so the run burned a full analysis pass and died with the generic

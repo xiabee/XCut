@@ -392,3 +392,29 @@ func TestSelectedClipsReportWhichBoundariesWereUsed(t *testing.T) {
 		t.Errorf("point_end must appear exactly once in %s", b)
 	}
 }
+
+// TestBoundaryShapedSuffix: the eval line must say how many clips a scan
+// actually ended. Empty when no scan ran (an unmarked case reads as it always
+// did), and explicitly 0/n when one ran but shaped nothing — the case a
+// silent suffix would hide.
+func TestBoundaryShapedSuffix(t *testing.T) {
+	one := 17.25
+	other := 42.0
+	shaped := []selectedClipJSON{{Start: 10, End: 17.25, PointEnd: &one}, {Start: 20, End: 28}}
+	twoOf := []selectedClipJSON{{Start: 10, End: 17.25, PointEnd: &one}, {Start: 40, End: 47, PointEnd: &other}}
+
+	for _, tc := range []struct {
+		name string
+		res  evalCaseResult
+		want string
+	}{
+		{"no scan, no claim", evalCaseResult{Selected: shaped}, ""},
+		{"scan that shaped nothing", evalCaseResult{ScoreMarks: 44, Selected: shaped}, "  boundaries 1/2"},
+		{"partial use", evalCaseResult{ScoreMarks: 44, Selected: twoOf}, "  boundaries 2/2"},
+		{"scan with no clips", evalCaseResult{ScoreMarks: 44}, ""},
+	} {
+		if got := boundaryShaped(tc.res); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
