@@ -265,14 +265,17 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 		opts := d.analysisOpts()
 
 		// Parallel across assets, bounded by max_analysis_workers: each asset
-		// is independent, and the cache makes repeats cheap. Errors and
-		// callbacks are marshalled back to this goroutine.
+		// is independent, and the cache makes repeats cheap. Errors go to a
+		// buffered channel; the per-asset callback is serialised, because it is
+		// invoked from whichever worker finished and callers write to a single
+		// stream (the CLI prints one block per asset).
 		workers := d.Cfg.Resource.MaxAnalysisWorkers
 		if workers < 1 {
 			workers = 1
 		}
 		sem := make(chan struct{}, workers)
 		var wg sync.WaitGroup
+		var cbMu sync.Mutex
 		errCh := make(chan error, len(assets))
 		var completed int64
 		for i := range assets {
@@ -312,7 +315,9 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 				}
 				logSegmentation(d.Log, asset.ID, "default", estat, len(segs))
 				if onAsset != nil {
+					cbMu.Lock()
 					onAsset(AnalyzedAsset{Asset: &asset, Result: result, Segments: segs})
+					cbMu.Unlock()
 				}
 				n := atomic.AddInt64(&completed, 1)
 				progress(float64(n) / float64(len(assets)))

@@ -110,6 +110,21 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **A data race in the analyze fan-out (the Linux leg's long-standing open
+  sighting).** `analyzeBody` runs one goroutine per asset and called the
+  per-asset callback *on that goroutine*, while `xcut analyze`'s callback prints
+  a multi-line block per asset to a single shared writer. Two assets finishing
+  together wrote the same buffer at once — reported as `race detected during
+  execution of test` in `cli.TestE2EAutoScopesToRunInputs` at `1f7c899` (never
+  reproduced) and again at `680d707`, where the node gave both stacks. The
+  fan-out's comment said callbacks were marshalled back to the coordinating
+  goroutine; they were not. The pipeline now serialises the callback where it
+  creates the concurrency, so every caller may write to one stream.
+  `TestAnalyzeProjectParallelMultiAsset` asserts the callback is never entered
+  twice at once and yields inside the region to make that observable: deleting
+  the mutex fails locally, while the same mutation stayed invisible through 8
+  local `-race` runs of the e2e that first caught it — the trigger needs load,
+  which is why the guard counts overlap instead of hoping for the detector.
 - **The worker test that timed out on a loaded machine now observes instead.**
   `TestCallReturnsBeforeWorkerExits` compared a clean spawn against a hung one
   and failed at 5.0 s with the bound; it failed for real in a gate run at

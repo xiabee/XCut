@@ -445,21 +445,26 @@ gate.
   response body (it printed a bare status before), and
   `TestPutFailureCarriesItsReason` proves that channel carries a named reason —
   so the next occurrence says which step refused rather than joining this list.
-- **One unreproduced `DATA RACE` on the Linux leg (open).** Session #18's
-  `check.sh full` at `1f7c899` failed with `testing.go:1712: race detected
-  during execution of test` in `cli.TestE2EAutoScopesToRunInputs`; the surviving
-  stack half is the inline job path
-  (`cmdAuto → cmdAnalyze → Deps.AnalyzeProject → job.Queue.RunInline → safeRun`,
-  `internal/job/queue.go:112/132/300`). Re-runs at the same commit: 12× the
-  package alone, 3× the whole suite, 25× that test — all clean, so the window is
-  narrow and load-dependent (the leg runs packages in parallel on 4 cores).
-  **Not fixed and not closed**: the report's other half was cut off because the
-  leg script trimmed the gate output with `| tail -45`, which also read `tail`'s
-  exit code and printed `LEG_EXIT=0` over a failing run. The leg now keeps the
-  gate log whole on the node and copies it back, so the next sighting yields the
-  pair. Nothing was relaxed meanwhile — the two suspect shapes (a writer
-  outliving `Run`, or that test's reused `stdout/stderr` buffers) are recorded
-  here instead of being papered over by a change to either.
+- **The Linux-leg `DATA RACE` is reproduced, root-caused and fixed (closed).** It
+  fired again at `680d707`, this time with both halves of the report: two worker
+  goroutines in `analyzeBody`'s per-asset fan-out were calling the analyze
+  callback at the same moment, and `cli.cmdAnalyze`'s callback writes a
+  multi-line block per asset to one shared writer (`a.Stdout`) — a
+  `bytes.Buffer` in tests, so the race was on the buffer itself. Neither of the
+  two shapes this entry suspected (a writer outliving `Run`, the e2e's reused
+  buffers) was involved. The fan-out's own comment claimed "errors and callbacks
+  are marshalled back to this goroutine", which the code never did.
+  Fixed at the layer that creates the concurrency: the pipeline serialises
+  `onAsset` under a mutex, so any caller may write to one stream.
+  The detector is a counted overlap check in
+  `TestAnalyzeProjectParallelMultiAsset` — the callback asserts it is alone and
+  yields inside the region, so the violation is observable rather than lucky:
+  deleting the mutex fails locally (`onAsset ran concurrently on 2 assets`),
+  with it the test is green. Note why it is not a `-race` hope: the same
+  mutation stayed invisible through 8 local `-race` runs of the e2e that
+  originally caught it, while the node caught it on its first pass — load on
+  4 cores is part of the trigger, so the only honest local guarantee is an
+  assertion that measures overlap directly.
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
   ffmpeg fallback covers it.
 - Cut detection is chroma-aware since session #6 (max of YDIF/UDIF/VDIF);

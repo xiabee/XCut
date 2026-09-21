@@ -7,8 +7,10 @@ import (
 	"os"
 
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -67,10 +69,23 @@ func TestAnalyzeProjectParallelMultiAsset(t *testing.T) {
 
 	var mu sync.Mutex
 	seen := map[string]bool{}
+	// The callback *is* the contract under test here: it runs on whichever
+	// worker finished, so serialising it is the pipeline's job — a caller that
+	// writes one block per asset to a shared stream (the CLI prints exactly
+	// that) otherwise interleaves. -race caught it on the Linux leg at
+	// 680d707 and no local run reproduced it in 8 attempts, so the yield below
+	// is what makes the violation observable anywhere rather than by luck.
+	var inside int32
 	err := d.AnalyzeProject(p, func(res AnalyzedAsset) {
+		if n := atomic.AddInt32(&inside, 1); n != 1 {
+			t.Errorf("onAsset ran concurrently on %d assets (asset %s): the caller's stream is not safe", n, res.Asset.ID)
+		}
+		runtime.Gosched()
+		time.Sleep(2 * time.Millisecond)
 		mu.Lock()
 		seen[res.Asset.ID] = true
 		mu.Unlock()
+		atomic.AddInt32(&inside, -1)
 	})
 	if err != nil {
 		t.Fatal(err)
