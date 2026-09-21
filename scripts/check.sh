@@ -26,17 +26,21 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
         fi
     done
 fi
-# Repo-local go tools (govulncheck etc.) installed via GOBIN=.tools/bin.
-if [ -d .tools/bin ]; then
-    PATH="$(pwd)/.tools/bin:$PATH"
-    export PATH
-fi
 # `go install` puts tools in GOPATH/bin, which a non-login ssh PATH does not
 # carry — so the gate reported `not run: govulncheck` on a node that had owned
-# the binary for weeks. Look where Go actually puts it.
+# the binary for weeks. Look where Go actually puts it, but *below* the
+# repo-local directory: a pinned `.tools/bin` copy must win over whatever the
+# machine happens to have (measured the other way round — a stub placed in
+# `.tools/bin` was shadowed by the node's own govulncheck, so the stub never
+# ran and reported a green gate).
 GOBIN_DIR=$(go env GOPATH 2>/dev/null)/bin
 if [ -n "$GOBIN_DIR" ] && [ "$GOBIN_DIR" != "/bin" ] && [ -d "$GOBIN_DIR" ]; then
     PATH="$GOBIN_DIR:$PATH"
+    export PATH
+fi
+# Repo-local go tools (govulncheck etc.) installed via GOBIN=.tools/bin.
+if [ -d .tools/bin ]; then
+    PATH="$(pwd)/.tools/bin:$PATH"
     export PATH
 fi
 # Steps that did not run are named in the verdict line. A gate that prints PASS
