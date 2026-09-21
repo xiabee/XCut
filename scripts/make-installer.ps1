@@ -37,7 +37,11 @@ XCut — 本地优先的自动视频剪辑 / local-first automatic video editing
   xcut help              全部命令
 
 【安全 / Security】
-  仅监听本机回环 (127.0.0.1)；不联网、无遥测。
+  默认只监听本机回环 (127.0.0.1)。要开放给其他机器，必须同时在配置里
+  显式设 listen_remote = true 并设置访问令牌（≥24 字符），缺一则启动被拒绝。
+  应用不上传数据、无遥测。会联网的只有两处，且都发生在你主动触发时：
+  一键安装 FFmpeg（从 Gyan.dev 下载并做 SHA256 校验），以及你自己配置的 AI 后端。
+  详见 docs/OPERATIONS.md。
 "@ | Out-File -FilePath (Join-Path $stage "QUICKSTART.txt") -Encoding utf8
 
     Compress-Archive -Path (Join-Path $stage "*") `
