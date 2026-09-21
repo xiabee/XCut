@@ -393,6 +393,21 @@ cost the tail rule its boundary (P 0.977 → 0.641, 21/21 → 3/21 ends on a poi
 
 ## Known Issues
 
+- **One unreproduced `DATA RACE` on the Linux leg (open).** Session #18's
+  `check.sh full` at `1f7c899` failed with `testing.go:1712: race detected
+  during execution of test` in `cli.TestE2EAutoScopesToRunInputs`; the surviving
+  stack half is the inline job path
+  (`cmdAuto → cmdAnalyze → Deps.AnalyzeProject → job.Queue.RunInline → safeRun`,
+  `internal/job/queue.go:112/132/300`). Re-runs at the same commit: 12× the
+  package alone, 3× the whole suite, 25× that test — all clean, so the window is
+  narrow and load-dependent (the leg runs packages in parallel on 4 cores).
+  **Not fixed and not closed**: the report's other half was cut off because the
+  leg script trimmed the gate output with `| tail -45`, which also read `tail`'s
+  exit code and printed `LEG_EXIT=0` over a failing run. The leg now keeps the
+  gate log whole on the node and copies it back, so the next sighting yields the
+  pair. Nothing was relaxed meanwhile — the two suspect shapes (a writer
+  outliving `Run`, or that test's reused `stdout/stderr` buffers) are recorded
+  here instead of being papered over by a change to either.
 - symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
   ffmpeg fallback covers it.
 - Cut detection is chroma-aware since session #6 (max of YDIF/UDIF/VDIF);
