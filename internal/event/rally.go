@@ -338,17 +338,11 @@ func snapChunkBounds(chunks [][2]float64, hits []analysis.Sample) [][2]float64 {
 	return chunks
 }
 
-// scoreRally applies the watchability gates (duration floor, adaptive
-// motion floor) and builds the explainable rally segment for one hit
-// window. On refusal it names the gate that fired so the caller's
-// rejection counters are derived from the decision itself, not from a
-// re-derivation of it.
-func scoreRally(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample) (Segment, string, bool) {
-	return scoreRallyWithFloor(motion, audio, cfg, start, end, chunkHits, cfg.MotionFloor)
-}
-
-// scoreRallyWithFloor is scoreRally with an explicit motion floor (the
-// adaptive baseline clamps cfg.MotionFloor before gating).
+// scoreRallyWithFloor applies the watchability gates (duration floor, motion
+// floor) and builds the explainable rally segment for one hit window. On
+// refusal it names the gate that fired, so the caller's rejection counters are
+// derived from the decision itself rather than re-derived from it. The floor is
+// a parameter because the adaptive baseline clamps cfg.MotionFloor first.
 func scoreRallyWithFloor(motion, audio *analysis.FeatureTrack, cfg Config, start, end float64, chunkHits []analysis.Sample, motionFloor float64) (Segment, string, bool) {
 	if end-start < cfg.MinDuration {
 		return Segment{}, "min_duration", false
@@ -404,26 +398,6 @@ func onsetSamples(onsets *analysis.FeatureTrack) []analysis.Sample {
 }
 
 // intervalMean is the mean frame_diff value within [start, end].
-// intervalMax returns the largest sample value in [start,end] (0 when empty).
-func intervalMax(t *analysis.FeatureTrack, start, end float64) float64 {
-	if t == nil {
-		return 0
-	}
-	best := 0.0
-	for _, s := range t.Samples {
-		if s.T < start {
-			continue
-		}
-		if s.T > end {
-			break
-		}
-		if s.V > best {
-			best = s.V
-		}
-	}
-	return best
-}
-
 func intervalMean(t *analysis.FeatureTrack, start, end float64) float64 {
 	if t == nil || len(t.Samples) == 0 {
 		return 0

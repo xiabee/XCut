@@ -40,16 +40,6 @@ type Result struct {
 	Tracks      []FeatureTrack `json:"tracks"`
 }
 
-// FindTrack returns the track with the given kind, or nil.
-func (r *Result) FindTrack(kind string) *FeatureTrack {
-	for i := range r.Tracks {
-		if r.Tracks[i].Kind == kind {
-			return &r.Tracks[i]
-		}
-	}
-	return nil
-}
-
 // Options controls analyzer execution.
 type Options struct {
 	Tools         media.Tools

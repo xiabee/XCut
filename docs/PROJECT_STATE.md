@@ -823,7 +823,27 @@ Windows gate on the laptop.
 
 ## Next Priorities
 
-1. Remote-access hardening: **(a) and (b) are both done** — the runbook with
+1. Coverage sweep at `5a8a4ff` (whole-repo `-coverpkg`, ffmpeg on PATH so the
+   integration tests were live): 47 functions at 0%. Three of them had **no
+   callers at all** and are now deleted rather than tested
+   (`event.scoreRally`, `event.intervalMax`, the exported-but-unused
+   `analysis.Result.FindTrack`); deleting `intervalMax` also surfaced a doc
+   comment describing `intervalMean` sitting above the wrong function — the
+   residue of a mis-anchored edit, with no date attached to it — now back where
+   it belongs. What remains on that list is *unexercised*, not proven
+   risky — the ones worth a look if a bug hunt is next: `render.tail` and
+   `analysis.tailStr` (the text a user sees when FFmpeg fails),
+   `api.purgeLocked` (the auth failure tracker's expiry path),
+   `cli.scanScoreMarks`, and the `*Async` pipeline wrappers, which the job
+   runner may reach by another route. A first pass at the HTTP layer added
+   `TestRenderDownloadHeaderCarriesNoUserBytes` (project names are length-checked
+   only, and the name goes into `Content-Disposition` — mutation-checked: letting
+   a quote or a raw CR/LF through the sanitizer fails the assertion) and
+   `TestStylesEndpointListsTheEmbeddedPresets`; both handlers moved 0% → ~74%.
+   Note for anyone repeating the sweep: without FFmpeg on PATH the same
+   measurement reports `pipeline.AnalyzeProject` at 0%, so a "gap" found that way
+   is an environment artifact, not a missing test.
+2. Remote-access hardening: **(a) and (b) are both done** — the runbook with
    the SSH-tunnel recipe in `docs/OPERATIONS.md`, and the sign-in panel's
    visual pass with the budget defect it caught (session #16). What remains of
    this thread is the owner-level TLS question: D12's bearer token crosses the
