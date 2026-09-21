@@ -223,6 +223,38 @@ enforced flags passed on at `ff1b2d6`. The PowerShell side of both changes was
 verified by running its commands directly, in both directions, not through a full
 Windows gate on the laptop.
 
+Coverage sweep at `5a8a4ff` (whole-repo `-coverpkg`, with FFmpeg on PATH so the
+integration tests were live): 47 functions at 0%. Three had **no callers at all**
+and are deleted rather than tested (`event.scoreRally`, `event.intervalMax`, the
+exported-but-unused `analysis.Result.FindTrack`); removing `intervalMax` also
+surfaced a doc comment describing `intervalMean` sitting above the wrong
+function — residue of a mis-anchored edit, with no date attached to it — back
+where it belongs now. A first pass at the HTTP layer covered two routed handlers
+that no test had reached (`TestRenderDownloadHeaderCarriesNoUserBytes`,
+`TestStylesEndpointListsTheEmbeddedPresets`, 0% → ~74%); the header test pins
+that a project name — validated for length only, so a stored CR, LF and quote
+survive creation — cannot reach `Content-Disposition` un-sanitised, and both
+mutations (let a `"` through, let 13/10 through) fail it. `runFFmpeg`'s failure
+branch had never run either — both existing "render failure" cases return before
+FFmpeg is spawned — so the test binary now plays a chatty failing FFmpeg through
+`TestMain` plus an env var, the pattern `internal/media` already uses; three
+mutations were killed with the test proven to have executed (`ran=1`): dropping
+the tail, taking the head instead, widening the 500-byte budget tenfold.
+Accepted at `3cbf11d` on all three channels (local 469/8, win-devops job
+`20260922-043143-38722e` 470/7, Linux full 458/13, pinned scanner,
+`not run: nothing`, zero `DATA RACE`), and the fake-FFmpeg test was run
+explicitly on the node because the gate has no per-test output — `ran=1
+verdict=--- PASS`, so the mechanism holds on Windows and Linux alike.
+`api.purgeLocked` came next: the auth tracker's ceiling had never executed, and
+it now has a test for both halves (evict what aged out at `authMaxPeers`; when
+everything in there is live, refuse to track rather than grow), killed by two
+mutations — evicting nothing leaves a fresh peer untracked among 4096 expired
+windows, and dropping the second cap check makes it displace live peers instead.
+The trap in that work was the fixture, not the product: the fill loop compared
+against `authMaxPeers - len(g.failures)` *inside* the condition, so the target
+shrank as the map grew and the fill stopped at exactly half the cap — visible
+only because the assertion named the number.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -823,47 +855,17 @@ Windows gate on the laptop.
 
 ## Next Priorities
 
-1. Coverage sweep at `5a8a4ff` (whole-repo `-coverpkg`, ffmpeg on PATH so the
-   integration tests were live): 47 functions at 0%. Three of them had **no
-   callers at all** and are now deleted rather than tested
-   (`event.scoreRally`, `event.intervalMax`, the exported-but-unused
-   `analysis.Result.FindTrack`); deleting `intervalMax` also surfaced a doc
-   comment describing `intervalMean` sitting above the wrong function — the
-   residue of a mis-anchored edit, with no date attached to it — now back where
-   it belongs. What remains on that list is *unexercised*, not proven
-   risky — the ones worth a look if a bug hunt is next: `render.tail` and
-   `analysis.tailStr` (the text a user sees when FFmpeg fails),
-   `api.purgeLocked` (the auth failure tracker's expiry path),
-   `cli.scanScoreMarks`, and the `*Async` pipeline wrappers, which the job
-   runner may reach by another route. `render.tail` has since been covered at
-   `3cbf11d`: `runFFmpeg`'s failure branch had never run either (both existing
-   "render failure" tests return before FFmpeg is spawned), so the test binary
-   now plays a chatty failing FFmpeg through `TestMain` + an env var — the same
-   trick `internal/media` uses — and three mutations were killed with the test
-   proven to have executed (`ran=1`): dropping the tail, taking the head instead
-   of it, and widening the 500-byte budget tenfold. Accepted at `3cbf11d` on all
-   three channels — local 469/8, win-devops job `20260922-043143-38722e` 470/7,
-   Linux full gate 458/13 with the pinned scanner, `not run: nothing` and zero
-   `DATA RACE` lines — and the fake-FFmpeg test was run explicitly on the node
-   because the gate has no per-test output: `ran=1 verdict=--- PASS`, so the
-   mechanism is good on Windows and Linux alike. A first pass at the HTTP layer added
-   `TestRenderDownloadHeaderCarriesNoUserBytes` (project names are length-checked
-   only, and the name goes into `Content-Disposition` — mutation-checked: letting
-   a quote or a raw CR/LF through the sanitizer fails the assertion) and
-   `TestStylesEndpointListsTheEmbeddedPresets`; both handlers moved 0% → ~74%.
-   Note for anyone repeating the sweep: without FFmpeg on PATH the same
-   measurement reports `pipeline.AnalyzeProject` at 0%, so a "gap" found that way
-   is an environment artifact, not a missing test. Accepted at `ae9298c` on all
-   three channels: local fast gate 468/8, win-devops job
-   `20260922-041338-ca1370` 469/7 (the extra pass is the symlink cleanup test,
-   which skips in a plain developer session), Linux full gate 457/13 with the
-   pinned scanner and `not run: nothing`.
+1. Live paths still without a test, from the coverage sweep recorded in the
+   session log: `cli.scanScoreMarks` (needs an eval-path test that drives the
+   scoreboard sidecar stub) and the `pipeline` `*Async` wrappers. Deliberately
+   left alone: `analysis.tailStr`, a five-line twin whose behaviour is pinned on
+   the render side.
 2. Remote-access hardening: **(a) and (b) are both done** — the runbook with
    the SSH-tunnel recipe in `docs/OPERATIONS.md`, and the sign-in panel's
    visual pass with the budget defect it caught (session #16). What remains of
    this thread is the owner-level TLS question: D12's bearer token crosses the
    wire in plaintext, so remote binds stay trusted-network/tunnel-only.
-2. Real-footage evaluation — **one match is done, and that is the limit of what
+3. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
    the provisional constants swept against them (docs/EVAL.md carries the
    negatives). What remains is not more tuning on this footage: every
@@ -872,7 +874,7 @@ Windows gate on the laptop.
    allows. The next useful measurement needs a *different* input — ideally a
    single-court recording, so "our strokes" and "the hall's strokes" stop being
    the same signal. Owner-supplied footage, or the vision sidecar.
-3. Two decisions that are the owner's, not mine, and both block work:
+4. Two decisions that are the owner's, not mine, and both block work:
    **(a) arm64 in CI** — Kylin's distro FFmpeg cannot run the suite (ffprobe JSON
    corruption + no `xfade`), so arm64 is compile-verified and artifact-smoke-
    tested only. Fixing it means pinning a stock arm64 build the way the Windows
@@ -882,18 +884,18 @@ Windows gate on the laptop.
    that becomes v0.1.9-alpha now or rides along with the next batch is a
    packaging call (and packaging is laptop load the control plane asked to keep
    down).
-3. Subtitles with a real Whisper: install faster-whisper locally and run
+5. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
-4. (done, session #8) Per-source court ROI — per-asset override shipped
+6. (done, session #8) Per-source court ROI — per-asset override shipped
    (assets.motion_roi, v4) with the UI picker saving per asset; measured
    4x signal vs full-frame dilution (NIGHTLY_PROGRESS M100).
-5. Re-enable push/PR + tag CI when the GitHub account billing issue is
+7. Re-enable push/PR + tag CI when the GitHub account billing issue is
    resolved (Actions jobs are refused at start; restore notes in
    ci.yml/release.yml unchanged — the files are fine).
-6. Phase 4 leftovers: tray/auto-update and model registry — need
+8. Phase 4 leftovers: tray/auto-update and model registry — need
    maintainer decisions; desktop packaging itself (zip, icons) shipped
    in session #8 and the true installer in session #13.
-7. TLS for the API (or a documented tunnel recipe in an OPERATIONS doc):
+9. TLS for the API (or a documented tunnel recipe in an OPERATIONS doc):
    D12's bearer token crosses the wire in plaintext, which is why remote
    binds are documented as trusted-network/tunnel-only today.
