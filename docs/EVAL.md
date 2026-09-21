@@ -316,6 +316,23 @@ Four things this number cannot say, and should never be quoted as if it could:
    to ~0.25 s late, and one point can emit several raw changes until clustering
    merges them.
 
+**The head is not recoverable the same way, and trying costs the tail.** The
+marks also make the clip's *start* look fixable — 21.8 s of the measured 60 s
+reel sits before the rally — so the first mark after the segment start is a
+candidate head (it is the previous point's end, i.e. the serve). Measured at
+240 s, same manifest, same 44 marks:
+
+| rule | P | R | F1 | ranges | clips end on a point |
+| --- | --- | --- | --- | --- | --- |
+| trim the tail only (committed) | 0.977 | 0.304 | 0.463 | 20/43 | 21/21 within 1 s |
+| snap the head, then trim the tail | 0.641 | 0.221 | 0.328 | 15/43 | **3/21** within 1 s |
+
+Not a tie: moving the head forward consumes the seconds the tail rule needs to
+reach its boundary, so the window shifts wholesale into the next rally's start
+and ends mid-rally. The session #14 finding survives with a stronger
+formulation — the segment's beginning is the trustworthy landmark, and the
+boundary that pays is the one at the **end**.
+
 Finding it, in passing: the sidecar runs ffmpeg with its own temp dir as cwd
 (its metadata dump must be a relative path), so a **relative** media path failed
 as "No such file or directory" on a file that exists — which is exactly what a

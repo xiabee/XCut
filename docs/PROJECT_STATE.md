@@ -25,7 +25,10 @@ asset row, dropped when the region moves, and reported `stale` if a scan
 predates the current rect. Verified end to end in a real browser session (draw →
 `marks: 0` + "run analyze" → analyze → `marks: 2` at the drawn crop, the fixture's
 two changes), on the DOM/HTTP path — screenshots stay unavailable through the
-connector (0×0 viewport), so no pixel claim is made.
+connector (0×0 viewport), so no pixel claim is made. The same marks turned out
+**not** to fix the clip head: snapping the start forward to the next boundary
+cost the tail rule its boundary (P 0.977 → 0.641, 21/21 → 3/21 ends on a point)
+— measured, recorded, and rejected in `docs/EVAL.md`.
 
 ## Version / HEAD
 
