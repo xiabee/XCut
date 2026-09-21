@@ -106,6 +106,16 @@ a scored point, and it printed the footage note. That run is what surfaced two
 gaps now fixed: `xcut auto` had been the one path that reported a short reel
 without explaining it, and an unreadable worker answer (a mis-set
 `workers.ai_bin`) named no binary. docs/PERFORMANCE.md carries the row.
+Accepted at `c1af91b` on all three channels: local fast gate PASS (459 passed /
+7 skipped), win-devops PASS (job `20260921-225624-b28f3e`, the same 459/7), Linux
+full gate PASS with zero `DATA RACE` lines and the Rust worker run.
+
+The follow-up hypothesis — let clips be shorter so more rallies fit the same
+seconds — was measured on the marked manifest and **rejected**: at 60 s the
+`max_clip_duration` arms 8/6/4 s give F1 0.225/0.219/0.224 with 8/10/15 clips,
+and at 120 s the shipped 8 s wins outright (0.389 vs 0.341/0.367). The reel's
+seconds are the budget, so splitting them redistributes rather than adds. No
+preset changed; the table is in docs/EVAL.md.
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session

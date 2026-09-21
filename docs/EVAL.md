@@ -366,6 +366,35 @@ scored point — the one that does not is the last piece of the reel, where no
 later mark is reachable inside the remaining budget. The rule therefore earns
 its place on the boundary path too rather than merely on the plain one.
 
+### Shorter clips do not buy coverage at a fixed reel length (rejected)
+
+With the reel still short of its ask, the tempting next lever was the opposite
+one: let clips be *shorter* so more rallies fit in the same seconds. Measured on
+the same marked manifest, sweeping `max_clip_duration` at two reel lengths:
+
+| max_clip | asked | P | R | F1 | ranges | clips |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8 s (shipped) | 60 s | 0.998 | 0.127 | **0.225** | 7/43 | 8 |
+| 6 s | 60 s | 0.996 | 0.123 | 0.219 | 9/43 | 10 |
+| 4 s | 60 s | 0.995 | 0.126 | 0.224 | 7/43 | 15 |
+| 8 s (shipped) | 120 s | 0.972 | 0.243 | **0.389** | 16/43 | 16 |
+| 6 s | 120 s | 0.996 | 0.205 | 0.341 | 16/43 | 18 |
+| 4 s | 120 s | 0.981 | 0.226 | 0.367 | 14/43 | 28 |
+
+The clip count rises and the coverage does not, which is the arithmetic: the
+reel's seconds are the budget, so cutting it into more pieces redistributes the
+same time instead of adding to it — and recall, which is measured over the
+labelled duration, moves by nothing (at 60 s the 15-clip reel hits the same 7
+ranges the 8-clip reel does). 120 s is the clearer case: 8 s clips win on both
+recall and F1. **`max_clip_duration` stays at 8 s**; the lever that did work is
+the slice length above, which adds candidates rather than splitting the same
+screen time.
+
+One asymmetry worth keeping: the 4 s arm holds precision (0.981–0.995) while
+losing recall, so shorter clips are not *wrong*, just not *more*. If a reel ever
+needs to feel busier at the same length, that is the knob — but it is a taste
+setting, not a coverage fix, and this table is why it is not the default.
+
 One difference between the harness and the plain CLI path is now explained
 rather than left open: the manifest's `asset_roi` (court region) is applied to
 the case's asset, and the ROI track yields **21** candidate rallies where the
