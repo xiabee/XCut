@@ -527,32 +527,33 @@ preset changed; the table is in docs/EVAL.md.
   appeared in the node's 42 visible jobs since — the one later red,
   `20260921-173929-cfff4f`, is the API 500 in the next entry, a different package.
 
-- **One unreproduced 500 on the Windows CI node (open).** `api/TestTimelineRegenAndPutRevisionUniqueness`
-  failed on win-devops at `984a1d4` (job `20260921-173929-cfff4f`) with
-  `timeline_api_test.go:458: unexpected PUT status 500` — the test's contract is
-  "every concurrent PUT is 200 or 409". Same commit: the local fast gate passed
-  (454 tests), and the test itself passed 40 consecutive local runs and again
-  under `-count=8`. The node's own SSH account cannot run builds (`Permission
-  denied` for the CI user's key), so it has not been hammered where it failed.
-  **What changed instead of a guess:** the test now keeps each rejected PUT's
-  response body (it printed a bare status before), and
-  `TestPutFailureCarriesItsReason` proves that channel carries a named reason —
-  so the next occurrence says which step refused rather than joining this list.
-  **A candidate mechanism has since been reproduced locally, and removed.** A
-  timeline save publishes through `workspace.RetryableRename`, whose escalating
-  sleeps then allowed only ~420 ms for a destination held by another handle —
-  and the reader here is `timeline.LoadFile`'s `os.ReadFile`, which shares read
-  and write but *not* delete, so a rename landing during that window answers
-  `Access is denied`. `TestRetryableRenameWaitsOutABriefHolder` pins it: with the
-  old window the test fails verbatim with `Access is denied. (waited 627ms)`
-  against a holder that releases at 900 ms; the wait budget is now an explicit
-  2 s, and the paired test proves it still gives up *boundedly* (error, under
-  4 s, source file intact) when the holder never releases. Not switched to
-  `RetryableReplace`: that deletes the destination first, which trades a
-  timeline document's revision integrity for convenience — the deliberate choice
-  already recorded in `workspace/rename.go`. The entry stays open: the node's one
-  occurrence is consistent with this cause, not proof of it, and the instrumented
-  message will say which step refused if it ever returns.
+- **The 500 on the Windows CI node is reproduced, root-caused and closed.**
+  `api/TestTimelineRegenAndPutRevisionUniqueness` failed on win-devops at
+  `984a1d4` (job `20260921-173929-cfff4f`) reporting
+  `unexpected PUT status 500`, and stayed green through 40+ local runs — so it
+  sat open as "unreproduced" until a gate run at `d811ac2` reproduced it locally,
+  which in turn exposed the reason the report was misleading: **that branch of
+  the test fails on its `GET`, and stored only the status**, so the message
+  blamed a PUT and its detail was empty. Two things were true and neither had
+  been looked at:
+  - reading a document whose name is being replaced answers
+    `ERROR_ACCESS_DENIED` on Windows, so `timeline.LoadFile` could return
+    `cannot access timeline file` → 500 for a plain GET; and
+  - publishing is the mirror case — a rename over a destination a reader still
+    holds fails the same way, and the retry window was ~420 ms of escalating
+    sleeps, which a Defender scan or four concurrent savers can outlast.
+  Both now wait the same explicit 2 s through `workspace.RetryTransient`, which
+  retries *only* the sharing class of error: a missing file is still a fast
+  NotFound (`TestRetryTransientWaitsOnlyForSharingConflicts` fails with "8
+  attempts in 2.54s" the moment the predicate is widened to
+  `ERROR_FILE_NOT_FOUND`), and the give-up stays bounded with the source file
+  intact (`TestRetryableRenameWaitsOutABriefHolder` reproduces the old rename
+  window verbatim: `Access is denied. (waited 627ms)` against a holder releasing
+  at 900 ms). `RetryableReplace` (delete, then rename) remains deliberately
+  unused for the document — that trades revision integrity for the same
+  convenience, as `workspace/rename.go` records. The test now names which verb
+  failed and keeps its response body either way, so a future report cannot
+  misdirect the search the way this one did.
 - **The Linux-leg `DATA RACE` is reproduced, root-caused and fixed (closed).** It
   fired again at `680d707`, this time with both halves of the report: two worker
   goroutines in `analyzeBody`'s per-asset fan-out were calling the analyze

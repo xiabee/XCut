@@ -141,22 +141,32 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
-- **A timeline save could give up while Windows was a moment from letting it
-  through.** Publishing renames a temp file over `timeline.json`, and on Windows
-  that fails with `Access is denied` while any handle holds the destination open
-  — including the read the API itself performs on every `GET /timeline`. A retry
-  existed, but its escalating sleeps allowed only ~420 ms, which a Defender scan
-  or four concurrent savers on a loaded node can outlast; the request then
-  answered 500. The window is now an explicit 2 s wait budget, which is
-  risk-free (nothing is deleted; the source keeps its bytes if the give-up
-  comes). `TestRetryableRenameWaitsOutABriefHolder` reproduces the old
-  behaviour verbatim — holder releases at 900 ms,
-  `Access is denied. (waited 627ms)` — and its pair proves the give-up stays
-  bounded (error, under 4 s, source intact) when the holder never releases. The
-  media path's delete-then-rename is deliberately still not used here: it would
-  trade the timeline document's revision integrity for the same convenience.
-  Most plausible, now-reproduced cause of the single unreproduced 500 in
-  `docs/PROJECT_STATE.md` — not proof of it.
+- **A timeline read could answer 500 while Windows was mid-swap, and the test
+  that caught it blamed the wrong verb.** Two related fixes:
+  - `timeline.LoadFile` now waits out a transient open failure. While another
+    process is replacing a document's name, `os.Stat`/`os.ReadFile` answer
+    `ERROR_ACCESS_DENIED`, and that became `cannot access timeline file` → 500 on
+    a plain `GET /timeline`. `workspace.RetryTransient` waits only for the
+    sharing class of error (2 s ceiling), so a genuinely missing file stays a
+    fast NotFound — pinned both ways by `TestRetryTransientWaitsOnlyForSharing-
+    Conflicts` (widening the predicate to `ERROR_FILE_NOT_FOUND` costs 8 attempts
+    and 2.54 s, and is red).
+  - The publish side, for the mirror case (a reader holding the destination):
+    `workspace.RetryableRename` allowed ~420 ms of escalating sleeps, which a
+    Defender scan or four concurrent savers can outlast; the budget is now an
+    explicit 2 s, which is risk-free because nothing is deleted and the source
+    keeps its bytes. `TestRetryableRenameWaitsOutABriefHolder` reproduces the old
+    behaviour verbatim (holder releases at 900 ms →
+    `Access is denied. (waited 627ms)`), and its pair proves the give-up stays
+    bounded with the source intact. The media path's delete-then-rename is
+    deliberately still not used for the document: it would trade revision
+    integrity for the same convenience.
+  - `api.TestTimelineRegenAndPutRevisionUniqueness` stored only the status when
+    its `GET` failed, so the report read `unexpected PUT status 500:` with an
+    empty detail — and the search went looking for a write bug. It now records
+    which verb failed and its response body either way.
+  This is the cause of the single unreproduced 500 in `docs/PROJECT_STATE.md`
+  (job `20260921-173929-cfff4f`), now also reproduced locally in a gate run.
 - **`xcut auto` stayed silent when the reel came out shorter than asked.** The
   one-shot printed the same `timeline: N clips, X s total` line as `xcut
   timeline` but not the note under it — so the path where an ambitious

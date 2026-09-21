@@ -122,8 +122,8 @@ func TestRetryableRenameGivesUpBoundedly(t *testing.T) {
 	if err == nil {
 		t.Fatal("rename succeeded while the destination handle was still open")
 	}
-	if waited < renameWaitBudget {
-		t.Errorf("gave up after %s, before the %s budget", waited, renameWaitBudget)
+	if waited < transientIOWaitBudget {
+		t.Errorf("gave up after %s, before the %s budget", waited, transientIOWaitBudget)
 	}
 	if waited > 4*time.Second {
 		t.Errorf("gave up after %s; the give-up itself must stay quick enough to fail a request", waited)

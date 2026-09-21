@@ -10,30 +10,30 @@ import (
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
-// renameWaitBudget is how long a rename may keep waiting on a transient holder
-// before the caller is told. The wait itself is risk-free — nothing is deleted
-// and the source keeps its bytes, so a longer budget costs only a slower
-// failure. A too-short budget costs the user a visible failure on a save that
-// Defender was a moment from releasing: win-devops reported one
-// `unexpected PUT status 500` in the concurrent-save test under the previous
-// ~420 ms of escalating sleeps (6 attempts, 20..120 ms).
-const renameWaitBudget = 2 * time.Second
+// transientIOWaitBudget is how long an operation may keep waiting on a
+// transient Windows sharing conflict before the caller is told. Waiting is
+// risk-free here — nothing is deleted, and a failed rename leaves the source
+// intact — so the only cost of a longer budget is a slower failure, while a
+// too-short one turns a momentary holder into a user-visible failure. Two
+// shapes were hit at the old ~420 ms (6 escalating sleeps of 20..120 ms): a
+// rename over a destination another handle still held, and the read of a
+// document whose name was being replaced underneath it — the latter surfaced
+// as a 500 on a GET in api.TestTimelineRegenAndPutRevisionUniqueness (the
+// test's own label said PUT, which is a second bug, fixed in that test).
+const transientIOWaitBudget = 2 * time.Second
 
-// RetryableRename renames src onto dst, absorbing the Windows reality that
-// Defender (and the indexer) briefly hold freshly written files: an
-// os.Rename over such a file fails with a sharing violation / access
-// denied, which documents rewritten in rapid succession (timeline saves,
-// render publishes) would surface as spurious failures. Escalating backoff
-// clears the scanner window; other platforms and other errors fail
-// immediately.
-func RetryableRename(src, dst string) error {
+// RetryTransient runs op until it succeeds, retrying only the errors Windows
+// answers with when a file is briefly held by someone else. Every other error
+// — and op itself once the budget has run out — returns immediately, so a
+// genuinely missing file stays a fast NotFound rather than a 2 s stall.
+func RetryTransient(op func() error) error {
 	var err error
-	deadline := time.Now().Add(renameWaitBudget)
+	deadline := time.Now().Add(transientIOWaitBudget)
 	for delay := 20 * time.Millisecond; ; delay *= 2 {
-		if err = os.Rename(src, dst); err == nil {
+		if err = op(); err == nil {
 			return nil
 		}
-		if runtime.GOOS != "windows" || !isWindowsRettableRename(err) {
+		if runtime.GOOS != "windows" || !isWindowsTransientIO(err) {
 			return err
 		}
 		if !time.Now().Before(deadline) {
@@ -43,10 +43,19 @@ func RetryableRename(src, dst string) error {
 	}
 }
 
-// isWindowsRettableRename matches the errnos a rename over a held file
-// produces on Windows: ERROR_ACCESS_DENIED (5), ERROR_SHARING_VIOLATION (32),
-// ERROR_LOCK_VIOLATION (33).
-func isWindowsRettableRename(err error) bool {
+// RetryableRename renames src onto dst, absorbing the Windows reality that
+// Defender (and the indexer) briefly hold freshly written files: an
+// os.Rename over such a file fails with a sharing violation / access
+// denied, which documents rewritten in rapid succession (timeline saves,
+// render publishes) would surface as spurious failures.
+func RetryableRename(src, dst string) error {
+	return RetryTransient(func() error { return os.Rename(src, dst) })
+}
+
+// isWindowsTransientIO matches the errnos Windows answers with when a file is
+// briefly held by someone else: a rename over a held destination, or a read of
+// a name being replaced underneath it, both surface as one of these.
+func isWindowsTransientIO(err error) bool {
 	var errno syscall.Errno
 	if !errors.As(err, &errno) {
 		return false
@@ -78,7 +87,7 @@ func RetryableReplace(src, dst string) error {
 	if err == nil {
 		return nil
 	}
-	if runtime.GOOS != "windows" || !isWindowsRettableRename(err) {
+	if runtime.GOOS != "windows" || !isWindowsTransientIO(err) {
 		return err
 	}
 	if posixRemove(dst) != nil {

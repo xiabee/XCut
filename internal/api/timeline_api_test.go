@@ -398,7 +398,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 		rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, tl))
 		// The body is the diagnosis: a bare status told us "500" on a CI node
 		// and nothing about which of the read/rename/validation steps said it.
-		return rec.Code, strings.TrimSpace(rec.Body.String())
+		return rec.Code, "PUT: " + strings.TrimSpace(rec.Body.String())
 	}
 
 	// Seed revision 1.
@@ -418,7 +418,12 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 				// Read-then-write, as the editor UI does.
 				rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
 				if rec.Code != http.StatusOK {
+					// Label the verb. This branch used to store only the code,
+					// so a 500 from the read was reported as "unexpected PUT
+					// status" with an empty detail — and sent the search for a
+					// write bug to where no bug was.
 					codes[i*iters+j] = rec.Code
+					details[i*iters+j] = "GET: " + strings.TrimSpace(rec.Body.String())
 					continue
 				}
 				rev := int64(out["timeline"].(map[string]any)["revision"].(float64))
@@ -458,7 +463,7 @@ func TestTimelineRegenAndPutRevisionUniqueness(t *testing.T) {
 		case 0:
 			t.Fatal("a writer never issued its PUT")
 		default:
-			t.Fatalf("unexpected PUT status %d: %s", c, details[k])
+			t.Fatalf("unexpected status %d: %s", c, details[k])
 		}
 	}
 
