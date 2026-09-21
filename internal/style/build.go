@@ -192,7 +192,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		if remaining <= 0 {
 			break
 		}
-		srcStart, srcEnd, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
+		srcStart, srcEnd, atBoundary, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
 		if !ok {
 			continue
 		}
@@ -220,6 +220,11 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		if c.seg.HitCount > 0 {
 			md["hit_count"] = strconv.Itoa(c.seg.HitCount)
 			md["hit_density"] = strconv.FormatFloat(c.seg.HitDensity, 'f', -1, 64)
+		}
+		if atBoundary > 0 {
+			// Which boundary shaped this clip — so a reader can check the
+			// scoreboard rule per clip instead of trusting an aggregate score.
+			md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
 		}
 		clips = append(clips, timeline.Clip{
 			ID:          "clip_" + strconv.Itoa(n),
@@ -431,7 +436,11 @@ func relativize(all []rawFactors) []factors {
 // both jobs: a boundary inside the window trims the dead tail after the point,
 // a boundary beyond it slides the window forward so the clip contains the
 // rally's finish rather than its first eight seconds.
-func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []float64) (start, end float64, ok bool) {
+// trimSegment shapes one clip out of a segment. The third result is the point
+// boundary the window was ended at — 0 when the clip is start-anchored — so the
+// caller can record *why* this clip stops where it does instead of leaving the
+// reader to infer it from a duration.
+func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []float64) (start, end, atBoundary float64, ok bool) {
 	length := seg.Duration()
 	if length > p.MaxClipDuration {
 		length = p.MaxClipDuration
@@ -440,7 +449,7 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []f
 		length = remaining
 	}
 	if length < p.MinClipDuration {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	start = round4(seg.Start)
 	end = round4(start + length)
@@ -450,8 +459,9 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []f
 			newStart = seg.Start
 		}
 		start, end = round4(newStart), round4(b)
+		atBoundary = b
 	}
-	return start, end, true
+	return start, end, atBoundary, true
 }
 
 // reachableBoundary picks the first boundary that can serve as a clip end:

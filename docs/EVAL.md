@@ -337,6 +337,13 @@ and ends mid-rally. The session #14 finding survives with a stronger
 formulation — the segment's beginning is the trustworthy landmark, and the
 boundary that pays is the one at the **end**.
 
+**Per-clip proof, not just aggregate.** A clip the rule shaped carries
+`point_end` in its timeline metadata (the inspector labels it "ends at point");
+one that was not shaped carries nothing, and both directions are tested. On the
+owner's match the 120 s reel's **14 of 14** clips end on a measured boundary,
+each `point_end` equal to its own `source_end`. That is the check to run on your
+own footage before believing any macro-average written here.
+
 Finding it, in passing: the sidecar runs ffmpeg with its own temp dir as cwd
 (its metadata dump must be a relative path), so a **relative** media path failed
 as "No such file or directory" on a file that exists — which is exactly what a

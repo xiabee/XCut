@@ -39,6 +39,11 @@ func TestBoundaryInsideWindowTrimsTheDeadTail(t *testing.T) {
 		t.Fatalf("boundary inside the window must trim the tail: got %v..%v, want 10..14",
 			c.SourceStart, c.SourceEnd)
 	}
+	// The clip says so: a reader checking one clip in the UI must be able to see
+	// which boundary shaped it, not only that the aggregate got better.
+	if got := c.Metadata["point_end"]; got != "14.00" {
+		t.Fatalf("metadata point_end = %q, want \"14.00\" (metadata: %v)", got, c.Metadata)
+	}
 }
 
 func TestBoundaryBeyondWindowShiftsToEndThere(t *testing.T) {
@@ -57,6 +62,9 @@ func TestBoundaryBeyondWindowShiftsToEndThere(t *testing.T) {
 	c := tl.Tracks[0].Clips[0]
 	if c.SourceEnd != 17.2 {
 		t.Fatalf("clip must end at the point's end: got %v, want 17.2", c.SourceEnd)
+	}
+	if got := c.Metadata["point_end"]; got != "17.20" {
+		t.Fatalf("metadata point_end = %q, want \"17.20\"", got)
 	}
 	if c.SourceEnd-c.SourceStart < p.MinClipDuration {
 		t.Fatalf("shifted clip is below the minimum length: %v s", c.SourceEnd-c.SourceStart)
@@ -84,6 +92,9 @@ func TestBoundaryOutsideSegmentIsIgnored(t *testing.T) {
 		t.Fatalf("unreachable boundary must change nothing: got %v..%v, want 10..18",
 			c.SourceStart, c.SourceEnd)
 	}
+	if _, present := c.Metadata["point_end"]; present {
+		t.Fatalf("a clip that was not shaped by a boundary must not claim one: %v", c.Metadata)
+	}
 }
 
 // The whole feature is optional: with no boundaries supplied the output must be
@@ -108,6 +119,14 @@ func TestNoBoundariesKeepsStartAnchoredWindows(t *testing.T) {
 		if a[i].SourceStart != b[i].SourceStart || a[i].SourceEnd != b[i].SourceEnd {
 			t.Fatalf("clip %d differs: %v..%v vs %v..%v", i,
 				a[i].SourceStart, a[i].SourceEnd, b[i].SourceStart, b[i].SourceEnd)
+		}
+		// The equality claim covers what the UI shows, not just the cut: a
+		// boundary key appearing on an unmarked project would be a lie.
+		if _, present := a[i].Metadata["point_end"]; present {
+			t.Fatalf("clip %d carries point_end without any boundaries: %v", i, a[i].Metadata)
+		}
+		if a[i].Metadata["reason"] != b[i].Metadata["reason"] {
+			t.Fatalf("clip %d reason differs: %q vs %q", i, a[i].Metadata["reason"], b[i].Metadata["reason"])
 		}
 	}
 }

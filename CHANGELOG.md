@@ -34,6 +34,12 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **Each clip says which point boundary ended it.** A shaped clip carries
+  `point_end` in its metadata and the inspector shows it as "ends at point", so
+  the scoreboard rule is checkable one clip at a time rather than only through an
+  aggregate score; a clip that was *not* shaped carries no such key (both
+  directions are tested, and the absence is the honest case). On the owner's
+  match all 14 clips of the 120 s reel now end on a measured boundary.
 - **No terminal needed.** The web UI's region picker now draws either the court
   or the scoreboard (`GET/PUT/DELETE
   /api/v1/projects/{id}/assets/{assetID}/score`), and `analyze` measures whatever

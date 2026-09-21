@@ -1010,6 +1010,9 @@ function renderInspector() {
   if (c.metadata && c.metadata.score !== undefined) {
     box.appendChild(stat(t("score"), String(c.metadata.score)));
     if (c.metadata.reason) box.appendChild(stat(t("why"), String(c.metadata.reason)));
+    // Only present when a scoreboard boundary shaped this clip's end; the
+    // absence is as informative as the presence.
+    if (c.metadata.point_end) box.appendChild(stat(t("ends at point"), String(c.metadata.point_end)));
   }
 
   const grid = document.createElement("div");

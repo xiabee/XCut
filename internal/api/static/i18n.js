@@ -107,6 +107,7 @@ window.XCUT_I18N = {
     "duration": "时长",
     "score": "得分",
     "why": "入选原因",
+    "ends at point": "结束于得分点",
     "trim in (s)": "入点裁剪（秒）",
     "trim out (s)": "出点裁剪（秒）",
     "speed (×)": "速度（×）",
