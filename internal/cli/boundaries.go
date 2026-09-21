@@ -131,6 +131,10 @@ func cmdBoundaries(a *App, args []string) error {
 		}
 		fmt.Fprintf(a.Stdout, "found %d point boundaries in %s (%s, %.1fs, crop %s)\n",
 			len(times), chosen.Filename, target, time.Since(started).Seconds(), *cropRect)
+		// Spacing is what makes the number checkable: 44 boundaries spread over
+		// ten minutes look like a match, 44 spaced one second apart look like a
+		// crop that followed something other than the score.
+		fmt.Fprintf(a.Stdout, "  %s\n", worker.SummarizeScoreMarks(times).String())
 		switch {
 		case len(times) == 0:
 			// A region that never changed is almost always a misaimed crop, and

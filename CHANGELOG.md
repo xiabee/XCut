@@ -34,6 +34,11 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **A scoreboard scan reports its own spacing**, not just its count:
+  `44 boundaries, 0.3s..595.7s, median gap 13.5s, tightest 5.0s`, in
+  `xcut boundaries` output and in the analyze job log. A crop that follows a
+  clock or a pulsing logo returns a plausible *count* and an implausible
+  distribution — the count alone cannot tell the two apart.
 - **Each clip says which point boundary ended it.** A shaped clip carries
   `point_end` in its metadata and the inspector shows it as "ends at point", so
   the scoreboard rule is checkable one clip at a time rather than only through an

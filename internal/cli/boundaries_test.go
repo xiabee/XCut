@@ -76,6 +76,11 @@ func TestBoundariesScanListClear(t *testing.T) {
 	if !strings.Contains(out, "found 2 point boundaries") {
 		t.Fatalf("scan output:\n%s", out)
 	}
+	// The spacing line is what lets a person judge the scan without re-running
+	// anything: two changes 8 s apart, from 4 s to 12 s.
+	if !strings.Contains(out, "2 boundaries, 4.0s..12.0s, median gap 8.0s, tightest 8.0s") {
+		t.Fatalf("scan output missing the spacing summary:\n%s", out)
+	}
 	out = run(0, "boundaries", "bnd")
 	if !strings.Contains(out, "2 marks at 0.000,0.000,0.400,0.300") {
 		t.Fatalf("listing after scan:\n%s", out)

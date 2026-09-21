@@ -56,8 +56,9 @@ func (d *Deps) scanScoreMarks(ctx context.Context, assets []storage.Asset) error
 		}); err != nil {
 			return err
 		}
+		summary := worker.SummarizeScoreMarks(times)
 		d.Log.Info("scoreboard marks measured", "asset", a.ID, "marks", len(times),
-			"crop", a.ScoreCrop)
+			"crop", a.ScoreCrop, "spacing", summary.String())
 	}
 	return nil
 }
