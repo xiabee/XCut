@@ -44,6 +44,11 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   Measured on the owner's match, unmarked manifest: 60 s and 120 s unchanged to
   the decimal (F1 0.199 / 0.330, 8 / 15 clips); 240 s goes 21 clips / F1 0.426 →
   **27 / 0.511** with 18 → 23 of 43 labelled ranges hit; 300 s → **0.523**. The
+  configured path (the `score_roi` manifest, 44 scoreboard marks) was measured
+  afterwards because the change could have broken point-end trimming and did
+  not: 240 s goes 21 clips / F1 0.463 → **27 / 0.562** with precision
+  0.977 → 0.987 and 26 of 27 clips still landing on a scored point, while the
+  60 s row is bit-identical to before. The
   8 s floor was tried first and rejected by the suite: it still split the
   synthetic fixture's 10 s rallies and took rally recall to 0.455. Relaxing the
   event *floor* instead (`min_duration`, `min_hits`) was measured and rejected

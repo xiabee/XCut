@@ -346,9 +346,25 @@ The 240 s ask still stops near 216 s, and it is no longer the slice: with 30+
 candidates in play the selector declines the rest on its own diversity rules
 (`min_gap` 4 s, `max_per_window` 2). That is the next ceiling, and it is a taste
 decision rather than a shortage — which is why the CLI and client sentence now
-states what happened (*the cut already uses every rally the analysis found*)
-instead of recommending a shorter-event style, the one remedy this section
-measured as inert.
+reports the pool as it is (`offered 30 candidate rallies and the cut took 27 of
+them`) instead of recommending a shorter-event style, the one remedy this
+section measured as inert.
+
+**The same sweep on the configured path** (the `score_roi` manifest: 44
+scoreboard marks, so clips may stop on a point) — this is the arm that decides
+whether the finer slice broke the boundary rule, and it is the row the ladder
+table above carries as `180/240/300 s = 21 clips, 0.977 P, 0.463 F1`:
+
+| asked | clips / F1 before | clips / F1 after | ranges | precision after | on a point |
+| --- | --- | --- | --- | --- | --- |
+| 60 s | 8 / 0.225 | 8 / 0.225 (bit-identical) | 7/43 | 0.998 | 8/8 |
+| 240 s | 21 / 0.463 | **27 / 0.562** | 20 → 24/43 | **0.987** | 26/27 |
+
+Precision did not fall (0.977 → 0.987, because more of the extra pieces are
+mid-rally action the old slices skipped over) and 26 of 27 clips still end on a
+scored point — the one that does not is the last piece of the reel, where no
+later mark is reachable inside the remaining budget. The rule therefore earns
+its place on the boundary path too rather than merely on the plain one.
 
 One difference between the harness and the plain CLI path is now explained
 rather than left open: the manifest's `asset_roi` (court region) is applied to

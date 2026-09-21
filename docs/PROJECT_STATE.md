@@ -82,6 +82,11 @@ slice can supply, never widens, and stops at two clip lengths — an 8 s floor w
 tried first and the suite refused it (it still split the fixture's 10 s rallies
 and took rally recall to 0.455). Result: 60 s and 120 s rows unchanged to the
 decimal, 240 s 21 clips/F1 0.426 → 27/0.511 and 300 s → 0.523 (docs/EVAL.md).
+The configured path (the `score_roi` manifest, 44 scoreboard marks) was measured
+afterwards because the change could have broken the boundary rule and did not:
+240 s goes 21/0.463 → **27 clips/0.562** with precision 0.977 → 0.987 and 26 of
+27 clips still ending on a scored point, while the 60 s row is bit-identical to
+before it (P 0.998, 8 clips, 8/8 on a point).
 The note was rewritten to stop recommending the remedy that measurement showed
 does nothing, and to report the pool honestly (`offered 30 candidate rallies and
 the cut took 27 of them` — the selector works through the list, it does not take
