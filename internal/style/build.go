@@ -24,6 +24,11 @@ type AssetInfo struct {
 type AssetEvents struct {
 	Asset    AssetInfo
 	Segments []event.Segment
+	// Boundaries are source-time marks where a point/rally is known to have
+	// ended, supplied by whoever could know that (a sidecar reading a burned-in
+	// scoreboard). Optional and empty by default: the core's own signals were
+	// measured and cannot infer it (docs/EVAL.md).
+	Boundaries []float64
 }
 
 // selInterval is a source-time span selected so far, kept per asset for the
@@ -126,10 +131,11 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	durations := map[string]float64{}
 
 	type candidate struct {
-		asset AssetInfo
-		seg   event.Segment
-		score float64
-		f     factors
+		asset      AssetInfo
+		seg        event.Segment
+		boundaries []float64
+		score      float64
+		f          factors
 	}
 	var cands []candidate
 	var raws []rawFactors
@@ -141,8 +147,9 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			}
 			raws = append(raws, rawSegmentFactors(s))
 			cands = append(cands, candidate{
-				asset: it.Asset,
-				seg:   s,
+				asset:      it.Asset,
+				seg:        s,
+				boundaries: it.Boundaries,
 			})
 		}
 	}
@@ -185,7 +192,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		if remaining <= 0 {
 			break
 		}
-		srcStart, srcEnd, ok := trimSegment(preset, c.seg, remaining)
+		srcStart, srcEnd, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
 		if !ok {
 			continue
 		}
@@ -416,8 +423,15 @@ func relativize(all []rawFactors) []factors {
 }
 
 // trimSegment cuts a segment to the desired clip length: the full segment
-// when short, else a centered window capped by remaining target time.
-func trimSegment(p *Preset, seg event.Segment, remaining float64) (start, end float64, ok bool) {
+// when short, else a window capped by remaining target time.
+//
+// When the caller knows where the point actually ended (boundaries), the
+// window is placed to END there instead of starting at the segment head —
+// provided that end is reachable without leaving the segment. One rule covers
+// both jobs: a boundary inside the window trims the dead tail after the point,
+// a boundary beyond it slides the window forward so the clip contains the
+// rally's finish rather than its first eight seconds.
+func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []float64) (start, end float64, ok bool) {
 	length := seg.Duration()
 	if length > p.MaxClipDuration {
 		length = p.MaxClipDuration
@@ -430,7 +444,35 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64) (start, end fl
 	}
 	start = round4(seg.Start)
 	end = round4(start + length)
+	if b, found := reachableBoundary(boundaries, seg, p.MinClipDuration); found {
+		newStart := b - length
+		if newStart < seg.Start {
+			newStart = seg.Start
+		}
+		start, end = round4(newStart), round4(b)
+	}
 	return start, end, true
+}
+
+// reachableBoundary picks the first boundary that can serve as a clip end:
+// at least one minimum-clip inside the segment, and not past its end (the
+// engine may not show material the detector did not attribute to this event).
+// Boundaries arrive unsorted from external tools, so they are scanned, not
+// indexed; the count is points in a match, not frames.
+func reachableBoundary(boundaries []float64, seg event.Segment, minClip float64) (float64, bool) {
+	best := math.Inf(1)
+	for _, b := range boundaries {
+		if math.IsNaN(b) || b < seg.Start+minClip || b > seg.End {
+			continue
+		}
+		if b < best {
+			best = b
+		}
+	}
+	if math.IsInf(best, 1) {
+		return 0, false
+	}
+	return best, true
 }
 
 func clamp(v, lo, hi float64) float64 {
