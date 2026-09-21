@@ -11,7 +11,10 @@
 // []Interval, annotations are []Range.
 package eval
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 // Interval is a half-open [Start, End) time range in seconds on one media
 // source (the selected clip's source span).
@@ -139,53 +142,19 @@ type CaseMetrics struct {
 	// near-duplicate pair (IoU > DuplicateIoU). 0 = no redundant picks.
 	DuplicateRate float64 `json:"duplicate_rate"`
 
-	// LongestSkip is the widest stretch of source time, in seconds, that the
-	// reel stepped over between its picks — measured across the span the
-	// annotations cover, ends included. Precision, recall and range hits are all
-	// indifferent to *where* the picks fall: eight clips packed into the first
-	// two minutes of a ten-minute match score the same as eight spread over it.
-	// A highlight reel is not supposed to be one long opening rally.
-	LongestSkip float64 `json:"longest_skip"`
-}
-
-// longestSkip returns the widest stretch of [lo,hi] that no pick covers, where
-// lo/hi are the first and last edges of the annotated ranges. The picks are
-// clipped to that span and merged first, so overlapping or contained clips
-// cannot hide a gap or invent one.
-func longestSkip(selected, expected []Interval) float64 {
-	if len(expected) == 0 {
-		return 0
-	}
-	lo, hi := expected[0].Start, expected[0].End
-	for _, e := range expected {
-		if e.Start < lo {
-			lo = e.Start
-		}
-		if e.End > hi {
-			hi = e.End
-		}
-	}
-	if hi <= lo {
-		return 0
-	}
-	span := Interval{Start: lo, End: hi}
-	clipped := make([]Interval, 0, len(selected))
-	for _, s := range selected {
-		if c, ok := s.intersect(span); ok {
-			clipped = append(clipped, c)
-		}
-	}
-	merged := mergeIntervals(clipped)
-	if len(merged) == 0 {
-		return round4(hi - lo)
-	}
-	gap := math.Max(merged[0].Start-lo, hi-merged[len(merged)-1].End)
-	for i := 1; i < len(merged); i++ {
-		if g := merged[i].Start - merged[i-1].End; g > gap {
-			gap = g
-		}
-	}
-	return round4(math.Max(gap, 0))
+	// LongestMissedRun is how many annotated rallies in a row (in source-time
+	// order) the reel did not touch at all. Precision, recall, F1 and range hits
+	// are indifferent to *where* the picks fall: three clips on the first three
+	// rallies of a six-rally match score identically to three spread over it.
+	//
+	// A count of ranges, deliberately not seconds. The seconds version was
+	// measured first and dropped: on the owner's match it reported a 164 s
+	// "skip" at the 60 s default, of which only 39 s was annotated rally
+	// content — the rest is the between-point dead time no reel should contain
+	// anyway, so it punished the reel for the players towelling off. Partial
+	// coverage still counts as represented; how much of a rally was used is what
+	// recall and per-range coverage already measure.
+	LongestMissedRun int `json:"longest_missed_run"`
 }
 
 // RangeMatch is one expected range against the best-matching selection.
@@ -244,8 +213,26 @@ func Score(selected []Interval, expected []Range, cfg Config) CaseMetrics {
 	m.Clips = len(selected)
 	m.SelectedSeconds = round4(selSecs)
 	m.ExpectedSeconds = round4(expSecs)
-	m.LongestSkip = longestSkip(selected, expIntervals)
-	m.LongestSkip = longestSkip(selected, expIntervals)
+	// Spread, measured over the annotations rather than over source seconds, so
+	// the dead time between rallies cannot count as a missed stretch. Sorted
+	// first: a manifest listed out of time order must be able neither to
+	// manufacture a run nor to hide one. No picks is not a special case — the
+	// whole annotation set is one run, which is the honest reading.
+	if len(expected) > 0 {
+		byTime := make([]Range, len(expected))
+		copy(byTime, expected)
+		sort.Slice(byTime, func(i, j int) bool { return byTime[i].Start < byTime[j].Start })
+		run := 0
+		for _, r := range byTime {
+			if intersectionLength([]Interval{r.interval()}, selected) > 0 {
+				run = 0
+				continue
+			}
+			if run++; run > m.LongestMissedRun {
+				m.LongestMissedRun = run
+			}
+		}
+	}
 	if selSecs > 0 && expSecs > 0 {
 		inter := intersectionLength(selected, expIntervals)
 		m.Precision = round4(inter / selSecs)

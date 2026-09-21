@@ -34,17 +34,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
-- **The eval harness now reports `longest skip`** — the widest stretch of source
-  time inside the annotated span that no clip covers, measured over the union of
-  picks. Precision, recall, F1 and range hits are all indifferent to *where* the
-  picks fall, so a reel of eight clips taken from the opening minutes of a
-  ten-minute match scores identically to one spread across it; the two
-  `Score` tests are built on such a pair. Measured on the owner's match: the
-  60 s default leaves a 164 s stretch unrepresented (120 s: 60 s, 240 s: 31 s),
-  which is what a phase quota that caps visits — never requires them — permits.
-  It is recorded rather than "fixed": precision at 60 s is 0.998, so every pick
-  is already inside a real rally, and forcing spread changes *which* rallies the
-  eight are without adding any highlight time. docs/EVAL.md carries the table.
+- **The eval harness now reports the longest missed run** — how many annotated
+  rallies in a row the reel did not touch at all. P/R/F1 and range hits are
+  indifferent to *where* picks fall, so three clips on the first three rallies of
+  a six-rally match score identically to three spread over it; the two new `Score`
+  tests are built on such pairs. On the owner's match the 60 s default leaves **10
+  consecutive rallies** unrepresented (120 s: 4, 240 s: 2) — the preset's phase
+  rule caps clips per window and never floors one, so a window can get nothing.
+  Whether that is a defect or "take the best eight wherever they are" is the
+  owner's call and is recorded as an open question, not tuned silently. The
+  metric replaced a seconds-based version that misled: its 164 s figure was
+  mostly between-point dead time, of which only 39 s was rally content.
 - **A long reel now gets finer rally slices, a short one does not.** The dense
   span the analyzer finds is cut at `rally_chunk` (default 30 s), so
   candidates = footage ÷ slice — on the owner's 603 s match that pinned the pool

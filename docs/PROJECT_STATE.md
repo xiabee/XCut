@@ -117,15 +117,36 @@ and at 120 s the shipped 8 s wins outright (0.389 vs 0.341/0.367). The reel's
 seconds are the budget, so splitting them redistributes rather than adds. No
 preset changed; the table is in docs/EVAL.md.
 
-A new eval metric, `longest skip` (the widest annotated stretch no clip covers),
-exists because the existing four are blind to *where* picks land: the 60 s
-default leaves 164 s of the match unrepresented while scoring P 0.998 / F1 0.225
-and 8/8 clips on a scored point. Recorded, deliberately not "fixed" — the phase
-quota caps visits per window and never requires one, and with precision already at
-0.998 forcing spread swaps which rallies the eight picks are rather than adding
-highlight time. If the owner wants a recap that samples every phase, that is the
-knob, and this number is how the trade gets checked. docs/EVAL.md has the table
-for 60/120/240 s.
+A new eval metric, `longest missed run` (how many annotated rallies in a row the
+reel did not touch at all), replaced a seconds-based first version that misled:
+its 164 s figure at the 60 s default was mostly between-point dead time, only 39 s
+of it rally content. Counting rallies says the default reel leaves **10
+consecutive rallies** unrepresented (120 s: 4, 240 s: 2) because
+`diversity.phases` caps clips per window and floors nothing. That is a product
+judgement — "sample every phase" against "take the best eight wherever they fall"
+— so it is recorded as an open question for the owner, with the numbers in
+docs/EVAL.md, rather than tuned in passing.
+
+## Version / HEAD
+
+**The one-shot was run end to end on the owner's match** (`xcut auto … --style
+badminton_highlight --duration 240 --score-crop 0.4297,0.7778,0.1406,0.0972`):
+77.6 s wall on the laptop for import → analyze (44 scoreboard marks measured in
+the same pass) → timeline → a 158.6 s / 39.0 MB reel, 23 clips of which 22 end on
+a scored point, and it printed the footage note. That run is what surfaced two
+gaps now fixed: `xcut auto` had been the one path that reported a short reel
+without explaining it, and an unreadable worker answer (a mis-set
+`workers.ai_bin`) named no binary. docs/PERFORMANCE.md carries the row.
+Accepted at `c1af91b` on all three channels: local fast gate PASS (459 passed /
+7 skipped), win-devops PASS (job `20260921-225624-b28f3e`, the same 459/7), Linux
+full gate PASS with zero `DATA RACE` lines and the Rust worker run.
+
+The follow-up hypothesis — let clips be shorter so more rallies fit the same
+seconds — was measured on the marked manifest and **rejected**: at 60 s the
+`max_clip_duration` arms 8/6/4 s give F1 0.225/0.219/0.224 with 8/10/15 clips,
+and at 120 s the shipped 8 s wins outright (0.389 vs 0.341/0.367). The reel's
+seconds are the budget, so splitting them redistributes rather than adds. No
+preset changed; the table is in docs/EVAL.md.
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session

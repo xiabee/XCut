@@ -249,9 +249,9 @@ func cmdEval(a *App, args []string) error {
 			continue
 		}
 		m := res.Metrics
-		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d  longest skip %.0fs%s\n",
+		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d  missed run %d%s\n",
 			c.Name, m.Precision, m.Recall, m.F1, m.RangesHit, m.RangesTotal, m.DuplicateRate, m.Clips,
-			m.LongestSkip, boundaryShaped(res))
+			m.LongestMissedRun, boundaryShaped(res))
 	}
 
 	totalRanges := 0

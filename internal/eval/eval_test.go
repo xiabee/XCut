@@ -69,56 +69,77 @@ func TestScoreEmptySelection(t *testing.T) {
 	}
 }
 
-// TestScoreLongestSkipSeparatesWhatPRTakesAsEqual: the point of the metric is
-// that two reels can agree on every existing number and differ on the one that
-// says whether the match was actually watched end to end. Both selections below
-// score P 1, R 1/3, F1 0.5 and hit two of three ranges — by hand, over expected
-// [0,10] [30,40] [60,70]:
-//
-//	end to end: [0,5] + [60,65]  → steps over 30..60, i.e. 55 s
-//	first half: [0,5] + [30,35]  → steps over 35..70, i.e. 35 s
-func TestScoreLongestSkipSeparatesWhatPRTakesAsEqual(t *testing.T) {
-	expected := []Range{{Start: 0, End: 10}, {Start: 30, End: 40}, {Start: 60, End: 70}}
-	spread := Score([]Interval{fsec(0, 5), fsec(60, 65)}, expected, DefaultMetricsConfig())
-	clumped := Score([]Interval{fsec(0, 5), fsec(30, 35)}, expected, DefaultMetricsConfig())
-
-	for _, pair := range []struct{ a, b CaseMetrics }{{spread, clumped}, {clumped, spread}} {
-		if pair.a.Precision != pair.b.Precision || pair.a.Recall != pair.b.Recall ||
-			pair.a.F1 != pair.b.F1 || pair.a.RangesHit != pair.b.RangesHit {
-			t.Fatalf("the two selections were supposed to tie on the existing metrics: %+v vs %+v", pair.a, pair.b)
-		}
-	}
-	if spread.LongestSkip != 55 {
-		t.Errorf("end-to-end reel: longest skip %g, want 55 (the 30..60 gap to the last range's start)", spread.LongestSkip)
-	}
-	if clumped.LongestSkip != 35 {
-		t.Errorf("first-half reel: longest skip %g, want 35 (nothing picked after 35)", clumped.LongestSkip)
+// sixRallies is the fixture every spread case below is computed against by
+// hand: six annotated rallies of 10 s each, 60 s of rally time, dead time
+// between them.
+func sixRallies() []Range {
+	return []Range{
+		{Start: 0, End: 10}, {Start: 20, End: 30}, {Start: 40, End: 50},
+		{Start: 60, End: 70}, {Start: 80, End: 90}, {Start: 100, End: 110},
 	}
 }
 
-// TestScoreLongestSkipMergesBeforeMeasuring: the gap has to be computed over the
-// union of picks. [0,60]+[10,70] covers 0..70, so a 0..100 span leaves 30 s over
-// — and [0,100]+[10,20] covers the whole span, so it leaves nothing, where
-// subtracting per-pick ends would invent an 80 s hole out of a contained clip.
-// The two orders of the first pair are the same case seen from the other side.
-func TestScoreLongestSkipMergesBeforeMeasuring(t *testing.T) {
-	expected := []Range{{Start: 0, End: 100}}
-	cases := []struct {
-		name  string
-		picks []Interval
-		want  float64
-	}{
-		{"overlapping pair", []Interval{fsec(0, 60), fsec(10, 70)}, 30},
-		{"same pair, reversed order", []Interval{fsec(10, 70), fsec(0, 60)}, 30},
-		{"contained clip", []Interval{fsec(0, 100), fsec(10, 20)}, 0},
+// TestScoreMissedRunSeparatesWhatPRTakesAsEqual: the reason the metric exists.
+// Both reels pick three 5 s clips out of the same six rallies, so every existing
+// number agrees — precision 1 (all selected time is inside annotations), recall
+// 15/60 = 0.25, F1 0.4, three ranges hit at IoU 0.5. They differ in which
+// rallies went unrepresented:
+//
+//	opening three:  [0,5] [20,25] [40,45]   → rallies 4,5,6 missed in a row: 3
+//	spread three:   [0,5] [60,65] [100,105] → only 2,3 in a row, then 5: 2
+func TestScoreMissedRunSeparatesWhatPRTakesAsEqual(t *testing.T) {
+	spread := Score([]Interval{fsec(0, 5), fsec(60, 65), fsec(100, 105)}, sixRallies(), DefaultMetricsConfig())
+	clumped := Score([]Interval{fsec(0, 5), fsec(20, 25), fsec(40, 45)}, sixRallies(), DefaultMetricsConfig())
+
+	if spread.Precision != clumped.Precision || spread.Recall != clumped.Recall ||
+		spread.F1 != clumped.F1 || spread.RangesHit != clumped.RangesHit || spread.Clips != clumped.Clips {
+		t.Fatalf("the two reels were meant to tie on the existing metrics: %#v vs %#v", spread, clumped)
 	}
-	for _, c := range cases {
-		if got := Score(c.picks, expected, DefaultMetricsConfig()).LongestSkip; got != c.want {
-			t.Errorf("%s: longest skip %g, want %g", c.name, got, c.want)
-		}
+	if spread.LongestMissedRun != 2 {
+		t.Errorf("spread reel: missed run %d, want 2", spread.LongestMissedRun)
 	}
-	if s := Score(nil, expected, DefaultMetricsConfig()); s.LongestSkip != 100 {
-		t.Errorf("no picks: longest skip %g, want the whole 100 s span", s.LongestSkip)
+	if clumped.LongestMissedRun != 3 {
+		t.Errorf("opening-three reel: missed run %d, want 3", clumped.LongestMissedRun)
+	}
+}
+
+// TestScoreMissedRunCountsTouchNotCoverage: a rally the reel brushes counts as
+// represented — how much of it was used is recall's business, not this metric's.
+// A sliver inside rally 4 must break the run from 3 to 2. Sorted-ness is checked
+// on the same shape: the same six ranges declared back-to-front must report the
+// same run, because a manifest's ordering is not a fact about the match.
+func TestScoreMissedRunCountsTouchNotCoverage(t *testing.T) {
+	sliver := Score([]Interval{fsec(0, 5), fsec(20, 25), fsec(40, 45), fsec(60, 60.5)}, sixRallies(), DefaultMetricsConfig())
+	if sliver.LongestMissedRun != 2 {
+		t.Errorf("missed run %d, want 2 (rallies 5 and 6; 4 is touched by the 0.5s clip)", sliver.LongestMissedRun)
+	}
+
+	reversed := make([]Range, 0, 6)
+	for _, r := range sixRallies() {
+		reversed = append([]Range{r}, reversed...)
+	}
+	back := Score([]Interval{fsec(0, 5), fsec(20, 25), fsec(40, 45)}, reversed, DefaultMetricsConfig())
+	if back.LongestMissedRun != 3 {
+		t.Errorf("same reel against a reversed manifest: missed run %d, want 3", back.LongestMissedRun)
+	}
+
+	// The discriminating ordering is neither ascending nor descending: a run
+	// statistic is invariant under reversing a list, so only an interleaved
+	// manifest proves the ranges are laid back out in time order first. Touching
+	// 1, 2 and 3 out of the sequence [1,4,2,5,3,6] would read as an alternating
+	// 1 without sorting, and the true 3 once sorted.
+	interleaved := []Range{
+		{Start: 0, End: 10}, {Start: 60, End: 70}, {Start: 20, End: 30},
+		{Start: 80, End: 90}, {Start: 40, End: 50}, {Start: 100, End: 110},
+	}
+	mixed := Score([]Interval{fsec(0, 5), fsec(20, 25), fsec(40, 45)}, interleaved, DefaultMetricsConfig())
+	if mixed.LongestMissedRun != 3 {
+		t.Errorf("same reel against an interleaved manifest: missed run %d, want 3", mixed.LongestMissedRun)
+	}
+
+	none := Score(nil, sixRallies(), DefaultMetricsConfig())
+	if none.LongestMissedRun != 6 {
+		t.Errorf("no picks: missed run %d, want 6 (the whole annotation set)", none.LongestMissedRun)
 	}
 }
 
