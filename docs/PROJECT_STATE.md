@@ -157,10 +157,13 @@ returning 3 gave `gate_rc=0` with `grep -c "gate (full)"` = 0 in the log; at
 the same fixture is the positive control that gives this repo's
 `No vulnerabilities found` some meaning.
 
-Two coverage facts fell out of the investigation. No CI leg had ever run that
-step: the control-plane local leg and win-devops both use the *fast* gate, and
+Two coverage facts fell out of the investigation. No *milestone* leg had run that
+step — the control-plane local leg and win-devops both use the *fast* gate, and
 the Linux full leg could not see `~/go/bin/govulncheck`, which had been installed
-on the node for weeks but is not on a non-login ssh PATH. The gate now looks
+on the node for weeks but is not on a non-login ssh PATH. (The Windows nightly
+does run a full gate, and its `.tools/bin` carries the binary, so scans have
+happened there — see `docs/NIGHTLY_LOG.md`; that is a nightly pass, not the
+channel every milestone closes through.) The gate now looks
 where `go install` actually puts things, and the Linux verdict line reads
 `not run: nothing` for the first time (452 passed / 13 skipped, zero `DATA RACE`
 lines, `cargo test` 3 passed). Looking there also inverted the documented pinning
