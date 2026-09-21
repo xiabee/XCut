@@ -34,6 +34,14 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **The gate now says which optional legs actually ran.** `go test` reports
+  `N passed, M skipped` and lists every skipped test by name, and the verdict
+  line carries the count. Verified both directions on the same host: with
+  python on PATH 438 pass / 7 skip (no sidecar test listed); with every
+  python-bearing PATH entry removed 425 pass / 20 skip, naming
+  `worker/TestScoreChanges*` and `cli/TestBoundariesScanListClear` — so a green
+  gate on a python-less node can no longer read as "the cross-language contract
+  was exercised". `scripts/check.sh` (the Linux leg) carries the same accounting.
 - **Clips can stop where the point stopped.** The core's own signals were
   measured and cannot find rally ends (docs/EVAL.md), so the one source that
   can — a burned-in scoreboard — is now readable: a `score_changes` op in the

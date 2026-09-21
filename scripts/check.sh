@@ -98,8 +98,47 @@ go vet ./...
 echo "== go build"
 go build ./...
 
+# Same skip accounting as check.ps1: a package-level "ok" cannot tell "ran and
+# passed" from "never ran", and three suites here are conditional (integration
+# tests need ffmpeg, the cross-language sidecar tests need python, the Rust
+# protocol tests need the worker binary). Names, not reasons — a skip event
+# carries no message.
 echo "== go test"
-go test ./...
+test_json=$(mktemp)
+test_err=$(mktemp)
+set +e
+go test -count=1 -json ./... >"$test_json" 2>"$test_err"
+test_exit=$?
+set -e
+if [ "$test_exit" -ne 0 ]; then
+    echo "go test FAILED (exit $test_exit). Failing output:"
+    grep '"Action":"fail"' "$test_json" | tail -60
+    echo "--- stderr tail:"
+    tail -20 "$test_err"
+    rm -f "$test_json" "$test_err"
+    exit 1
+fi
+counts=$(awk '/"Action":"pass"/ && /"Test":"/ { p++ }
+/"Action":"skip"/ && /"Test":"/ { s++ }
+END { printf "%d %d", p+0, s+0 }' "$test_json")
+TestPass=${counts%% *}
+TestSkip=${counts##* }
+echo "== go test: $TestPass passed, $TestSkip skipped"
+if [ "$TestSkip" -gt 0 ]; then
+    awk '/"Action":"skip"/ && /"Test":"/ {
+        t = ""; pk = ""
+        if (match($0, /"Test":"[^"]*"/)) t = substr($0, RSTART+8, RLENGTH-9)
+        if (match($0, /"Package":"[^"]*"/)) {
+            pk = substr($0, RSTART+11, RLENGTH-12)
+            sub(/.*\//, "", pk)
+        }
+        print "   skip " pk "/" t
+    }' "$test_json" | head -20
+    if [ "$TestSkip" -gt 20 ]; then
+        echo "   ... and $((TestSkip - 20)) more"
+    fi
+fi
+rm -f "$test_json" "$test_err"
 
 if [ "$mode" = "full" ]; then
     # The race detector needs cgo + a C toolchain (absent on this Windows
@@ -154,4 +193,8 @@ if [ "$mode" = "full" ]; then
     fi
 fi
 
-echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS; not run:${NOT_RUN:- nothing})"
+skipnote=""
+if [ "${TestSkip:-0}" -gt 0 ]; then
+    skipnote="; tests skipped: $TestSkip (see '== go test' above)"
+fi
+echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS; not run:${NOT_RUN:- nothing}$skipnote)"

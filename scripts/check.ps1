@@ -112,7 +112,44 @@ Invoke-Step "go build" { go build ./... }
 # -count=1: a gate that can answer from the test cache is not a gate — an
 # environment change (ffmpeg removed, fixture regression) would be masked
 # by cached PASSes instead of re-running the (possibly now-skipping) tests.
-Invoke-Step "go test" { go test -count=1 ./... }
+#
+# -json is for the skip accounting below. Several suites here are conditional
+# (integration tests need ffmpeg, the cross-language sidecar tests need python,
+# the Rust protocol tests need the worker binary), and a package-level "ok"
+# cannot tell "ran and passed" from "never ran". A green gate therefore names
+# every skipped test — on a host without python the sidecar contract has not
+# been exercised, and that must be visible in the verdict. The skip event
+# carries no reason (it streams in the preceding output events), so the name is
+# the lookupable unit: worker/TestDescribe, not "7 skipped".
+Write-Host "== go test"
+$ErrorActionPreference = "Continue"
+$testErrFile = Join-Path ([System.IO.Path]::GetTempPath()) "xcut-gate-test.err"
+$testLines = @(go test -count=1 -json ./... 2>$testErrFile | ForEach-Object { "$_" })
+$testExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+$TestPass = 0
+$TestSkips = @()
+foreach ($line in $testLines) {
+    if (-not $line.StartsWith("{")) { continue }
+    $ev = $null
+    try { $ev = $line | ConvertFrom-Json } catch { continue }
+    if (-not $ev -or -not $ev.Test) { continue }
+    $pkg = ($ev.Package -split "/")[-1]
+    if ($ev.Action -eq "pass") { $TestPass = $TestPass + 1 }
+    if ($ev.Action -eq "skip") {
+        $TestSkips = $TestSkips + "$($pkg)/$($ev.Test)"
+    }
+    if ($ev.Action -eq "fail" -and $ev.Output) { Write-Host $ev.Output.TrimEnd() }
+}
+if ($testExit -ne 0) {
+    Write-Host "go test stderr tail:"
+    Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
+    throw "go test failed with exit code $testExit"
+}
+Remove-Item $testErrFile -ErrorAction SilentlyContinue
+Write-Host "== go test: $TestPass passed, $($TestSkips.Count) skipped"
+foreach ($s in ($TestSkips | Select-Object -First 20)) { Write-Host "   skip $s" }
+if ($TestSkips.Count -gt 20) { Write-Host "   ... and $($TestSkips.Count - 20) more" }
 
 if ($Mode -eq "full") {
     # The race detector needs cgo + a C toolchain (absent on this Windows
@@ -188,4 +225,6 @@ if ($Mode -eq "full") {
     }
 }
 
-Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" }))"
+$skipNote = ""
+if ($TestSkips.Count -gt 0) { $skipNote = "; tests skipped: $($TestSkips.Count) (see '== go test' above)" }
+Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" })$skipNote)"
