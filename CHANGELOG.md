@@ -34,6 +34,10 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reported number actually measures.
 
 ### Added
+- **`xcut auto --score-crop x,y,w,h`** brings point boundaries to the one-shot
+  flow: the region is written to the assets this run imported before analyze, so
+  import → measure → cut → render is one command, and a malformed region is
+  refused before any media work starts.
 - **A reel that came out shorter than asked now says why.** Sweeping
   `--duration` over the owner's match found that 180, 240 and 300 seconds all
   produce the same 21 clips / 147.2 s — the footage stops answering long

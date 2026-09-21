@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -23,11 +23,13 @@ func cmdAuto(a *App, args []string) error {
 	durationFlag := ""
 	projectName := "auto"
 	outPath := ""
+	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
 	pos, err := parseCommandArgs(args, map[string]*string{
-		"style":    &styleName,
-		"duration": &durationFlag,
-		"project":  &projectName,
-		"out":      &outPath,
+		"style":      &styleName,
+		"duration":   &durationFlag,
+		"project":    &projectName,
+		"out":        &outPath,
+		"score-crop": &scoreCropFlag,
 	})
 	if err != nil {
 		return err
@@ -38,7 +40,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 
@@ -66,15 +68,12 @@ func cmdAuto(a *App, args []string) error {
 	if err := cmdImport(a, append([]string{projectName}, inputs...)); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Stdout, "==> analyze\n")
-	if err := cmdAnalyze(a, []string{projectName}); err != nil {
-		return err
-	}
-	fmt.Fprintf(a.Stdout, "==> timeline (%s)\n", styleName)
 	// Scope the cut to this run's imports: resolve the assets for the input
 	// paths (identity is path-stable, so a resume re-run of the same file
 	// still maps to its asset). Two runs sharing the default project name
-	// used to compose one cut from BOTH files.
+	// used to compose one cut from BOTH files. This happens before analyze
+	// because a --score-crop belongs to exactly these assets, and the analyze
+	// stage is what measures the region into point boundaries.
 	assetIDs := []string{}
 	{
 		db, err := a.OpenDB()
@@ -91,13 +90,35 @@ func cmdAuto(a *App, args []string) error {
 			db.Close()
 			return err
 		}
-		db.Close()
 		ids, err := matchAssetIDs(assets, inputs)
 		if err != nil {
+			db.Close()
 			return err
 		}
 		assetIDs = ids
+		if scoreCropFlag != "" {
+			roi, perr := parseROI(scoreCropFlag)
+			if perr != nil {
+				db.Close()
+				return perr
+			}
+			crop := []float64{roi.X, roi.Y, roi.W, roi.H}
+			for _, id := range assetIDs {
+				if err := db.SetAssetScoreCrop(a.Ctx, id, crop); err != nil {
+					db.Close()
+					return err
+				}
+			}
+			fmt.Fprintf(a.Stdout, "==> scoreboard region %s on %d asset(s), measured during analyze\n",
+				scoreCropFlag, len(assetIDs))
+		}
+		db.Close()
 	}
+	fmt.Fprintf(a.Stdout, "==> analyze\n")
+	if err := cmdAnalyze(a, []string{projectName}); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "==> timeline (%s)\n", styleName)
 	{
 		db, err := a.OpenDB()
 		if err != nil {

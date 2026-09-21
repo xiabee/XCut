@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -107,4 +108,55 @@ func TestBoundariesScanListClear(t *testing.T) {
 	if !strings.Contains(out, "cleared score region and marks") || strings.Contains(out, "marks at") {
 		t.Fatalf("clear output:\n%s", out)
 	}
+}
+
+// TestAutoAppliesScoreboardRegion is the one-shot operator's path: a crop passed
+// to `auto` must land on the imported assets, be measured by the analyze stage,
+// and survive into the project — the same pair of facts the step-by-step flow
+// writes, with no manual `xcut boundaries` call in between.
+func TestAutoAppliesScoreboardRegion(t *testing.T) {
+	script := boundariesSidecar(t)
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_AI_BIN", script)
+	// Changing colours across the frame: enough signal for generic_highlight
+	// to cut, and the cropped corner changes too, so a mark exists to find.
+	fixture, err := testmedia.Generate(root, "scenes.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	run := func(wantExit int, args ...string) string {
+		t.Helper()
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != wantExit {
+			t.Fatalf("xcut %v exited %d, want %d\nstdout:\n%s\nstderr:\n%s",
+				args, code, wantExit, stdout.String(), stderr.String())
+		}
+		return stdout.String()
+	}
+
+	run(0, "init")
+	out := run(0, "auto", fixture, "--project", "one", "--style", "generic_highlight",
+		"--duration", "4", "--score-crop", "0,0,0.4,0.3",
+		"--out", filepath.Join(root, "reel.mp4"))
+	if !strings.Contains(out, "scoreboard region 0,0,0.4,0.3 on 1 asset(s)") {
+		t.Fatalf("auto output lacks the region line:\n%s", out)
+	}
+
+	// The measurement is the point: analyze must have stored boundaries for the
+	// region auto set, on the asset row the timeline then reads.
+	out = run(0, "boundaries", "one")
+	if !strings.Contains(out, "marks at 0.000,0.000,0.400,0.300") {
+		t.Fatalf("analyze did not measure the region auto set:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "reel.mp4")); err != nil {
+		t.Fatalf("auto rendered nothing: %v", err)
+	}
+
+	// A malformed region is refused before any media work starts.
+	run(1, "auto", fixture, "--project", "bad", "--score-crop", "0.8,0.8,0.5,0.5")
+	run(1, "auto", fixture, "--project", "bad", "--score-crop", "not,a,rect")
 }
