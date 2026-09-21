@@ -35,15 +35,22 @@ func writeDoc(t *testing.T, dir, name string, doc *evalResults) string {
 
 func TestEvalBaselineDeltas(t *testing.T) {
 	dir := t.TempDir()
+	// The spread column carries its own delta: this reel went from four
+	// annotated rallies skipped in a row to two.
+	baseImproved := m(0.742, 0.094, 0.167, 7)
+	baseImproved.LongestMissedRun = 4
+	runImproved := m(0.886, 0.112, 0.199, 6)
+	runImproved.LongestMissedRun = 2
+
 	base := writeDoc(t, dir, "base.json", resDoc(0.3,
-		evalCaseResult{Name: "improved", Metrics: m(0.742, 0.094, 0.167, 7)},
+		evalCaseResult{Name: "improved", Metrics: baseImproved},
 		evalCaseResult{Name: "gone", Metrics: m(0.5, 0.5, 0.5, 2)},
 		evalCaseResult{Name: "broken", Error: "ffmpeg blew up"},
 	))
 	var out bytes.Buffer
 	a := &App{Stdout: &out, Stderr: &out}
 	run := resDoc(0.3,
-		evalCaseResult{Name: "improved", Metrics: m(0.886, 0.112, 0.199, 6)},
+		evalCaseResult{Name: "improved", Metrics: runImproved},
 		evalCaseResult{Name: "newcase", Metrics: m(0.4, 0.4, 0.4, 1)},
 		// Present in both runs but the baseline side errored: no delta exists.
 		evalCaseResult{Name: "broken", Metrics: m(0.5, 0.5, 0.5, 3)},
@@ -55,7 +62,7 @@ func TestEvalBaselineDeltas(t *testing.T) {
 	}
 	s := out.String()
 	for _, want := range []string{
-		"improved", "P +0.144", "R +0.018", "F1 +0.032", "ranges -1",
+		"improved", "P +0.144", "R +0.018", "F1 +0.032", "ranges -1", "missed run -2",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("output missing %q:\n%s", want, s)

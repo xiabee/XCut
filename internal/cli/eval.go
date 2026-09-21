@@ -601,9 +601,10 @@ func reportEvalBaseline(a *App, run *evalResults, path string) error {
 			fmt.Fprintf(a.Stdout, "  %-24s NOT COMPARABLE (no metrics)\n", c.Name)
 		default:
 			p, m := prev.Metrics, c.Metrics
-			fmt.Fprintf(a.Stdout, "  %-24s P %s  R %s  F1 %s  ranges %+d  dup %s\n",
+			fmt.Fprintf(a.Stdout, "  %-24s P %s  R %s  F1 %s  ranges %+d  dup %s  missed run %+d\n",
 				c.Name, d(m.Precision-p.Precision), d(m.Recall-p.Recall), d(m.F1-p.F1),
-				m.RangesHit-p.RangesHit, d(m.DuplicateRate-p.DuplicateRate))
+				m.RangesHit-p.RangesHit, d(m.DuplicateRate-p.DuplicateRate),
+				m.LongestMissedRun-p.LongestMissedRun)
 		}
 	}
 	for _, c := range base.Cases {
