@@ -30,6 +30,18 @@ connector (0×0 viewport), so no pixel claim is made. The same marks turned out
 cost the tail rule its boundary (P 0.977 → 0.641, 21/21 → 3/21 ends on a point)
 — measured, recorded, and rejected in `docs/EVAL.md`.
 
+**Same session, later still:** the one-shot path gained the region —
+`xcut auto clip.mp4 --score-crop x,y,w,h` writes it during import and analyze
+measures it, so the footage no longer needs a `boundaries scan` round trip.
+Acceptance at `dc7b4b7`: local fast gate PASS (456 passed / 7 skipped, gitleaks
+history 328 commits + worktree 3295 paths clean), `--node win-devops` PASS
+(job `20260921-184732-fcf4c9`, same 456/7 — the node runs the fast gate, so it
+covers no Rust), and `scripts/check.sh full` on the Linux node PASS with
+`-race` across all 22 packages. That Linux run reported
+`not run: rust` because the dispatch replaced `PATH` instead of appending to it;
+the Rust worker was then verified separately on the same snapshot
+(`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` rc=0 / 3 passed).
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
