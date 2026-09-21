@@ -60,6 +60,17 @@ test: the visibility *logic* itself (Go cannot run the script) — that rests on
 the browser run above, which drove DOM clicks, not pointer hit-testing (the
 connector still reports a 0×0 viewport).
 
+**The gate caught one of my own assertions.** The first run over this work came
+back red on `TestCallReturnsBeforeWorkerExits` (clean 10.96 s, hung 16.73 s
+against a 5 s bound) — a load detector rather than a product failure: the
+differential subtracts the spawn cost but not the kill-and-reap tail, and the
+spawn is this package's own test suite. Replaced by an observation — the hung
+worker's loopback listener must be gone by the time the call returns, with an
+in-run control that a live listener is dialable on this host — mutation-checked,
+and 7× cheaper (27.7 s → 3.9 s). The trade is written into the test: nothing now
+notices the grace window itself growing, which is a PERFORMANCE.md number, not a
+gate.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

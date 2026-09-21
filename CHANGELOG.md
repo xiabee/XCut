@@ -110,6 +110,21 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **The worker test that timed out on a loaded machine now observes instead.**
+  `TestCallReturnsBeforeWorkerExits` compared a clean spawn against a hung one
+  and failed at 5.0 s with the bound; it failed for real in a gate run at
+  `2697ac3` (clean 10.96 s, hung 16.73 s). The spawn re-executes the test
+  binary, so its cost is this package's own suite up to the stub — 5 s idle,
+  22 s under parallel load — and subtracting the two legs does not cancel the
+  part that scales, because one ends in a natural exit and the other in a kill
+  and a reap. The replacement asserts what is observable: the answered call
+  returns the answer, and the hung worker's own loopback listener is gone by
+  the time it does — with an in-run control that a live listener *is*
+  dialable on this host, so "cannot dial" cannot mean "cannot dial anything".
+  Mutation-checked (`parseErr != nil || true` at the answered-then-killed
+  branch turns it red with the error text). Costs: nothing in the suite notices
+  the grace window growing any more; that is a number for docs/PERFORMANCE.md,
+  and the test also got 7× cheaper (27.7 s → 3.9 s).
 - **An existing project could not be opened.** The header's project button was
   revealed only by selecting a project, and the list it opens was hidden by a
   `hidden` attribute while the script toggled a class no stylesheet rule read —

@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -105,7 +107,17 @@ func TestHelperWorkerStub(t *testing.T) {
 		// Result content proves the parsed envelope is the real answer.
 		os.Stdout.WriteString(`{"protocol":1,"ok":true,"result":{"value":42}}`)
 	case "answer-then-hang":
-		os.Stdout.WriteString(`{"protocol":1,"ok":true,"result":{"value":42}}`)
+		// The listener is how the parent learns whether this process was reaped:
+		// the kernel closes it with the process, and nothing here has to be
+		// timed. Go's own exit hook cannot report a kill, because a killed
+		// process runs no hooks.
+		ln, lerr := net.Listen("tcp", "127.0.0.1:0")
+		if lerr != nil {
+			os.Stdout.WriteString(`{"protocol":1,"ok":false,"error":{"code":"listen","message":"no loopback"}}`)
+			os.Exit(1)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		os.Stdout.WriteString(fmt.Sprintf(`{"protocol":1,"ok":true,"result":{"value":42,"port":%d}}`, port))
 		// Close stdout so the reader sees a complete response, then keep
 		// running — the shape of a sidecar stuck in a non-daemon thread.
 		os.Stdout.Close()
@@ -137,44 +149,56 @@ func TestCallWithExplicitTimeout(t *testing.T) {
 	}
 }
 
-// TestCallReturnsBeforeWorkerExits: a sidecar that answered and closed
-// stdout but never exits (non-daemon threads, atexit hangs) must not hold
-// the call until the deadline — the answer is returned after the grace
-// window and the process is reaped.
-func TestCallReturnsBeforeWorkerExits(t *testing.T) {
-	// The property is "an answered call is not held open by a worker that never
-	// exits". Asserting it against a wall clock is a load detector: the cost of
-	// this test's own harness — re-executing the test binary as the worker —
-	// measured 5.0 s idle and 7.7–22.7 s while the suite runs other packages in
-	// parallel, several times the 2 s grace it was meant to watch.
-	//
-	// So the same spawn is measured twice and subtracted: a clean-exit stub and a
-	// hung stub, identical but for what happens after the answer. Whatever the
-	// machine costs to start a process, it costs both of them the same.
+// TestCallReapsAWorkerThatNeverExits: a sidecar that answered, closed stdout
+// and then hung (non-daemon threads, a stuck atexit) must not hold the call, and
+// must not still be running once the call returns.
+//
+// Both halves are observed, not timed. The previous version subtracted a clean
+// spawn from a hung one and bounded the difference at 5 s, which measured the
+// machine rather than the product: the spawn re-executes this test binary, so
+// its cost is whatever this package's own suite takes before the stub runs —
+// 5.0 s idle, 10.9–22.7 s while other packages run in parallel — and a loaded
+// gate put the difference at 5.77 s and failed. What is lost with that bound is
+// the ability to notice the grace window itself growing; it is recorded here so
+// the next reader does not reinstate the clock without knowing that.
+func TestCallReapsAWorkerThatNeverExits(t *testing.T) {
 	const deadline = 60 * time.Second
-	call := func(mode string) time.Duration {
-		bin := stubWorkerCmd(t, mode)
-		start := time.Now()
-		raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, deadline)
-		elapsed := time.Since(start)
-		if err != nil {
-			t.Fatalf("%s worker: %v", mode, err)
-		}
-		if !strings.Contains(string(raw), "42") {
-			t.Fatalf("%s worker result: %s", mode, raw)
-		}
-		return elapsed
+	bin := stubWorkerCmd(t, "answer-then-hang")
+	start := time.Now()
+	raw, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, deadline)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("an answered call reported an error (held open past the answer?): %v", err)
 	}
+	var got struct {
+		Value int `json:"value"`
+		Port  int `json:"port"`
+	}
+	if uerr := json.Unmarshal(raw, &got); uerr != nil || got.Value != 42 {
+		t.Fatalf("result = %s (%v), want value 42", raw, uerr)
+	}
+	t.Logf("call returned in %s with the answer; grace is %s, deadline %s", elapsed, workerExitGrace, deadline)
+	if got.Port <= 0 {
+		t.Fatalf("the hung worker reported no liveness port in %s", raw)
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", got.Port)
 
-	clean := call("answer")
-	hung := call("answer-then-hang")
-	t.Logf("clean-exit %s, hung %s, difference %s (grace %s)", clean, hung, hung-clean, workerExitGrace)
-	// The hung worker must cost little more than the clean one: the answer is
-	// followed by a grace window of 2 s and then a kill. Load inflates both
-	// numbers together; only a regression that waits on the process (or on the
-	// deadline) separates them — verified by setting workerExitGrace to 40 s,
-	// which pushes the difference to ~35 s and fails here.
-	if d := hung - clean; d > 5*time.Second {
-		t.Fatalf("a hung worker held the call %.3fs longer than a clean one; want <5s (grace is %s)", d.Seconds(), workerExitGrace)
+	// The control runs first and in the direction that can make the check below
+	// meaningless: if a live loopback listener cannot be dialled here, then
+	// "cannot dial the worker's port" proves nothing about the worker.
+	hold, herr := net.Listen("tcp", "127.0.0.1:0")
+	if herr != nil {
+		t.Skipf("no loopback listener on this host: %v", herr)
+	}
+	defer hold.Close()
+	c, derr := net.Dial("tcp", hold.Addr().String())
+	if derr != nil {
+		t.Skipf("a live loopback listener cannot be dialled here (%v); the reap check below cannot distinguish reaped from unreachable", derr)
+	}
+	_ = c.Close()
+
+	if c2, err2 := net.Dial("tcp", addr); err2 == nil {
+		_ = c2.Close()
+		t.Fatalf("the hung worker still answers on %s after Call returned: it was left running", addr)
 	}
 }
