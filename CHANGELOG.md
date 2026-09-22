@@ -106,6 +106,24 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   measured aesthetic claim to trade against that yet. What is *not* claimed: a plan
   centered on the ROI does not guarantee the whole region stays in frame — the
   selector does not know the source's pixel aspect, only the renderer does.
+- **卡点音乐: a run can name a music bed, and the reel cuts to it and carries it.**
+  `--music track.mp3` (CLI) or `"music"` on the timeline API analyzes that file with
+  the same onset analyzer and cache as any asset, estimates its beat grid, and lets
+  that grid — not the location audio's — decide where cuts land; naming a bed
+  implies the product's ±0.12 s snap, and `--beat-snap off` opts out while keeping
+  the music. The render loops the track and mixes it under the clips at
+  `audio.music_gain` / `audio.source_gain` (defaults 0.9 / 0.35, both bounded to
+  (0,1]), copying the video stream so a bed costs no second encode. What the reel
+  chose is recorded in its own document (`music`, `music_gain`, `source_gain`,
+  `music_bpm`), so `xcut render` needs no repetition — and a document whose track
+  has moved fails the render instead of quietly returning a musicless cut.
+  Measured against synthetic truth: footage clicking at 0.4 s under a bed at 0.5 s,
+  whose single free end moved to the bed's lattice (1/1 moved, 0 on the footage's),
+  `music_bpm` 120.04; and the mix is audible *in the output file* — 9 transients
+  only the bed's grid explains, against 0 in the same cut rendered without one, at
+  an unchanged duration. Cost: 11.3 s against 10.2 s of render wall per minute of
+  output, +3.3% bytes. A bed with audio but no believable grid is not an error: the
+  music plays, the cuts stay put.
 
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)

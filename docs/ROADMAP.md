@@ -147,20 +147,33 @@ Every item states how it is measured before it is built, because the eval harnes
       Per-clip picker stays B6; no shipped preset enables motion, because cropping
       a broadcast can cut the score bug out of the shot and no aesthetic claim has
       been measured here to trade against that.
+- [x] B4a — The music bed, which B2's measurement made the prerequisite: a run
+      names a track (`--music`), the pipeline analyzes it with the shipped onset
+      analyzer through the same cache, estimates *its* grid, and that grid outranks
+      whatever pulse the location audio carries. Naming a bed implies cutting to it
+      (the product's ±0.12 s default; `--beat-snap off` opts out), and the timeline
+      document records the choice (`music`, `music_gain`, `source_gain`, `music_bpm`)
+      so the render mixes it without being told twice. A file with no audio stream is
+      refused; a file with audio but no believable grid is not an error — the music
+      plays and the cuts stay where the length rules put them.
+      Measured: on a footage clicking at 0.4 s under a bed clicking at 0.5 s, the
+      rendered reel's one free end moved to the **bed's** grid (1/1 moved, 1 on the
+      bed's lattice, 0 on the footage's, `music_bpm` 120.04) — precedence read off
+      the geometry, not asserted by the code. The mix is audible in the output file
+      on its own terms: 9 transients that only the bed's lattice explains, against 0
+      in the same cut rendered without one, with the duration unchanged to the
+      millisecond. Five mutations killed by named assertions, one of them a renamed
+      metadata key (`the mix command lost "volume=0.9000"`, `a missing bed must fail
+      the render`). Cost: 11.3 s against 10.2 s render wall per 60 s of output,
+      +3.3% bytes (docs/PERFORMANCE.md).
 - [ ] B4 — New presets on top of B1–B3: `beat_shortform` (music-driven pacing,
       2–3 s shots, hook first), `sports_vertical` (9:16, point-ending clips,
       punch-in on the hit), plus a pacing readout on the existing styles so the
-      owner can compare.
-      B2 settled what this has to start with: a **music bed the user supplies**, and
-      the beat grid estimated from *that* file (import → analyze → `Beats` →
-      B2's snap), because sports audio carries no grid to cut to. Rendering has to
-      mix it in — which is also where the loudness ceiling lives.
+      owner can compare. B4a supplies the bed these presets cut to.
       Measured: each preset has an eval case (synthetic where truth is
       constructed, the owner's match where it is annotated), the harness's
       `--check` gate carries it, and a preset that does not beat the shipped one
-      on its own case does not become a default. For the bed: a fixture whose
-      clicks are known by construction must have its ends on *its* grid, and the
-      muxed output probed for the track's presence and its level.
+      on its own case does not become a default.
 - [ ] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
       subtitle burn and the KTV lyric path.

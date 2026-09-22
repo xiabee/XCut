@@ -164,7 +164,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/v1/projects/{id}/timeline {"style": "generic_highlight",
-// "duration": 120, "beat_snap": 0.12}
+// "duration": 120, "beat_snap": 0.12, "music": "bed.mp3"}
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
@@ -177,6 +177,10 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		// tolerance, 0 means the same thing through the pipeline, and -1
 		// (pipeline.BeatSnapOff) is how a client forces it off.
 		BeatSnap *float64 `json:"beat_snap"`
+		// Music names a track to lay under the reel and cut to. Empty or absent
+		// is no bed; the timeline document then records it, so the render mixes
+		// without the client repeating the choice.
+		Music string `json:"music"`
 	}
 	if !s.decodeBody(w, r, &body) {
 		return
@@ -184,7 +188,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	if body.Style == "" {
 		body.Style = "generic_highlight"
 	}
-	req := pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration}
+	req := pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration, Music: body.Music}
 	if body.BeatSnap != nil {
 		req.BeatSnap = *body.BeatSnap
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -21,7 +21,8 @@ func init() {
 func cmdAuto(a *App, args []string) error {
 	styleName := "generic_highlight"
 	durationFlag := ""
-	beatFlag := "" // "" = the style's own tolerance, "off" = never
+	beatFlag := ""  // "" = the style's own tolerance, "off" = never
+	musicFlag := "" // a track to lay under the reel and cut to
 	projectName := "auto"
 	outPath := ""
 	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
@@ -29,6 +30,7 @@ func cmdAuto(a *App, args []string) error {
 		"style":      &styleName,
 		"duration":   &durationFlag,
 		"beat-snap":  &beatFlag,
+		"music":      &musicFlag,
 		"project":    &projectName,
 		"out":        &outPath,
 		"score-crop": &scoreCropFlag,
@@ -46,7 +48,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 
@@ -136,7 +138,7 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		d := a.Pipeline(db)
-		tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap}, assetIDs...)
+		tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap, Music: musicFlag}, assetIDs...)
 		if err != nil {
 			return err
 		}

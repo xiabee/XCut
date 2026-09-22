@@ -362,10 +362,14 @@ type TimelineRequest struct {
 	Style    string
 	Duration float64
 	// BeatSnap overrides the style's beat_snap_tolerance. 0 keeps the preset's
-	// own value; BeatSnapOff forces it off for this run, which is how the A/B is
-	// reported both ways (docs/ROADMAP.md Phase 5, B2) and how a user says "not on
+	// own value; BeatSnapOff forces snapping off for this run, which is how the A/B
+	// is reported both ways (docs/ROADMAP.md Phase 5, B2) and how a user says "not on
 	// this file".
 	BeatSnap float64
+	// Music is a track to lay under the reel: its beat grid is what the cuts snap
+	// to, and the render mixes it in. Empty = no bed, which is every run before
+	// this knob existed.
+	Music string
 }
 
 // BeatSnapOff is the TimelineRequest.BeatSnap sentinel that turns cutting on the
@@ -402,6 +406,15 @@ func (r TimelineRequest) validate() error {
 		return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
 			"beat snap tolerance must be 0 (the style's own), %g (off), or a duration in (0,0.5] seconds (got %g)",
 			BeatSnapOff, r.BeatSnap), nil)
+	}
+	// A named track is checked here rather than in the job because a client
+	// should learn about a typo before a job is queued behind the work it would
+	// have joined. prepareBed still reads the file (duration, streams); this is
+	// only the early, cheap refusal.
+	if r.Music != "" {
+		if _, err := os.Stat(r.Music); err != nil {
+			return xcerr.E(xcerr.CodeNotFound, "music file not found", err)
+		}
 	}
 	return nil
 }
@@ -512,6 +525,14 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		store := d.analysisStore()
 		opts := d.analysisOpts()
 
+		// The bed, if this run asked for one, is resolved before the assets: its
+		// grid is what the clips snap to, so it has to be known by the time the
+		// first candidate is trimmed.
+		bed, err := d.prepareBed(jctx, req, preset, store, opts)
+		if err != nil {
+			return err
+		}
+
 		var items []style.AssetEvents
 		for i := range assets {
 			asset := assets[i]
@@ -563,7 +584,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				},
 				Segments:   segs,
 				Boundaries: marks,
-				Beats:      beatGridFor(d.Log, res, &asset, preset),
+				Beats:      bedWins(bed, beatGridFor(d.Log, res, &asset, preset)),
 			})
 			progress(float64(i+1) / float64(len(assets)+1))
 		}
@@ -571,6 +592,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		if err != nil {
 			return err
 		}
+		stampBed(tl, bed)
 		if err := d.WriteRegeneratedTimeline(project, tl); err != nil {
 			return err
 		}

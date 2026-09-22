@@ -51,6 +51,12 @@ type Scoring struct {
 // AudioGain linear loudness multiplier applied to clip volume.
 type Audio struct {
 	Gain float64 `json:"gain"` // 0..1
+	// The mix used when a run lays a music bed under the reel: the bed plays at
+	// MusicGain, the clips' own audio at SourceGain. Unset means the product's own
+	// starting mix (pipeline's defaults), not silence — a preset that never
+	// mentions music parses and renders exactly as it did before these fields.
+	MusicGain  *float64 `json:"music_gain,omitempty"`
+	SourceGain *float64 `json:"source_gain,omitempty"`
 }
 
 // Diversity suppresses near-duplicate picks. Zero-valued = disabled (older
@@ -215,6 +221,20 @@ func (p *Preset) Validate() error {
 	}
 	if p.Audio.Gain < 0 || p.Audio.Gain > 1 {
 		add("audio.gain must be in [0,1]")
+	}
+	// A mix level is only meaningful inside that range; 0 is refused rather than
+	// silently reading as "unset", because a preset that wants silence says so by
+	// leaving the bed out of the run.
+	for _, g := range []struct {
+		name string
+		v    *float64
+	}{{"audio.music_gain", p.Audio.MusicGain}, {"audio.source_gain", p.Audio.SourceGain}} {
+		if g.v == nil {
+			continue
+		}
+		if math.IsNaN(*g.v) || *g.v <= 0 || *g.v > 1 {
+			add("%s %g out of (0,1]", g.name, *g.v)
+		}
 	}
 	if math.IsNaN(p.Diversity.MinGap) || p.Diversity.MinGap < 0 {
 		add("diversity.min_gap must be >= 0")

@@ -144,6 +144,23 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 	}
 	opts.OnProgress(len(clips)+1, len(clips)+1)
 
+	// 2b. Music bed. The reel's own audio and the track named by the document
+	// are mixed to the recorded levels; the video stream is copied, so a bed
+	// costs an audio decode and not a second encode.
+	if bed := tl.Metadata[timeline.MetaMusic]; bed != "" {
+		musicLevel, err := musicGain(tl.Metadata, timeline.MetaMusicGain, DefaultMusicGain)
+		if err != nil {
+			return err
+		}
+		sourceLevel, err := musicGain(tl.Metadata, timeline.MetaSourceGain, DefaultSourceGain)
+		if err != nil {
+			return err
+		}
+		if err := mixMusic(ctx, opts, partial, bed, musicLevel, sourceLevel, tl.Duration()); err != nil {
+			return err
+		}
+	}
+
 	// 3. Verify the partial output — exit code 0 is not success (ACCEPTANCE M7).
 	if err := verify(ctx, tl, partial, opts.Tools); err != nil {
 		return err

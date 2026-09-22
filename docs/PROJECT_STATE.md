@@ -434,6 +434,35 @@ suites run explicitly on the node, so the pixel proof is not a Windows-only one
 (`2 clips framed on the drawn region's center`, `drift YAVG 94.17 → 19.24 (20%);
 still 39.25 → 39.36`).
 
+**Same session, later still:** B4a gave 卡点 the input B2 proved it needs — a
+**music bed** (`--music`, `"music"` on the API). The pipeline analyzes the named
+file with the shipped analyzer through the same cache, estimates *its* grid, and
+that grid outranks the location audio's; naming a bed implies the product's
+±0.12 s snap (`--beat-snap off` keeps the music but not the moving), the render
+loops the track and mixes it at recorded levels (0.9 / 0.35 by default, both in
+(0,1], video stream copied so a bed costs no second encode), and the timeline
+document carries the choice (`music`, `music_gain`, `source_gain`, `music_bpm`) so
+`xcut render` is not told twice — a document whose track moved is a refused
+render, not a silent musicless one. Measured on synthetic truth: footage clicking
+at 0.4 s under a 0.5 s bed, its one free end moved onto the **bed's** lattice
+(`1/1 moved, 1 on the bed grid, 0 on the footage's`, `music_bpm 120.04`); and the
+mix is audible in the rendered file itself — **9 transients only the bed explains
+against 0** in the same cut rendered bedless, duration identical. Cost: 11.3 s
+against 10.2 s per minute of output, +3.3% bytes.
+Two lessons from building it, both now comments where they were found: a mix of
+two metronomes leaves **no** single grid in the output (the footage's 0.4 s and the
+bed's 0.5 s are both there), so the "the rendered file's pulse is the bed's"
+assertion I first wrote was unmeasurable on this fixture and was replaced by the
+transient-fingerprint claim above; and `amix` at the default mix made the file
+*quieter* (−34.3 dB against −32.9), which is why the promise is "the bed is
+present and audible", not "louder". A mutation harness bug worth remembering:
+backing up `internal/pipeline/music.go` and `internal/render/music.go` under their
+basename meant the second copy overwrote the first, so the "restore" installed the
+render package into the pipeline package and every later case reported
+`INVALID(build failed)` while the harness's own `cmp` said everything was
+byte-identical.
+
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

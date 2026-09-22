@@ -41,6 +41,23 @@ type Clip struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// Metadata keys that cross a package boundary: the timeline build writes them and
+// the renderer reads them, so the names are the contract and neither side may
+// spell them out locally.
+const (
+	// MetaMusic is the path of the music bed laid under this reel. Its presence
+	// commits the render to mixing it in: a bed that has since moved is refused,
+	// not silently dropped.
+	MetaMusic = "music"
+	// MetaMusicGain and MetaSourceGain are the two levels of the mix.
+	MetaMusicGain  = "music_gain"
+	MetaSourceGain = "source_gain"
+	// MetaMusicBPM records the tempo the cuts were snapped to, when the bed had a
+	// grid worth believing — a reader should not have to re-analyze the audio to
+	// learn what the edit thought.
+	MetaMusicBPM = "music_bpm"
+)
+
 // Motion describes the framed window as a zoom factor and the normalized center
 // it holds at the start and the end of the clip. Both centers are optional (a
 // missing one means the middle of the frame), and equal centers give a still

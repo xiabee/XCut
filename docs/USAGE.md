@@ -9,6 +9,18 @@ client (equivalent to `xcut client`); if another instance is already
 running, its UI is opened in the browser instead. FFmpeg/ffprobe placed
 next to the executable are picked up automatically (before PATH).
 
+`--music` lays a track under the reel and cuts to **it**: the file's own beat grid
+is estimated the same way (same analyzer, same cache), its pulses outrank whatever
+the location audio carries, and the render loops the track and mixes it under the
+clips' audio at `audio.music_gain` / `audio.source_gain` (defaults 0.9 / 0.35,
+both in (0,1]). Naming a bed implies cutting to it at the product's default
+±0.12 s, so `--beat-snap off` is how you say "music, but leave my cut points
+alone". The timeline document then records what it chose (`music`, `music_gain`,
+`source_gain`, `music_bpm`), so `xcut render` mixes without being told twice — and
+refuses to render silently *without* the track if the file has since moved.
+Measured cost of the mix on a 60 s reel: 11.3 s against 10.2 s of render wall,
++3.3% bytes, duration unchanged to the millisecond (docs/PERFORMANCE.md).
+
 ## xcut analyze
 ```
 usage: xcut analyze <project> [assetID...]
@@ -32,7 +44,7 @@ open the desktop editing client (native window over the local server)
 
 ## xcut auto
 ```
-usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--project name] [--out path] [--score-crop x,y,w,h]
+usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]
 
 one-shot: import → analyze → timeline → render
 ```
@@ -130,7 +142,7 @@ speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)
 
 ## xcut timeline
 ```
-usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] | xcut timeline <project> --restore-backup
+usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] | xcut timeline <project> --restore-backup
 
 generate a timeline for a project
 ```

@@ -19,6 +19,7 @@ func cmdTimeline(a *App, args []string) error {
 	styleName := "generic_highlight"
 	durationFlag := ""
 	beatFlag := ""
+	musicFlag := "" // a track to lay under the reel and cut to
 	restore := false
 	// --restore-backup is a boolean-style flag; pull it out before
 	// parseCommandArgs (which requires values for its flags).
@@ -31,13 +32,13 @@ func cmdTimeline(a *App, args []string) error {
 		rest = append(rest, arg)
 	}
 	pos, err := parseCommandArgs(rest, map[string]*string{
-		"style": &styleName, "duration": &durationFlag, "beat-snap": &beatFlag})
+		"style": &styleName, "duration": &durationFlag, "beat-snap": &beatFlag, "music": &musicFlag})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] | xcut timeline <project> --restore-backup", nil)
+			"usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] | xcut timeline <project> --restore-backup", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -72,7 +73,7 @@ func cmdTimeline(a *App, args []string) error {
 	if err != nil {
 		return err
 	}
-	req := pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap}
+	req := pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap, Music: musicFlag}
 	tl, err := d.BuildTimeline(p, req)
 	if err != nil {
 		return err
@@ -86,6 +87,11 @@ func cmdTimeline(a *App, args []string) error {
 		fmt.Fprintln(a.Stdout, "beat snap: off (overriding the style's own)")
 	case beatSnap > 0:
 		fmt.Fprintf(a.Stdout, "beat snap: ±%gs (overriding the style's own)\n", beatSnap)
+	}
+	if musicFlag != "" {
+		// The path is the user's own argument echoed back; the bed's grid and the
+		// snap it implies are reported by the lines above and the clip metadata.
+		fmt.Fprintf(a.Stdout, "music bed: %s\n", musicFlag)
 	}
 	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
