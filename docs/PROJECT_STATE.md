@@ -849,6 +849,56 @@ assertion beside the `.ass` one, passed the same three channels: local `555 pass
 `not run: nothing`, `DATA_RACE_lines=0`, `tap … ran=3 skipped=0` and the guards
 `ran=8 skipped=0`.
 
+**B6c (UI, fifth slice): a camera-motion picker for one clip.** The inspector's clip
+panel offers 运镜 per clip — still, punch in, drift, follow the region — and asks the
+server what each means. The reason it is a round trip and not a line of JavaScript is
+that `style.framingPlan` was already the only rule turning a mode name into geometry:
+a second implementation in the page would mean two answers to "drift", reconciled by
+nobody. So the rule moved out into `style.MotionFor`, the builder became its caller,
+and `POST /api/v1/projects/{id}/motion/plan` is its second. The region is read off the
+asset row rather than handed up by the page, for the same reason — it is the region the
+builder would have aimed at. Nothing is stored and no write path was added: the reply
+lands on the clip and travels through the existing Apply → PUT, so the revision check
+and the pre-regeneration backup stay where they are, and `none` comes back with no
+window and no `framing` claim, because a clip that says it is framed while showing the
+whole frame is the lie the style tests already refuse.
+
+Measured: fourteen cases run explicitly on the Linux node (`pass=14 fail=0 skip=0`) —
+six new in `style` and five new at the api, plus the pre-existing framing and preset
+cases that the refactor had to leave untouched (that is the half which says nothing
+moved). Six mutations, each killed by a named case: drift stops alternating, roi without
+a region invents a centre, the framing claim is never answered, the zoom bound is
+dropped, the builder stops asking the shared rule, and the page writes the geometry
+without its claim — the last one caught by a text guard rather than a browser.
+
+Not verified: no browser was opened. The select's on-screen behaviour rests on
+`node --check`, the id/i18n guards, and that text guard; and hand-picked motion still
+does not survive regenerating the reel, which the pane says out loud.
+
+Accepted at `d154b72`: local `566 passed, 8 skipped` with `steps not run: none`;
+win-devops `OVERALL  PASS` (`exit=0 duration=1m46.792s`, evidence bound as `local CI
+PASS at 01:21:35 for d154b726`); Linux full gate `gate (full): PASS … not run: nothing`,
+13 skipped, `DATA_RACE_lines=0`, `FAIL_lines=0`, `== done gate_rc=0`. The hosted
+workflows stayed silent for the whole push run — `check-runs` for this head is 0 and the
+newest workflow run on the repository is still 2026-09-20, read after the delay a
+push-time check would not have given.
+
+**B7a (resources): measured, and one knob's name was wrong in the docs.** The rows are
+in `docs/PERFORMANCE.md`; the shape of the finding is that `max_analysis_workers` bounds
+assets in flight while `max_ffmpeg_processes` bounds the children, so raising the first
+alone changed nothing (18.1 → 18.1 s), and raising the second to 4 doubled both the
+children (2 → 4) and their memory (107 → 215 MB) while cutting the wall to 12.1 s. The
+one tap costs what its stages cost; the xfade render is a single 566 MB child that the
+process cap cannot reach, which is the number any future default for
+`resource.ffmpeg_max_memory_mb` has to be set against. Idle RAM/CPU were re-measured
+after the whole arc: 18.1 and 17.7 MB, 0.000 s CPU delta on both runs.
+
+Accepted at `49f3476` on two channels, and the third is named as missing rather than
+implied: local `555 passed, 8 skipped` / `steps not run: none`, win-devops `OVERALL
+PASS` (`exit=0 duration=2m9.486s`), and no Linux leg — that commit changed documentation
+and a struct comment, and the code those words describe was Linux-verified at `69a52d3`
+and `d154b72`.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
