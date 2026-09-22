@@ -374,6 +374,30 @@ the node), Linux full gate 470/13 with `not run: nothing`, zero `DATA RACE` line
 gosec clean on `ad6ae7a445f0`, and both new suites run explicitly on the node
 (`floor_rc=0 ran=1`, `beats_rc=0 ran=6`).
 
+**Same session, later:** B2 gave the beat grid its consumer — `卡点` snapping, with
+`beat_snap_tolerance` on the preset and `--beat-snap seconds|off` / `beat_snap` on
+the surface — and the measurement came back **inert on the flagship footage, for two
+different and both good reasons**. On the marked manifest all 16 of the 120 s reel's
+ends are already pinned to a measured point, and a beat does not get to move one
+(precedence was written that way on purpose; the mutation that lets the grid win
+fails with `boundary-pinned end moved to 13.45`). On the unmarked manifest the ends
+are free and still nothing moves, because the hall's **1493 onsets carry no grid the
+estimator will believe** — no period in 30–300 BPM explains ≥90% of crowd noise plus
+shuttle contact, which is what B1's refusal rule exists for. Three eval runs
+(off / 0.12 / 0.25) return F1 0.389 marked and 0.330 unmarked to the digit. What
+that buys is the finding that reorders B4: a reel cuts to the music laid under it,
+not to its own location audio, so the next slice starts by importing a **music bed**
+and taking the grid from *that* file. The mechanism itself is proven where a grid
+does exist: `TestBeatSnappingThroughTheRealAnalysisPath` asks for the same 7.7 s
+reel off and on through the shipped analyzer and cache, controls that the ends start
+off the lattice, and requires every one to finish on it. Two process notes: the API
+boundary test caught `TimelineRequest.validate` returning early on an unset
+duration, which had skipped every later check — `{"beat_snap": 2}` queued a job the
+preset would have refused; and the click fixture first proved nothing at all,
+because a round 8 s ask on a 0.5 s lattice puts the reel's only end *on* a beat, so
+a rule that never ran looked green — the odd ask and the off-lattice control are
+what make it bite.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

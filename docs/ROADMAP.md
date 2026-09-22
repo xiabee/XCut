@@ -104,14 +104,25 @@ Every item states how it is measured before it is built, because the eval harnes
       estimator, reporting `period=0.4999 bpm=120.0 coverage=1.00 beats=24`.
       Four mutations of the constants and the two rules each killed a named
       assertion (`ran=5`, no build failure).
-- [ ] B2 — Beat-snapped selection. The style engine may move a clip boundary to
-      the nearest beat inside a tolerance (default ±0.12 s) and must never move
-      it so far that a scored point is missed; the scoreboard-mark rule stays the
-      harder constraint.
-      Measured: on the badminton manifest, `卡点` on vs off changes clip ends only
-      within tolerance, precision does not drop, and the eval `missed run` metric
-      is reported both ways; on the click fixture, boundary-vs-beat error goes to
-      ~0 with the feature on.
+- [x] B2 — Beat-snapped selection (`卡点`). `beat_snap_tolerance` on the preset,
+      `--beat-snap seconds|off` on timeline/auto/eval, `beat_snap` on the API: a
+      clip end that nothing else fixed may move to the nearest beat of the
+      source's own grid — never past the event's own end, never lengthening the
+      clip past `max_clip_duration`, and never over a measured point end (the
+      scoreboard rule wins by construction). Each moved end carries `beat`
+      metadata, at four decimals because a refined grid is not a round number.
+      Measured: end to end on the 120 BPM click fixture through the real analyzer
+      and cache — the same reel asked for twice, off and on, with a control that
+      the ends *start* off the lattice and an assertion that every one finishes on
+      it (tolerance = half a period, so "the rule never ran" cannot pass); four
+      mutations, each killed by the assertion named. On the owner's match the rule
+      is **inert, and the reason is now measured rather than assumed**: 1493
+      onsets in the hall audio yield no grid the estimator will believe (no period
+      explains ≥90% of them), and in the marked configuration all 16 ends are
+      point-pinned to begin with. Eval reports the same numbers at off, 0.12 and
+      0.25 s (F1 0.389 marked / 0.330 unmarked) — recorded, not tuned away, because
+      it reshapes B4: the pulse a reel cuts to has to come from the music laid
+      under it, not from the source's own audio.
 - [ ] B3 — Camera motion (`运镜`): a per-clip framing plan (punch-in,
       drift, reframe-to-ROI) carried in the timeline IR and rendered through the
       existing crop/zoom path, with the vertical reframe (9:16 from a 16:9
@@ -125,10 +136,16 @@ Every item states how it is measured before it is built, because the eval harnes
       2–3 s shots, hook first), `sports_vertical` (9:16, point-ending clips,
       punch-in on the hit), plus a pacing readout on the existing styles so the
       owner can compare.
+      B2 settled what this has to start with: a **music bed the user supplies**, and
+      the beat grid estimated from *that* file (import → analyze → `Beats` →
+      B2's snap), because sports audio carries no grid to cut to. Rendering has to
+      mix it in — which is also where the loudness ceiling lives.
       Measured: each preset has an eval case (synthetic where truth is
       constructed, the owner's match where it is annotated), the harness's
       `--check` gate carries it, and a preset that does not beat the shipped one
-      on its own case does not become a default.
+      on its own case does not become a default. For the bed: a fixture whose
+      clicks are known by construction must have its ends on *its* grid, and the
+      muxed output probed for the track's presence and its level.
 - [ ] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
       subtitle burn and the KTV lyric path.

@@ -58,6 +58,28 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   spread those picks and the gap sits inside windows that do have a clip — the
   budget is what binds, which is why the default moved and not the quota.
 
+- **`卡点`: clip ends may follow the beat grid (`--beat-snap`).** With
+  `beat_snap_tolerance` set (preset) or asked for per run (`--beat-snap 0.12`,
+  `--beat-snap off`, `"beat_snap"` on the API's timeline body), a clip end that
+  nothing else has fixed moves to the nearest beat of the source's own grid. Three
+  things bound it: it may not pass the material the detector attributed to that
+  event, may not lengthen the clip past `max_clip_duration`, and may not touch an
+  end a scoreboard mark already owns — the measured point is worth more than the
+  pulse, and the tolerance is capped at 0.5 s and below `min_clip_duration` so a
+  snap can never empty a clip. Each moved end records `beat` in its metadata at
+  four decimals (a refined 0.5 s grid really sits at 7.5028; two decimals would
+  disagree with the geometry it documents), and eval prints `beats N/M` only when
+  the grid actually moved something.
+  Proven through the real path, not a fixture handed to the selector: a 120 BPM
+  click rally → the shipped `AudioOnsetAnalyzer` → the analysis cache → selection,
+  asked for twice with the rule off and on, with a control that the ends *start*
+  off the lattice. Measured on the owner's match, it is inert — and the reason is
+  now known instead of assumed: with marks, all 16 ends of the 120 s reel are
+  point-pinned (precedence working); without them, the hall's 1493 onsets carry no
+  grid worth believing, which is B1's refusal rule doing its job. Same F1 at off,
+  0.12 and 0.25 s. The consequence is written into `docs/EVAL.md` and moves B4:
+  卡点 needs a music bed, because a location recording has no pulse to cut to.
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 

@@ -142,6 +142,36 @@ worth cutting. The crop itself no longer needs a terminal: the web UI's region
 picker has a "scoreboard region" target, which writes `assets.score_crop`, and
 the next `analyze` run measures it (see `docs/USAGE.md`, `xcut boundaries`).
 
+## Cutting on the beat (`卡点`)
+
+`beat_snap_tolerance` lets a clip end that nothing else fixed move to the nearest
+beat of the source's own grid. Two things had to be measured before it could be
+trusted, and only one of them came out as hoped.
+
+**That it works, through the real path.** `TestBeatSnappingThroughTheRealAnalysisPath`
+generates a 120 BPM click rally, runs it through the shipped analyzer and the
+analysis cache, and asks for the same 7.7 s reel twice — rule off, rule on at half
+a beat period. Every end starts off the lattice (the control: if they already sat
+on it, the assertions below could pass with the rule dead) and finishes on it, with
+the per-clip `beat` metadata agreeing with the geometry to four decimals. Selection
+is untouched: same clips, same starts, ends moved by ≤ the tolerance.
+
+**That on the owner's match it does nothing, and why.** Three runs at 120 s on the
+marked manifest — off, `0.12`, `0.25` — return the same reel to the digit
+(P 0.972, R 0.243, F1 0.389, 16/43, 16 clips, **16/16 ends on a measured point**).
+That half is the precedence rule working: a beat does not get to move a cut that
+already lands as the score changes. The unmarked manifest is the interesting half:
+its ends are free, and still nothing moved, because the hall's 1493 onsets carry no
+grid the estimator will believe — no period in 30–300 BPM explains ≥90% of crowd
+noise plus shuttlecock contact, and B1 was written to say "no grid" rather than
+invent one.
+
+So the number that matters for the product is not a metric here but a consequence:
+**a reel cuts to the music laid under it, not to its own location audio.** The
+snap, the grid and the per-clip proof are ready; what is missing is a beat-bearing
+input, which is where `docs/ROADMAP.md` Phase 5 B4 now starts — an imported music
+bed, the grid estimated from that file, and a mux that carries it.
+
 ## Workflow for algorithm changes
 
 1. Annotate a small set of representative clips (a handful of ranges each is
