@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name] [--duration seconds] | xcut timeline <project> --restore-backup"), cmdTimeline)
+	register("timeline", "generate a timeline for a project", usageSyntax("xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] | xcut timeline <project> --restore-backup"), cmdTimeline)
 }
 
 func cmdTimeline(a *App, args []string) error {

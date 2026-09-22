@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|path] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -25,7 +25,7 @@ func cmdAuto(a *App, args []string) error {
 	musicFlag := "" // a track to lay under the reel and cut to
 	projectName := "auto"
 	outPath := ""
-	subsFlag := ""      // "" = no captions; "on" = transcribe this run; a path = burn that file
+	subsFlag := ""      // "" or "off" = no captions; "on" = transcribe this run; a path = burn that file
 	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
 	pos, err := parseCommandArgs(args, map[string]*string{
 		"style":      &styleName,
@@ -50,7 +50,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|path] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|path] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 

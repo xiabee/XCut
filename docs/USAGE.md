@@ -65,9 +65,9 @@ open the desktop editing client (native window over the local server)
 
 ## xcut auto
 ```
-usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|path] [--project name] [--out path] [--score-crop x,y,w,h]
+usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|path] [--project name] [--out path] [--score-crop x,y,w,h]
 
-one-shot: import → analyze → timeline → render
+one-shot: import → analyze → timeline → (captions) → render
 ```
 
 ## xcut version
@@ -139,6 +139,20 @@ usage: xcut jobs <project>
 
 list jobs of a project
 ```
+
+## xcut roi
+```
+usage: xcut roi <project> [--asset id] [--set x,y,w,h] [--clear]
+
+list, set or clear a per-asset motion ROI (court region)
+```
+
+The court region a source's motion signal should look at, as fractions of the frame
+(0..1 — not pixels), stored on one asset instead of in the style. It overrides the
+style's own region for that source, and it is a different analyzer name, so the
+analysis cache keeps the two apart: setting a region makes the next `xcut analyze`
+measure the clip again inside it, which is also when a scoreboard region gets its
+point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
 ## xcut render
 ```

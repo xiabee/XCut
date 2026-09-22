@@ -364,6 +364,17 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **`docs/USAGE.md` was behind the binary, and now a test says so.** Adding `--subs`
+  to `xcut auto` left the page stating the old syntax in the same commit that landed
+  the flag — the third such drift a grep turned up on the spot: `xcut timeline`'s own
+  `usage:` line never grew `--beat-snap` or `--music` when those arrived, and
+  `xcut roi` was in the binary and not on the page at all. `TestUsageDocsMirrorTheBinary`
+  reads the command registry (usage line and summary for every registered command) and
+  requires each to appear in the doc, whitespace-collapsed so markdown's line wrapping
+  is not part of the contract. It went from five mismatches to zero as the drifts were
+  fixed — the witness is the before/after on real text, not a synthetic mutation. The
+  check is a floor: it says the page contains what the binary promises, not that the
+  page says nothing false.
 - **`EstimateBeatGrid` refused music it should have believed, and sometimes named a
   different tempo with total confidence** (ROADMAP B1b). The estimator walked a 2%
   ladder of candidate periods and judged each one by folding the onsets to a single

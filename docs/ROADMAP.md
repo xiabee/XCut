@@ -396,3 +396,14 @@ web UI stays the same asset tree served to browsers).
       job (session #16, opt-in, uncapped default; doctor reports the posture).
 - [ ] Sandbox options for FFmpeg, container rung (Linux): sandbox the child
       pipeline under a container/cgroup boundary.
+
+## Notched, with the reason
+
+- **Beat ticks on the ruler (B6e's sibling, still open).** The pieces exist: a laid bed
+  already carries its beat times (`musicBed.beats`), clips already record which one they
+  snapped to (`c.metadata.beat`), and a `music_beats` metadata key would let the ruler
+  draw the grid the snapper actually used rather than a tempo re-derivation that can
+  disagree with the cut it claims to explain. It is notched because nothing has asked for
+  it and no measurement says a user cannot edit without it — if it is picked up again it
+  should start from a complaint about the current two lines (the pacing chip and the bed
+  note), not from the observation that ticks would look good.

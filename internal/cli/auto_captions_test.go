@@ -151,3 +151,40 @@ func TestAutoSubsRefusesWithoutASidecar(t *testing.T) {
 		t.Error("a run that never got its captions still rendered a reel, so the user cannot tell them apart")
 	}
 }
+
+// TestAutoSubsOffIsNotAFilename: `off` is a value a user writes to be explicit, and
+// here it used to be read as a subtitle file called "off". The sidecar is installed in
+// this test on purpose — if the flag were ignored the run would still succeed silently,
+// and the case would prove nothing.
+func TestAutoSubsOffIsNotAFilename(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	requirePythonForFake(t)
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false)) // available, and must not be called
+
+	fixture, err := testmedia.Generate(root, "scenes.mp4", testmedia.DefaultFixture(), 320, 240, 8)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"auto", fixture, "--project", "explicit", "--style", "generic_highlight",
+		"--duration", "3", "--subs=off", "--out", filepath.Join(root, "explicit.mp4")},
+		&stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("--subs=off exited %d\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "==> subtitles") {
+		t.Errorf("--subs=off transcribed anyway:\n%s", stdout.String())
+	}
+	if strings.Contains(stderr.String()+stdout.String(), `"off"`) {
+		t.Errorf("the word off was handed to something as a filename:\n%s\n%s",
+			stdout.String(), stderr.String())
+	}
+	files, _ := filepath.Glob(filepath.Join(root, "projects", "*", "subtitles.*"))
+	if len(files) != 0 {
+		t.Errorf("--subs=off produced caption files: %v", files)
+	}
+}
