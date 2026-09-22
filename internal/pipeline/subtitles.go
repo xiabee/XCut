@@ -10,6 +10,7 @@ import (
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/subs"
+	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/worker"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
@@ -112,8 +113,22 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 			return aerr
 		}
 		if t.HasWordTimings() {
+			// The caption box is laid out against the reel's own canvas, not
+			// against a reference the file invents: libass scales the whole
+			// script by PlayRes, so a 9:16 reel needs a 9:16 style or the text
+			// lands at the size and position meant for a different shape. With
+			// no timeline yet there is no canvas to match, and the writer's
+			// shipped 1280×720 reference stands. It is read at generation time,
+			// so switching to a vertical style re-runs the transcript to restyle
+			// the captions — recorded as a remainder in docs/ROADMAP.md.
+			style := subs.KaraokeStyle{}
+			if tp, terr := d.TimelinePath(project.ID); terr == nil {
+				if tl, lerr := timeline.LoadFile(tp); lerr == nil {
+					style.Width, style.Height = tl.Canvas.Width, tl.Canvas.Height
+				}
+			}
 			var ass strings.Builder
-			if err := subs.WriteKaraokeASS(t, subs.KaraokeStyle{}, &ass); err != nil {
+			if err := subs.WriteKaraokeASS(t, style, &ass); err != nil {
 				return err
 			}
 			if err := WriteAtomic(assPath, []byte(ass.String())); err != nil {

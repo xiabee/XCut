@@ -173,6 +173,28 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   (`hook_first started at 2, want … [2 14 26]`, `longest shot is 9.000s; the preset
   promises a 4.0s ceiling`, `clip_order "hooks_first" accepted; a typo would
   silently keep the old order`). The missing input is a multi-cut, moving source.
+- **Captions are now styled for the reel they land on.** A `.ass` file declares a
+  reference frame (`PlayResX/Y`) and libass scales the whole script against it, so a
+  style written for a 1280×720 box puts its text at the size and height of a
+  horizontal frame on a 9:16 reel — the same file, a different picture.
+  `subs.KaraokeStyle` gained the canvas (`Width`/`Height`, unset meaning the shipped
+  reference, so nothing changes for a caller that says nothing), and the writer now
+  resolves every pixel metric from it: font, outline, shadow and side margins by the
+  frame's short side (they are about glyph size), the bottom margin by its height (it
+  is an offset from the bottom edge of *this* frame). 1080×1920 therefore gets
+  `PlayResX: 1080 / PlayResY: 1920 / Fontsize 72 / MarginV 107` where 720p keeps
+  48/40 exactly as before, and a frame small enough to round the outline to zero still
+  gets a stroke — an outline is what keeps white text readable over a bright frame.
+  The transcript stage reads the project's own timeline for that canvas, so the
+  generated file matches the reel it will be burned onto. Verified end to end
+  (`TestSubtitlesFlow` puts a vertical timeline in the project before transcribing and
+  reads the PlayRes back out of the served `.ass`) and at the unit level; five
+  mutations each killed one assertion, including `terr != nil`, which is "the wiring
+  never looked at the canvas" and fails the chain test rather than the unit one.
+  Known remainder, stated because it will bite: the geometry is decided when the
+  transcript runs, so switching a project to a vertical style re-runs the transcript to
+  restyle its captions (the transcript payload is not stored, so the burn cannot
+  re-render the style at its own time).
 
 ### Improved
 - **The web UI now shows what a reel is made of, not only what it contains.** The

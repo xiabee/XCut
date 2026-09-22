@@ -161,6 +161,14 @@ usage: xcut subtitles <media-file> [--ass] [--out path] [--lang code] [--model n
 speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)
 ```
 
+A karaoke `.ass` declares the frame it was styled for, and libass scales the whole
+script by it. For a project the transcript stage reads the reel's own canvas, so a
+9:16 cut gets its caption sized and placed for 9:16 (`Fontsize` and the margins scale,
+720p stays exactly as it was). This standalone command has no project and so no canvas:
+it writes the shipped 1280×720 reference. Restyling an existing project's captions
+after changing its canvas means re-running the transcription — the transcript itself is
+not kept, only the files rendered from it.
+
 ## xcut timeline
 ```
 usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] | xcut timeline <project> --restore-backup

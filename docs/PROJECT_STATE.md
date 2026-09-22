@@ -694,6 +694,33 @@ win-devops `OVERALL PASS` at that head (`exit=0 duration=1m50.137s`), Linux full
 on the node (`TestBeatGrid ran=12`, the bed and snap suites `ran=9`, `skipped=0` in
 both) — so the race detector saw the new scan too.
 
+**B5a (captions, first slice): the style is resolved against the reel's frame.** A
+`.ass` declares a reference box and libass scales everything by it, so a file that
+says 1280×720 puts its text at the size and height of a horizontal frame even when
+the reel is 9:16 — same characters, wrong picture. `subs.KaraokeStyle` gained the
+canvas (`Width`/`Height`; unset keeps the shipped reference, so an old caller sees no
+change), and every pixel metric is now derived from it: font, outline, shadow and side
+margins by the short side (they are about glyph size), the bottom margin by the height
+(it is an offset from the bottom edge of *this* frame). So 1080×1920 gets
+`PlayResX: 1080 / PlayResY: 1920 / Fontsize 72 / MarginV 107` while 720p keeps 48/40
+to the digit, and a 256×144 frame still gets a 1-pixel stroke rather than the 0 that
+rounding would give — the outline is the only thing keeping white text readable over a
+bright frame. The transcript stage reads the project's own timeline for that canvas, so
+the file is styled for the reel it will be burned onto. Proven at both levels: a unit
+test over the writer's `Style:` line and an end-to-end one (`TestSubtitlesFlow` puts a
+vertical timeline in the project *before* transcribing and reads the served `.ass`'s
+PlayRes back). Five mutations each killed exactly one assertion, including
+`terr != nil` in the caller — "the wiring never looked at the canvas" — which the unit
+tests cannot see and the chain test catches (it failed with the 1280×720 header in the
+error text, not with a panic).
+
+Two honest remainders from this slice, both in `docs/ROADMAP.md`: the geometry is
+decided when the transcript runs, and the transcript payload is not stored, so
+switching a project to a vertical style re-runs the transcription to restyle its
+captions; and B5's other half — wrapping long lines to the frame and holding each one
+long enough to read — is not built yet, so a 40-character lyric is still one line and
+`WrapStyle: 0` leaves the overflow to libass.
+
 
 ## Version / HEAD
 

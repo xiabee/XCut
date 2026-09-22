@@ -230,6 +230,16 @@ Every item states how it is measured before it is built, because the eval harnes
 - [ ] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
       subtitle burn and the KTV lyric path.
+      Partially landed as B5a (geometry): `subs.KaraokeStyle` carries the reel's
+      canvas and the writer derives PlayRes, font, outline, shadow and margins from
+      it — 1080×1920 → `Fontsize 72 / MarginV 107`, 720p unchanged at 48/40, and a
+      frame too small to round a stroke to ≥1 still gets one. The transcript stage
+      reads the project's timeline for that canvas (proved end to end, and by five
+      mutations including one on the caller). Remaining: line length and dwell
+      (a 40-character cue is still one line — `WrapStyle: 0` hands the overflow to
+      libass), the plain-subtitle path sharing the ASS style instead of falling back
+      to SRT defaults, and re-styling at burn time (the transcript payload is not
+      stored today, so a canvas change needs a re-transcription).
       Measured: the generated ASS text is asserted (the wire format, not a
       struct), including a long-lyric case that must wrap rather than overflow.
 - [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion

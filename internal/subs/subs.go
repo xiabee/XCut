@@ -105,13 +105,61 @@ func WriteSRT(t *Transcript, w io.Writer) error {
 	return bw.Flush()
 }
 
-// KaraokeStyle carries the ASS style knobs (sane defaults for 16:9 canvases).
+// KaraokeStyle carries the ASS style knobs. Width and Height are the reel's canvas:
+// a style's pixel metrics are proportions of the frame, so a caption laid out for a
+// 16:9 reel has to be re-expressed for a 9:16 one rather than left against whatever
+// reference box the file happens to name. Unset means the shipped 1280×720 reference
+// — which is what every subtitle file written before these fields produced, so
+// nothing changes for a caller that knows nothing about them.
 type KaraokeStyle struct {
 	FontName string `json:"font_name,omitempty"` // default: libass fallback
-	FontSize int    `json:"font_size,omitempty"` // default 48
+	FontSize int    `json:"font_size,omitempty"` // default: 48 against a 720-tall frame
 	// HighlightColor is the fill for sung text (ASS &HAABBGGRR); default
 	// yellow. Unsung text stays white.
 	HighlightColor string `json:"highlight_color,omitempty"`
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
+}
+
+// assFrame is the style resolved against a canvas. The starting values are the ones
+// this package has always shipped — a 48-point face on a 720-tall frame, a 2-pixel
+// outline, 60 and 40 pixel margins — each scaled by the axis it is measured along:
+// font, stroke and side margins by the short side (they are about glyph size, and a
+// vertical reel's glyphs are as tall as a horizontal one's), the bottom margin by the
+// height (it is an offset from the bottom edge of this frame, whatever shape it has).
+type assFrame struct {
+	playResX, playResY        int
+	fontSize                  int
+	outline, shadow           int
+	marginL, marginR, marginV int
+}
+
+func (s KaraokeStyle) frame() assFrame {
+	w, h := s.Width, s.Height
+	if w <= 0 || h <= 0 {
+		w, h = 1280, 720
+	}
+	short := math.Min(float64(w), float64(h))
+	scale := short / 720
+	f := assFrame{
+		playResX: w,
+		playResY: h,
+		fontSize: s.FontSize,
+		outline:  int(math.Round(2 * scale)),
+		shadow:   int(math.Round(1 * scale)),
+		marginL:  int(math.Round(60 * scale)),
+		marginR:  int(math.Round(60 * scale)),
+		marginV:  int(math.Round(40 * float64(h) / 720)),
+	}
+	if f.fontSize <= 0 {
+		f.fontSize = int(math.Round(48 * scale))
+	}
+	// libass draws no stroke at zero, and an outline is what keeps white text
+	// readable over a bright frame: the thin end of the scale still gets one.
+	if f.outline < 1 {
+		f.outline = 1
+	}
+	return f
 }
 
 // WriteKaraokeASS renders the transcript as ASS with word-level \kf sweeps
@@ -121,9 +169,6 @@ func WriteKaraokeASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
 		return xcerr.E(xcerr.CodeValidation,
 			"transcript has no word timings — karaoke output needs them (plain SRT still works)", nil)
 	}
-	if style.FontSize <= 0 {
-		style.FontSize = 48
-	}
 	if style.HighlightColor == "" {
 		style.HighlightColor = "&H0000FFFF" // ASS colors are &HAABBGGRR: yellow
 	}
@@ -131,9 +176,11 @@ func WriteKaraokeASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
 	if font == "" {
 		font = "sans-serif"
 	}
+	f := style.frame()
 
 	bw := bufio.NewWriter(w)
-	fmt.Fprintf(bw, assHeader, font, style.FontSize, style.HighlightColor)
+	fmt.Fprintf(bw, assHeader, f.playResX, f.playResY, font, f.fontSize, style.HighlightColor,
+		f.outline, f.shadow, f.marginL, f.marginR, f.marginV)
 	for _, s := range t.Segments {
 		line, end := karaokeLine(s)
 		fmt.Fprintf(bw, "Dialogue: 0,%s,%s,Karaoke,,0,0,0,,%s\n",
@@ -200,16 +247,20 @@ func assEscape(s string) string {
 }
 
 // assHeader is the ASS preamble: one Karaoke style (secondary color white =
-// unsung, primary overridden per-style = sung fill).
+// unsung, primary overridden per-style = sung fill). Its pixel fields arrive
+// resolved against the reel's canvas by assFrame, not as constants, because
+// libass scales the whole script by PlayRes: name a 1280×720 box and render onto
+// a 1080×1920 reel and the caption is sized and placed for a frame the viewer
+// never sees.
 const assHeader = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1280
-PlayResY: 720
+PlayResX: %d
+PlayResY: %d
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,%s,%d,%s,&H00FFFFFF,&H00101010,&H96000000,0,0,0,0,100,100,0,0,1,2,1,2,60,60,40,1
+Style: Karaoke,%s,%d,%s,&H00FFFFFF,&H00101010,&H96000000,0,0,0,0,100,100,0,0,1,%d,%d,2,%d,%d,%d,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

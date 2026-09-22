@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xiabee/XCut/internal/timeline"
 )
 
 // fakeSidecarScript writes a canned transcript sidecar and points the
@@ -63,6 +65,21 @@ func TestSubtitlesFlow(t *testing.T) {
 	asset := storageAssetFor(p.ID)
 	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
 		t.Fatal(err)
+	}
+	// A vertical reel first, before any transcription: the caption style is laid out
+	// against the canvas the project's timeline declares, so this is what the
+	// generated .ass has to agree with.
+	assets, _ := s.DB.ListAssets(t.Context(), p.ID)
+	vertical := &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 1080, Height: 1920, FPS: 30},
+		Tracks: []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{{
+			ID: "c1", AssetID: assets[0].ID, SourceStart: 0, SourceEnd: 3,
+			TimelineStart: 0, Speed: 1, Volume: 1,
+		}}}},
+	}
+	if rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", marshalTimeline(t, vertical)); rec.Code != http.StatusOK {
+		t.Fatalf("vertical timeline rejected: %d %v", rec.Code, out)
 	}
 
 	// Status before any transcription: both false, not an error.
@@ -121,8 +138,15 @@ func TestSubtitlesFlow(t *testing.T) {
 		t.Fatalf("srt download: %d %s", rec.Code, rec.Body.String())
 	}
 	rec, _ = do(t, s, "GET", "/api/v1/projects/"+p.ID+"/subtitles/file?format=ass", "")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `{\kf50}你`) {
-		t.Fatalf("ass download: %d %s", rec.Code, rec.Body.String())
+	assBody := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(assBody, `{\kf50}你`) {
+		t.Fatalf("ass download: %d %s", rec.Code, assBody)
+	}
+	// The style has to be laid out for *this* reel. libass scales a script by its
+	// declared PlayRes, so a file that says 1280×720 puts the caption at the size and
+	// height of a horizontal frame no matter what is playing behind it.
+	if !strings.Contains(assBody, "PlayResX: 1080") || !strings.Contains(assBody, "PlayResY: 1920") {
+		t.Fatalf("the .ass was styled against a frame the project does not have (head: %.120q)", assBody)
 	}
 
 	// Render with subs=true now resolves the artifact (job queued → 202),
