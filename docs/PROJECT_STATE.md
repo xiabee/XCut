@@ -308,6 +308,28 @@ and the re-run sweep reporting **40** functions at 0.0% against 46 before with
 statement coverage 79.0% → 79.3% — measured by running it, not inferred from how
 many files changed.
 
+**Session #20 opens Phase 5** (the owner's directive: keep pushing auto-editing —
+new styles, camera motion, beat-synced music, UI and resource work). B1 is the
+beat grid the `卡点` cut needs: `analysis.EstimateBeatGrid` folds an onset track
+to one phase, keeps the *longest* period explaining ≥90% of the onsets, refines it
+by two least-squares passes over the integer beat index, and stops at the last
+onset plus half a period instead of at the requested horizon. It is deliberately a
+derivation, not a fourth `FeatureTrack` and not a cache entry — from the cached
+onset track it costs microseconds, so a cache would be one more thing to
+invalidate for no measurable gain; the wiring is B2's. Six tests: five on the
+estimator (click grid, ±30 ms jitter, ≤3 onsets refused, every-other-click,
+horizon clamp) and one through the real chain — `testmedia.GenerateRally`
+clicks at 0.5 s → the shipped `AudioOnsetAnalyzer` → the estimator, reporting
+`period=0.4999 bpm=120.0 coverage=1.00 beats=24 onsets=23` (0.02% period error).
+Four mutations each named the assertion they broke (`ran=6` per replay, every run
+a test failure rather than a build failure): the 4-onset floor →
+`[1 1.5] produced a grid (period 0.5000, 4 beats); want a refusal`;
+shortest-instead-of-longest → `period = 0.2500, want 0.5000 within 5%` (and the
+real chain reporting 0.2499 for a 0.5 s click track); dropping the refinement →
+`beats = 12, want one per second across 13 s`; trusting the horizon instead of
+the last onset → `grid extrapolates past the last onset: last beat 12.000, last
+onset 11.500`.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

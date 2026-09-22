@@ -91,13 +91,19 @@ of this section; they set targets, they are not evidence about our own footage.
 Every item states how it is measured before it is built, because the eval harness
 (`xcut eval`) is what keeps "new style" from meaning "new untested heuristic".
 
-- [ ] B1 — Beat grid (`卡点` foundation). Estimate a beat grid from the onset
-      track (inter-onset histogram + phase), emit it as a `beats` FeatureTrack
-      with provenance, and cache it like any other track.
-      Measured: a fixture generated with an exact click grid (testmedia grows a
-      `beats` generator, so truth is known by construction) must land every grid
-      beat within half the beat period, report `beats` empty rather than
-      invented for silence, and refuse to extrapolate past the audio's end.
+- [x] B1 — Beat grid (`卡点` foundation). `analysis.EstimateBeatGrid` folds the
+      onset track to a single phase, keeps the *longest* period that explains
+      ≥90% of the onsets, refines it by least squares, and stops at the last
+      onset plus half a period rather than at the requested horizon.
+      Deliberately a pure derivation, not a fourth `FeatureTrack`: estimating it
+      from the cached onset track costs microseconds, so a cache entry would be
+      one more thing to invalidate for no gain. Wiring is B2's.
+      Measured: 5 estimator cases (exact click grid, ±30 ms jitter, too-few-onsets
+      refusal, every-other-click, horizon clamp) plus one through the real chain —
+      `testmedia.GenerateRally(HitEvery: 0.5)` → shipped `AudioOnsetAnalyzer` →
+      estimator, reporting `period=0.4999 bpm=120.0 coverage=1.00 beats=24`.
+      Four mutations of the constants and the two rules each killed a named
+      assertion (`ran=5`, no build failure).
 - [ ] B2 — Beat-snapped selection. The style engine may move a clip boundary to
       the nearest beat inside a tolerance (default ±0.12 s) and must never move
       it so far that a scored point is missed; the scoreboard-mark rule stays the

@@ -3,6 +3,34 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
+## [Unreleased] — 2026-09-22 session #20 (Phase 5 opens: the beat grid)
+
+### Added
+- **`analysis.EstimateBeatGrid` — the `卡点` foundation (ROADMAP Phase 5, B1).**
+  A beat grid inferred from the onset track: the onsets are folded modulo each
+  candidate period (30–300 BPM scanned geometrically), the single phase explaining
+  the most of them is kept, and among the periods that explain ≥90% of the onsets
+  the *longest* wins — a drummer hitting every beat and one hitting every other
+  beat are the same evidence, and the estimator does not get to invent the
+  half-beat it never heard. Two least-squares passes over the integer beat index
+  then pull the period off the 2% candidate ladder, because a period that is
+  slightly long drifts off the real beats over a long file: the grid would fit the
+  first clicks and miss the last. Beats stop at the last onset plus half a period,
+  not at the requested horizon, so a reel is never cut to beats a faded-out tail
+  never played.
+  It is a pure derivation rather than a fourth `FeatureTrack`: from the cached
+  onset track it costs microseconds, so a cache entry would be one more thing to
+  invalidate for no measurable gain. Nothing consumes it yet — B2 does.
+  Verified: five estimator cases plus one through the real chain
+  (`testmedia.GenerateRally` clicks at 0.5 s → the shipped `AudioOnsetAnalyzer` →
+  the estimator), reporting `period=0.4999 bpm=120.0 coverage=1.00 beats=24` —
+  0.02% off the constructed grid. Replaying four mutations, each one is stopped
+  by a named assertion: the 4-onset floor (`[1 1.5] produced a grid … want a
+  refusal`), shortest-instead-of-longest (`period = 0.2500, want 0.5000`), no
+  refinement (`beats = 12, want one per second across 13 s`), and trusting the
+  horizon (`grid extrapolates past the last onset: last beat 12.000, last onset
+  11.500`).
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
