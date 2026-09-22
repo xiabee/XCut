@@ -28,7 +28,7 @@ English | [中文](README.md)
 | 🎞️ **Drag-and-drop import** | Drop video files onto the page, never overwriting an existing copy; local-path import stays too |
 | ✂️ **A real visual timeline** | Clip blocks sized by duration with thumbnails, drag reorder, edge-handle trimming, transition badges (cut / fade / xfade), a full inspector with keyboard shortcuts |
 | 🏸 **A style engine that knows the court** | Badminton rally mode: hit-driven scoring, court-ROI motion analysis, diversity dedup — every clip carries its "why" |
-| 🎤 **Subtitles & karaoke** | Speech-to-text via an AI sidecar → plain SRT or word-swept karaoke ASS, burned into the render with one checkbox |
+| 🎤 **Subtitles & karaoke** | Speech-to-text via an AI sidecar → plain SRT, styled caption ASS, or word-swept karaoke ASS, burned into the render with one checkbox |
 | 🔒 **Local-first** | Loopback-only, no telemetry; AI is an optional sidecar enhancer, never the foundation |
 | 📦 **Bounded by design** | Jobs, processes, caches, temp files and logs all have configured ceilings; idle footprint ~15 MB RAM, ~0% CPU |
 
@@ -135,8 +135,8 @@ badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
 and the inspector edits trim, speed, volume and the transition of the
 selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
 preview follows the ruler playhead. Projects can also transcribe speech
-to subtitles through an AI sidecar and burn them (plain SRT or
-karaoke-style word-fill ASS) into the render, and the court ROI is drawn
+to subtitles through an AI sidecar and burn them (plain SRT, styled
+caption ASS, or karaoke-style word-fill ASS) into the render, and the court ROI is drawn
 directly on a frame. The UI is vanilla HTML/JS embedded in the binary
 (`go:embed`): no Node, no build step, no extra files. Design:
 docs/CLIENT_DESIGN.md.
@@ -282,7 +282,7 @@ installed; install any of them and the capability turns on with zero XCut
 changes. Then:
 
 ```sh
-./xcut subtitles song.mp4 --ass        # transcript with word timings → karaoke ASS (SRT by default)
+./xcut subtitles song.mp4 --ass        # → styled ASS: karaoke with word timings, captions without (SRT by default)
 ./xcut render proj --subs lyrics.ass   # burn subtitles into the render (audio stream-copied)
 ```
 
@@ -290,7 +290,8 @@ In the web UI the same loop is a button: Transcribe (pick the asset) →
 status + download links → check "burn subtitles" → Render. Word timings
 drive the karaoke fill (each word sweeps as it is sung; sidecar text is
 escaped, so stray braces or newlines cannot corrupt the ASS events);
-without them only plain SRT is produced. A "preview transcript" toggle
+without them the same frame, wrap and dwell produce a plain caption ASS — only
+the fill is missing, because nothing timed the syllables. A "preview transcript" toggle
 shows the cue text inline once an SRT exists.
 
 <details>

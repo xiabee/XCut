@@ -754,11 +754,63 @@ margins-ignored mutation survived (fourteen units measured as seven characters �
 and a hold fixture with enough gap that removing the clamp changed nothing. Both were
 rewritten until their mutations died, which is the only reason either is in the file.
 
+Accepted at `ae4a6ca` (docs head `a96f21c`): the Linux full gate PASSed there —
+`== done gate_rc=0 layout_rc=0 subschain_rc=0`, the layout suite `ran=7 skipped=0`,
+the subtitle chain `ran=2 skipped=0`, `DATA_RACE_lines=0`, `not run: nothing`, 13
+skipped overall — read from that node's own `linuxrun-a96f21c….out`. The control-plane
+local and win-devops legs passed at the same head in the session that wrote it; those
+two verdict lines were read then and are not re-grepped from a file now, so this
+milestone's third channel is the weaker one and is recorded as such.
+
+**B5c (captions, third slice): the plain transcript gets the same frame.** Which
+artifact a burn-in drew had been decided by a sidecar detail: with per-syllable
+timings the words got the designed `.ass`, without them they got an `.srt` and
+libass's own defaults. Only the fill needs syllables, so `WriteCaptionASS` runs the
+same `layoutTranscript` and drops the `{\kf}` tags; where the timed path lays out by
+word, the plain one lays out by character (nothing told it where a word ends) and
+divides the segment's span between its cues by the characters each carries. The
+pipeline now writes whichever `.ass` a transcript can back, which also means a second
+transcription *replaces* a karaoke file rather than only deleting it — the stale-file
+retry stays for the case that still has nothing to write, a transcript whose segments
+were all empty. `xcut subtitles --ass` answers an ordinary transcript with
+`Style: Caption,` instead of "karaoke output needs them", and reports which of the
+three it wrote.
+
+The tiling test earned its place before the code shipped: the first draft divided the
+span per cue instead of cumulatively, and the generated file showed
+`Dialogue: 0,0:00:03.60,0:00:03.60,Caption,…` — two lines of text handed no time on
+screen at all. Four mutations replayed afterwards, each stopped by a named assertion:
+the plain transcript writes nothing (`the second pass left no .ass at all`), the write
+refuses to clobber an existing file (`TestReTranscribeReplacesTheKaraokeFile` is the
+only case that notices — a plain-first project cannot see it), the caption writer
+ignores the caller's canvas (`caption .ass lacks "PlayResX: 1080"`), and the CLI
+branch calls the karaoke writer (`subtitles --ass failed (1): transcript has no word
+timings`). One case of the family was also *fixed* while being written: the first
+version of the character count summed `{\N}` as if it were text, so a wrap test that
+looked like it measured 44 characters was measuring 40 characters and two escapes.
+
+Accepted at `e909e37`: the control-plane local gate ran `545 passed, 8 skipped` with
+`gate (fast): PASS (steps not run: none; …)` and `LOCAL CI PASS`; win-devops reported
+`OVERALL  PASS` at that head (`exit=0 duration=1m50.454s`) with its own
+`local evidence (after_local_pass): local CI PASS at 22:28:17 for e909e37e`; the Linux
+full gate closed with `== done gate_rc=0 layout_rc=0 subschain_rc=0`,
+`not run: nothing`, 13 skipped, `DATA_RACE_lines=0`, and both new legs run explicitly
+on that machine — the caption layout `ran=4 skipped=0`, the subtitle chain through the
+CLI and the api `ran=5 skipped=0`.
+
 
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
   tagged from an earlier session
+- HEAD: session #20 (2026-09-22, Phase 5 through B5c) — the auto-edit arc landed
+  on all three channels: `卡点` music carried from CLI to API to render, two new
+  styles plus `clip_order`, a pacing readout measured rather than eyeballed (CLI,
+  API wire keys, UI chip), the bed and the beat-snap selector in the browser, a
+  beat grid that fits a three-minute bed instead of refusing it, and captions
+  sized, wrapped and held for the reel they land on — with or without word
+  timings. Each milestone's verdict lines are in the sections above; the bullet
+  below is the previous head, kept as history.
 - HEAD: session #16/#17 (2026-09-20 night) — the auth-gate failure budget
   charges only requests that presented a credential (the sign-in page's own
   health poll could previously lock its address out and then 429 the correct

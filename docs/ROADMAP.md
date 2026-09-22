@@ -241,9 +241,15 @@ Every item states how it is measured before it is built, because the eval harnes
       split into successive cues, and a 1.2 s display floor that borrows silence
       without moving the karaoke fill (`speechEnd` is what the sweep runs to). Six
       assertions on the generated file, six mutations each killed by one of them, and
-      one regression caught only by the existing CLI end-to-end test. Remaining: the
-      plain-subtitle path sharing the ASS style instead of falling back to SRT
-      defaults, re-styling at burn time (the transcript payload is not stored, so a
+      one regression caught only by the existing CLI end-to-end test. B5c closed the
+      plain path: a transcript with no word timings now gets the same frame, the same
+      wrap and the same dwell as a karaoke one — `WriteCaptionASS` lays it out by
+      character (nothing said where a word ends) and shares the span by the characters
+      each cue carries, with no `{\kf}` sweep to invent a syllable. A second
+      transcription replaces the karaoke file the first left behind instead of only
+      deleting it, and `xcut subtitles --ass` answers an ordinary transcript with a
+      caption rather than an error.
+      Remaining: re-styling at burn time (the transcript payload is not stored, so a
       canvas change needs a re-transcription), and any pixel claim about where the
       caption lands — libass's own layout is not verified here, only the file handed
       to it.
