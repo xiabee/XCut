@@ -971,6 +971,49 @@ Accepted at `0bf23f2` on all three channels: local `573 passed, 8 skipped` with
 `walk_rc=0 ran=13 skipped=0` (the wire case and the singular note among them) and
 `guards_rc=0 ran=15 skipped=0`.
 
+**The walk came back a second time, onto the surface a user edits by hand.** The first
+walk drove the happy path; this one did the opposite — it PUT documents the builder would
+never produce and read the refusals. A zoom of 3.0 on a vertical reel, an asset id invented
+on the spot, an empty document, a document wrong in four places at once, a revision copied
+from the server's own reply: every one is a request the page can be made to send, and each
+answer is a sentence a person has to act on.
+
+Three sentences failed there, and all three are fixed at `bd80006`: the count that stood in
+for the list (`(1 problem(s))`, produced identically by three different documents), the
+float a validator interpolates when it prints a number it never computed for display
+(`starts 10.500100000000003`), and the 409 that told a client it had missed a change when it
+had never read anything at all. The UI's part in that last one is the finding worth
+keeping: the page carried its own fixed sentence for 409 — "the timeline changed elsewhere"
+— so the server's diagnosis never reached the screen, and the more specific the API became,
+the less of it a user would see. The banner quotes the server now and adds only what only
+the page knows, which is the name of the button to press. Its script lives outside the
+repo with the first one's (`D:\tmp\xcub1\walk2.py`), for the same reason: a probe, not a
+gate.
+
+**What the acceptance for that commit turned up was larger than the commit.** The local
+gate returned 0 at 03:21 — `gate (fast): PASS (steps not run: none)` — over
+`== go test: 0 passed, 0 skipped`. The test step's stderr redirect pointed at a fixed name
+in `%TEMP%`, another project's gate had opened that same file at 03:20, the redirect raised
+an `IOException`, and `go test` was never asked to run. Nothing in the verdict line could
+see it: the step *had* run, it had simply run nothing, and `$LASTEXITCODE` still carried the
+previous step's 0. It surfaced only because this time the output was read line by line
+instead of judged by its last line. Fixed at `b17c427` (a name per process, plus the floor
+that was missing — zero test events is a refusal) and at `86dbaa0` (the same floor under
+`sh`, which had the hole without the collision). Reproduced in both directions rather than
+argued about, in `out/gate-mutA.log` and `out/gate-mutB.log`.
+
+The shape to remember is not the temp file. A gate's green is a claim about what it ran,
+and the only thing that can be trusted to say so is a count it prints — which is why both
+scripts now refuse to be green on an empty one.
+
+Accepted at `86dbaa0` (which carries `bd80006` and `b17c427`) on all three channels: local
+`579 passed, 8 skipped` with `steps not run: none`; win-devops `OVERALL  PASS`
+(`exit=0 duration=1m33.927s`, `local CI PASS at 03:37:40 for 86dbaa03`); Linux
+`gate (full): PASS … not run: nothing`, `568 passed, 13 skipped`, `DATA_RACE_lines=0`,
+`FAIL_lines=0`, with the new cases run explicitly — `validators_rc=0 ran=9 skipped=0` and
+`refusals_rc=0 ran=6 skipped=0` — and the `sh` guard controlled on that node:
+`guard_rc=1 BITES (an empty run was refused)`, snapshot `restored byte-identical`.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

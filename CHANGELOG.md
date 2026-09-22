@@ -389,6 +389,24 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **The local gate printed PASS over a run in which `go test` never started.** At 03:21
+  the fast gate returned 0 with `== gate (fast): PASS (steps not run: none)` and, four
+  lines above it, `== go test: 0 passed, 0 skipped`. The step's stderr redirect pointed at
+  a fixed name in `%TEMP%`; another project's local gate had that same file open, the
+  redirect raised an `IOException`, the child never launched — and the exit code could not
+  catch it, because a redirect that fails before the child starts leaves `$LASTEXITCODE`
+  holding whatever the previous step set. The file is now named for the process that owns
+  it, and both gates (the PowerShell one and its `sh` twin, which has no such collision but
+  had the same missing floor) refuse a step that observed zero test events, printing how
+  much output it did get.
+  Verified by reproducing the incident rather than reasoning about it: collision restored
+  with the guard disabled returns rc=0 with `0 passed, 0 skipped` under a PASS; the same
+  collision with the guard returns rc=1 naming the empty run; the `sh` twin's guard is
+  exercised on the Linux node against the throwaway snapshot, where the test command is
+  replaced by `true` and the run must be refused — a control that runs after the real gate
+  and restores the file with `cmp` before judging, so it cannot poison the verdict.
+  `scripts/check.ps1` came back byte-identical after each experiment, and the runtime name
+  was confirmed per-process (`xcut-gate-test-8700.err`).
 - **Three things a walk through the real product found, at 02:16.** The walk drove the
   HTTP surface the way the page does — real 603 s match, a synthetic 120 BPM click bed,
   the vertical style, a transcript with word timings and two hostile lines (`{}`, a
