@@ -123,7 +123,12 @@ Invoke-Step "go build" { go build ./... }
 # the lookupable unit: worker/TestDescribe, not "7 skipped".
 Write-Host "== go test"
 $ErrorActionPreference = "Continue"
-$testErrFile = Join-Path ([System.IO.Path]::GetTempPath()) "xcut-gate-test.err"
+# Named for this process, because a fixed name in a shared directory is a collision
+# waiting for the next gate on the box: at 03:20 another project's local gate opened
+# `%TEMP%\xcut-gate-test.err` while this one was starting, PowerShell's redirect raised
+# an IOException, `go test` never ran, and the step that must be the gate's whole point
+# reported "0 passed, 0 skipped" under a PASS line.
+$testErrFile = Join-Path ([System.IO.Path]::GetTempPath()) "xcut-gate-test-$PID.err"
 $testLines = @(go test -count=1 -json ./... 2>$testErrFile | ForEach-Object { "$_" })
 $testExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
@@ -169,6 +174,17 @@ if ($testExit -ne 0) {
     Write-Host "go test stderr tail:"
     Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
     throw "go test failed with exit code $testExit"
+}
+# An empty run is not a green run. Every count above is zero when the step never
+# reached a test — which is what the colliding temp file caused — and the verdict line
+# still read PASS with "steps not run: none", because this step *did* run: it just ran
+# nothing. The exit code cannot catch it either: a redirect that fails before the child
+# starts leaves $LASTEXITCODE holding whatever the previous step set.
+if ($TestPass + $TestSkips.Count + $FailedKeys.Count -eq 0) {
+    Write-Host "== go test: produced no test events at all (stdout lines: $($testLines.Count))"
+    Write-Host "stderr tail:"
+    Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
+    throw "go test ran no tests — that is not a pass"
 }
 Remove-Item $testErrFile -ErrorAction SilentlyContinue
 Write-Host "== go test: $TestPass passed, $($TestSkips.Count) skipped"
