@@ -603,7 +603,7 @@ own pulse. The path is echoed as a file *name*, never as the caller's path. The 
 keys the note reads (`md.music`, `md.music_bpm`, `c.metadata.beat`, and the two
 request fields) are pinned in Go on both sides, the same way the pacing chip is.
 
-### Known issue — the beat grid refuses (or mis-fits) a bed longer than ~96 beats
+### Beat grid: the bed-length defect, how it was found (now fixed — see B1b below)
 
 Found by using B4a's own feature at product scale, through the UI. Two synthetic
 click beds, one tempo, two lengths:
@@ -635,8 +635,59 @@ save a candidate the ladder mis-fitted. The fix is to judge the candidate by its
 refined coverage; the regression must include the 119-onset lattice (refusal) and the
 1.0 s lattice (mis-fit), because they are different symptoms of one cause.
 
-This is why `--music` on a real 3-minute pop track should be expected to play without
-snapping today: the bed is analyzed over its own length, and 3 minutes is 360 beats.
+That was the state of `--music` on a real 3-minute pop track before B1b: the bed is
+analyzed over its own length, and 3 minutes is 360 beats.
+
+**B1b — that issue is fixed, and the estimator is now a different shape.** The
+candidate ladder is gone; one source remains, anchored on the ends of the evidence —
+for every interval count `n`, the period is `(last − first)/n`, fitted to the onsets
+by the existing least-squares pass, and judged by a cluster window over the sorted
+residues. Two of those words are the load-bearing parts, and each is a test:
+
+- The **verdict is taken after the fit.** A 2% ladder never sits on the true period,
+  and a ~1% error is not rounding: it moves the phase out from under a fold by about
+  the hundredth beat, so a perfect minute of metronome folded to 0.80 and was called
+  disbelief. Measured over every whole BPM from 30 to 300 on a 60 s click lattice:
+  **before, 121 believed / 142 refused / 8 wrong; after, 271 believed / 0 refused /
+  0 wrong**, and every period exact (worst relative error 0.0000%).
+- The **phase is anchored on a real onset, not on the least-squares mean.** That
+  detail came from my own first attempt: with the fit's mean phase, a lattice whose
+  clicks alternate either side of the true beat puts every click at *precisely* the
+  tolerance distance, so a grid twice as slow as the music scored `coverage=1.000`
+  and won the longest-wins rule. Measured then: 119 clicks at 0.5 s returned
+  `period=1.00000000 phase=0.250000 cov=1.0000`. `TestBeatGridDoesNotScoreBetweenTheBeats`
+  is that case, and it is why `bestPhase` still picks the phase.
+
+Product-level re-measure, same three beds as the discovery above: `click120.wav` now
+reports `bpm=120.00 coverage=1 beats=119` and `cuts on the beat: 1 of 8 clips`; a
+three-minute click bed (359 onsets) reports `bpm=120.0 coverage=1 beats=359`; and
+`bed60.m4a` — the match's own hall audio, 145 onsets — **is still refused**, which is
+the answer that was already correct. `TestBeatGridStillRefusesALongIrregularTrain`
+holds the same line at unit level: 79 irregular onsets across 60 s produce no grid.
+
+Two more things the rewrite had to earn, both measured rather than assumed. The
+first version of the new scan was **cubic** — 120 onsets cost 54 ms, 1 440 cost 2 m
+7 s, and 3 600 did not finish inside a 600 s test timeout — which is rule 4 of
+`AGENTS.md` biting, not a style preference: the cluster search was quadratic per
+candidate. Sliding the window over sorted residues made it `O(n log n)`, and the fit
+now reads at most `maxBeatFitOnsets` = 1 200 onsets and projects the grid over the
+rest, so 20 000 onsets cost **127 ms** (44.7 s with the budget removed) and the
+271-tempo sweep costs 0.63 s instead of 57 s. `TestBeatGridFitsAPrefixAndBeatsTheWholeBed`
+says the cap decides the *fit*, never the beats: a 2 000-click bed still gets beats to
+its last click. And `TestBeatGridLeastSquaresSharpensALongJitteredBed` exists because
+the fit otherwise had no witness — with ±90 ms of spread the anchored span alone lands
+at 0.499872 while the fit lands at 0.499977, so the threshold sits between those two
+numbers. Seven mutations, each killed by a named assertion (the refusal, the midway
+phase, the longest rule, the coverage floor, the tail clamp, the fit, the circle-wrap
+in the window); the fit budget is the one part no test can observe — it changes cost,
+not output — so it is carried by the timings above instead of a fake assertion.
+
+The ladder's own removal was decided the same way: after the new scan landed, mutating
+the ladder's longest-rule and its refinement **survived** the whole suite, and running
+the suite and the sweep with the ladder disabled gave identical numbers (271/0/0, the
+jitter cases the same to six decimals, the spurious-trailing-click case the same
+1.003877) while halving the long-lattice test's time. Code that cannot be shown to
+matter does not stay.
 
 
 ## Version / HEAD

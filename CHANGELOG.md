@@ -228,6 +228,47 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   be expected to play without snapping — which is exactly the promise B4a made and did
   not measure at that length.
 
+### Fixed
+- **`EstimateBeatGrid` refused music it should have believed, and sometimes named a
+  different tempo with total confidence** (ROADMAP B1b). The estimator walked a 2%
+  ladder of candidate periods and judged each one by folding the onsets to a single
+  phase — which is fine for a short file and wrong for a long one, because the rung's
+  ~1% period error is a phase error that grows one beat at a time: by the hundredth
+  beat the clicks are out from under the fold, and a *perfect* minute of metronome
+  scored 0.80 coverage and was called rhythmless. Measured over every whole BPM from 30
+  to 300 on a 60 s click lattice: **121 believed, 142 refused, 8 answered at the wrong
+  tempo** — and of those 8, 119 clicks spaced 1.0 s apart came back as
+  `period=0.2 bpm=300 coverage=1.000`, the longest-wins rule collapsing onto the
+  ladder's own start value, which is worse than a refusal because it snaps cuts to
+  beats nobody played.
+  The fix removes the ladder. A period is now proposed for every count of intervals
+  between the first and last onset (an anchored span has no error to accumulate),
+  sharpened by the least-squares fit, and judged by the largest cluster of residues —
+  with the phase anchored on a real onset rather than taken from the fit. That last
+  part is not tidiness: the fit's mean phase sits exactly halfway between the clicks of
+  an alternating lattice, where every click is at *precisely* the tolerance distance, so
+  a grid twice as slow as the music scores full coverage and wins. That trap was hit on
+  the first attempt at the fix, measured (`period=1.0 phase=0.25 cov=1.0000`), and is now
+  `TestBeatGridDoesNotScoreBetweenTheBeats`.
+  Measured after: **271 believed, 0 refused, 0 wrong**, every period exact; the six B1
+  cases and the real-audio case unchanged. Through the product: the 60 s click bed that
+  was refused now reports `bpm=120.00 coverage=1 beats=119` with
+  `cuts on the beat: 1 of 8 clips`, a three-minute bed reports the same grid over 359
+  onsets, and the match's own hall audio (145 onsets) is **still refused** — the answer
+  that was already right, now provably not the same failure.
+  Cost was part of the work: the first version of the new scan was cubic (120 onsets
+  54 ms, 1 440 onsets 2 m 7 s, 3 600 did not finish in 600 s), so the cluster search
+  became a window sliding over sorted residues and the fit reads at most 1 200 onsets
+  and projects the grid across the rest — 20 000 onsets now cost **127 ms** (44.7 s with
+  the budget removed, and the beats still reach the last click). Seven mutations, each
+  killed by the assertion it targets (the refusal, the midway phase, the longest rule,
+  the coverage floor, the tail clamp, the fit, the window's wrap around the circle).
+  Two things the rewrite gave up, said plainly: the ladder's own longest-rule and
+  refinement survived the suite once the anchored scan existed, and running everything
+  with the ladder disabled gave identical numbers — so it was deleted rather than kept
+  as a second opinion; and the 1 200-onset budget is a cost bound with no test that can
+  observe it, so it is carried by the timings above instead of by an assertion.
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 

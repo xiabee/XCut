@@ -22,13 +22,16 @@ const (
 	// be fit by some grid, which is exactly the confidence the estimator must not
 	// claim from sparse or silent stretches.
 	minBeatOnsets = 4
+	// How many onsets the fit looks at: the scan costs time per onset per candidate,
+	// and a tempo fitted on ten minutes of 120 BPM is the tempo a three-hour recording
+	// has. Bounding it keeps a long bed from making this the slowest stage of a render;
+	// the longest bed measured here (three minutes of clicks, 359 onsets) is nowhere
+	// near the cap, so nothing in the recorded evidence is truncated.
+	maxBeatFitOnsets = 1200
 	// Search range, deliberately wide (30–300 BPM) so the choice is made by what
 	// explains the onsets and not by an assumed tempo range.
 	minBeatPeriod = 0.2
 	maxBeatPeriod = 2.0
-	// A step of ~2% keeps the scan to ~115 candidates while never missing a
-	// period by more than that.
-	beatPeriodStep = 1.02
 	// An onset counts as explained when it lands within a quarter period of the
 	// grid; anything looser lets a period pass that fits nothing in particular.
 	beatTolerance = 0.25
@@ -53,29 +56,45 @@ func EstimateBeatGrid(onsets []float64, horizon float64) (BeatGrid, bool) {
 	if len(ts) < minBeatOnsets {
 		return grid, false
 	}
+	// The fit is bounded. Tempo is a property of the track, not of how much of it was
+	// scanned, so the first maxBeatFitOnsets onsets decide the grid and the beats are
+	// then projected across the rest of the evidence; the tail clamp still reads the
+	// real last onset, so nothing is claimed past the music.
+	fit := ts
+	if len(fit) > maxBeatFitOnsets {
+		fit = fit[:maxBeatFitOnsets]
+	}
 
 	best := BeatGrid{Coverage: -1}
-	for p := minBeatPeriod; p <= maxBeatPeriod; p *= beatPeriodStep {
-		phase, coverage := bestPhase(ts, p)
-		if coverage < minBeatCoverage {
-			continue
-		}
-		// Longer period wins; on a tie the better coverage wins.
-		if p > best.Period || (p == best.Period && coverage > best.Coverage) {
-			best = BeatGrid{Period: p, Phase: phase, BPM: 60 / p, Coverage: coverage}
+	// One candidate source, anchored on the ends of the evidence: "these n intervals
+	// happened across this span" proposes a period with no error to accumulate. The
+	// alternative this function used — a ladder of rungs ~2% apart, each folded to a
+	// single phase — cannot see a long file: a 1% period error stops the phase being
+	// constant by the hundredth beat, so a perfect minute of metronome folded to 0.80
+	// and the estimate was called disbelief. Every anchored period is then fitted to
+	// the onsets themselves, and the phase taken back from that fit by anchoring it on
+	// a real onset. The last part is not decoration: the least-squares phase is a mean,
+	// and on a lattice whose clicks alternate either side of the true beat it lands
+	// exactly halfway, where every click sits at precisely the tolerance distance — so
+	// a grid twice as slow as the music scores full coverage and wins the longest-wins
+	// rule with nothing behind it.
+	if span := fit[len(fit)-1] - fit[0]; span > 0 {
+		for n := 1; n < len(fit); n++ {
+			p := span / float64(n)
+			if p < minBeatPeriod || p > maxBeatPeriod {
+				continue
+			}
+			fitted, _ := refineGrid(fit, p, math.Mod(fit[0], p))
+			ph, coverage := bestPhase(fit, fitted)
+			if coverage < minBeatCoverage {
+				continue
+			}
+			if fitted > best.Period || (fitted == best.Period && coverage > best.Coverage) {
+				best = BeatGrid{Period: fitted, Phase: ph, BPM: 60 / fitted, Coverage: coverage}
+			}
 		}
 	}
 	if best.Coverage < 0 {
-		return grid, false
-	}
-	// The candidate ladder only gets the period within a step (~2%), and a period
-	// that is slightly long drifts off the real beats over a long file — the grid
-	// would fit the first clicks and miss the last. Two least-squares passes
-	// against the onsets themselves land on the period they actually share.
-	best.Period, best.Phase = refineGrid(ts, best.Period, best.Phase)
-	best.BPM = 60 / best.Period
-	best.Coverage = coverageAt(ts, best.Period, best.Phase)
-	if best.Coverage < minBeatCoverage {
 		return grid, false
 	}
 
@@ -98,26 +117,48 @@ func EstimateBeatGrid(onsets []float64, horizon float64) (BeatGrid, bool) {
 // cluster that explains the most of them. Requiring one cluster is what rejects
 // sub-harmonics: a period that is twice too long leaves its onsets in two places,
 // and no single phase can call both of them on-beat.
+//
+// The cluster is found by sliding a window over the sorted residues rather than by
+// trying every onset against every other one. Same answer — the window is centred
+// on an onset's residue either way — and it matters because this runs once per
+// candidate period: the quadratic form made a ten-minute bed take minutes.
 func bestPhase(ts []float64, period float64) (float64, float64) {
 	tol := beatTolerance * period
-	bestPhase, bestCount := 0.0, 0
-	for _, o := range ts {
-		candidate := math.Mod(o, period)
-		count := 0
-		for _, other := range ts {
-			d := math.Abs(math.Mod(other, period) - candidate)
-			if d > period/2 {
-				d = period - d
-			}
-			if d <= tol {
-				count++
-			}
+	n := len(ts)
+	res := make([]float64, n)
+	for i, o := range ts {
+		r := math.Mod(o, period)
+		if r < 0 {
+			r += period
 		}
-		if count > bestCount {
-			bestCount, bestPhase = count, candidate
+		res[i] = r
+	}
+	sort.Float64s(res)
+	// The list doubled with one period added, so a cluster that wraps around the
+	// circle is a contiguous run like any other.
+	ext := make([]float64, 2*n)
+	copy(ext, res)
+	for i := 0; i < n; i++ {
+		ext[n+i] = res[i] + period
+	}
+	bestCount, bestAt := 0, res[0]
+	low, high := 0, 0
+	for _, c := range res {
+		for low < 2*n && ext[low] < c-tol {
+			low++
+		}
+		if high < low {
+			high = low
+		}
+		for high < 2*n && ext[high] <= c+tol {
+			high++
+		}
+		// Strictly greater keeps the first winner, as the anchored scan did.
+		if cnt := high - low; cnt > bestCount {
+			bestCount, bestAt = cnt, c
 		}
 	}
-	return bestPhase, float64(bestCount) / float64(len(ts))
+	return bestAt, float64(bestCount) / float64(n)
 }
 
 func sortedUnique(ts []float64) []float64 {

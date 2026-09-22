@@ -171,6 +171,34 @@ So the number that matters for the product is not a metric here but a consequenc
 snap, the grid and the per-clip proof are ready; what was missing was a
 beat-bearing input, and B4a shipped it (`--music`, `"music"` on the API).
 
+## How long a bed the grid can see (B1b)
+
+The bed story above was measured on 20 seconds of clicks. The same clicks recorded for
+60 seconds were not: `EstimateBeatGrid` refused them (`no beat grid the estimator will
+believe, onsets=119`) while accepting the 20-second file at `bpm=120.00 coverage=1`.
+The estimator judged each 2%-ladder candidate by folding the onsets to one phase, and a
+~1% period error is not a rounding detail once a hundred beats have accumulated it — so
+a real pop bed, which is minutes long, was the case it could not see. Over every whole
+BPM from 30 to 300 on a minute of clicks the old shape believed **121**, refused
+**142**, and answered **8** at the wrong tempo (119 clicks at 1.0 s came back as
+`period=0.2 bpm=300 coverage=1.000` — the longest-wins rule collapsing onto the ladder's
+own start value). The shipped shape proposes a period for every interval count between
+the first and last onset, fits it, and anchors the phase on a real onset:
+**271 believed, 0 refused, 0 wrong**, with the six original B1 cases unchanged.
+
+Two of those words are load-bearing, and each was found the hard way. Fitting alone
+would have traded the refusal for the wrong grid, because the fit's mean phase sits
+exactly halfway between the clicks of an alternating lattice — where every click is at
+*precisely* the tolerance distance, so a beat twice as slow as the music scores
+`coverage=1.000`. And the anchor-on-a-real-onset phase is what keeps the cluster search
+honest; making it cheap (a sliding window over sorted residues, not every pair) is what
+made the same scan affordable at 20 000 onsets — 127 ms, with the fit reading at most
+1 200 onsets and projecting the grid over the rest (docs/PERFORMANCE.md).
+
+What this changes for the harness: `--music` on a long track is now a real test rather
+than a coin flip, and the refusal that remains — the match's own hall audio, 145
+onsets, no grid — is the estimator being right, not being blind.
+
 ## Comparing styles: what a shorter ceiling buys (B4c)
 
 `sports_vertical` halves the incumbent's `max_clip_duration` (8 s → 4 s) and puts
