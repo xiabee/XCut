@@ -938,6 +938,39 @@ oneshot_rc=0 chain_rc=0`, with the one-shot leg `ran=6 skipped=0` and the
 caption-and-tap chain leg `ran=10 skipped=0` run explicitly on that machine.
 
 
+**A walk through the product (02:16), and what it turned up.** The suite says the
+features work; the walk exists to ask what a user would *see*. It drove the HTTP
+surface the way the page does — the real 603 s match, a synthetic 120 BPM click bed
+written as PCM so the grid is a fixture rather than an approximation, the vertical
+style, a transcript with word timings including two hostile lines (`{}`, a backslash,
+a newline) — from import through the tap to the rendered file, printing every
+user-facing string on the way: the health payload, the plan, the job progressions, the
+document metadata, the pacing object, four clip rows, the ffprobe of the output, and
+the caption file itself.
+
+It cost about four minutes and produced three defects no test covered, all fixed in
+`0bf23f2` (see the CHANGELOG entry for the details and the four mutations): float noise
+on the pacing wire (`7.50000000000001`), a plural note that lied twice in the one case
+where the vertical style on sports footage actually produces it, and a missing guard
+over i18n placeholders — which the act of hand-translating that note was about to
+exploit. It also confirmed what already held: the escaping put the hostile characters in
+as text rather than as live tags, the caption file declared the canvas of the reel the
+tap had just built, and the tap's 41 s from import to file is dominated by analysis,
+not orchestration.
+
+The lesson is not that the walk is a test. It is that reading the product's own
+sentences, in order, on real input, finds the class of thing that unit tests cannot:
+a number nobody was supposed to read raw, and a sentence whose grammar was written for
+a case the fixture never had. The script lives outside the repo
+(`D:\tmp\xcub1\walk.py`) with its workspace, because it is a probe, not a gate.
+
+Accepted at `0bf23f2` on all three channels: local `573 passed, 8 skipped` with
+`steps not run: none`; win-devops `OVERALL  PASS` (`exit=0 duration=1m50.187s`,
+`local CI PASS at 02:37:27 for 0bf23f21`); Linux `gate (full): PASS … not run: nothing`,
+13 skipped, `DATA_RACE_lines=0`, `FAIL_lines=0`, and the two legs run explicitly —
+`walk_rc=0 ran=13 skipped=0` (the wire case and the singular note among them) and
+`guards_rc=0 ran=15 skipped=0`.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
