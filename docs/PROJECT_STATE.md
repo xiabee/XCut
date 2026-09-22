@@ -492,7 +492,15 @@ at 16.0s` when asked for 60 s. Mean equals median equals longest equals the pres
 `max_clip_duration`: **every shot sits on the ceiling**, so the ceiling — not the
 scoring — is what sets the pace, and the best moment arrives a quarter of the reel
 in. Those two numbers are B4c's acceptance targets, recorded before anyone chose a
-preset value to hit them.
+preset value to hit them. Accepted at `0c79ab6`: control-plane local gate 515 passed
+/ 8 skipped with `steps not run: none` (`local CI PASS at 17:28:02 for 0c79ab62`),
+win-devops `OVERALL PASS` at that head (`exit=0 duration=1m48.695s`), Linux full gate
+504/13 with `not run: nothing`, zero `DATA RACE` lines, and both new suites run
+explicitly on the node (`ran=7 skipped=0` for the measurement, `ran=3 skipped=0`
+for the printed line) — the readout is not a Windows-only claim. GitHub's port 22
+refused the push during this milestone; it went over `ssh.github.com:443` after
+comparing the three host keys against the `github.com` entries already in
+`known_hosts` (byte-identical, same fingerprint set).
 
 
 ## Version / HEAD
