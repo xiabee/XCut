@@ -1175,12 +1175,33 @@ function renderInspector() {
   box.appendChild(trow);
   box.appendChild(tdur);
 
+  // Camera motion (运镜) for this one clip. The page names the mode and stores what
+  // comes back; the arithmetic stays on the server, because the reel builder and the
+  // picker must not hold two versions of what "drift" means.
+  const mrow = document.createElement("label");
+  mrow.className = "field";
+  const mspan = document.createElement("span");
+  mspan.textContent = t("camera motion");
+  const msel = document.createElement("select");
+  const clipFraming = (c.metadata && c.metadata.framing) || "none";
+  for (const [v, label] of [["none", t("still (whole frame)")],
+                            ["punch_in", t("punch in")],
+                            ["drift", t("drift across the frame")],
+                            ["roi", t("follow the region")]]) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label;
+    if (clipFraming === v) o.selected = true;
+    msel.appendChild(o);
+  }
+  mrow.append(mspan, msel);
+  box.appendChild(mrow);
+
   const apply = document.createElement("div");
   apply.className = "insp-row";
   const btnApply = document.createElement("button");
   btnApply.textContent = t("Apply");
   btnApply.className = "primary";
-  btnApply.addEventListener("click", () => {
+  btnApply.addEventListener("click", async () => {
     const ns = parseFloat(inTrim.value), ne = parseFloat(outTrim.value);
     if (!isFinite(ns) || !isFinite(ne) || ns < 0 || ne <= ns) {
       banner(t("Trim rejected: out must be after in"));
@@ -1196,6 +1217,30 @@ function renderInspector() {
     const td = parseFloat(tdur.value) || 0;
     if (tt === "cut") delete c.transition;
     else c.transition = { type: tt, duration: tt === "xfade" ? td : (td || 0) };
+    const mode = msel.value;
+    if (mode !== clipFraming) {
+      // Geometry and its claim travel together: a clip that carries a window
+      // without saying so, or the word without one, is the mismatch the style
+      // layer's own tests refuse to produce.
+      try {
+        const res = await post(`/api/v1/projects/${currentProject.id}/motion/plan`,
+          { mode, asset: c.asset_id, ordinal: selectedIndex });
+        if (res.motion) {
+          c.motion = res.motion;
+          c.metadata = Object.assign({}, c.metadata, { framing: res.framing });
+        } else {
+          delete c.motion;
+          if (c.metadata) {
+            const rest = Object.assign({}, c.metadata);
+            delete rest.framing;
+            c.metadata = rest;
+          }
+        }
+      } catch (e) {
+        banner(tf("The motion pick failed: {msg}", { msg: e.message }));
+        return;
+      }
+    }
     renderTimeline();
   });
   const btnPreview = document.createElement("button");

@@ -619,29 +619,58 @@ func moveTopShotFirst(clips []timeline.Clip) {
 	clips[0] = top
 }
 
-// framingPlan turns the style's camera-motion policy into one clip's plan (运镜).
-// The ordinal only decides which way a drift runs, so a reel alternates its pans
-// instead of repeating one metronome, while the same inputs still produce the
-// same document.
-func framingPlan(p *Preset, a AssetInfo, ordinal int) *timeline.Motion {
-	z := p.CameraMotion.Zoom
-	switch p.CameraMotion.Mode {
+// DefaultMotionZoom is the window the per-clip picker opens a clip with when nobody
+// names one: 15% off the frame edge, which reads as a deliberate move at phone size
+// without cropping a subject out of the shot.
+const DefaultMotionZoom = 0.85
+
+// MotionFor is the one rule that turns a camera-motion name into one clip's plan
+// (运镜). framingPlan applies it across a reel and the per-clip endpoint applies it to
+// a single clip, so the geometry a user chooses cannot disagree with the geometry a
+// style would have produced. ordinal only decides which way a drift runs, so a reel
+// alternates its pans instead of repeating one metronome.
+func MotionFor(mode string, zoom float64, roi *MotionROI, ordinal int) (*timeline.Motion, error) {
+	if mode == "" || mode == FramingNone {
+		return nil, nil // no window: the clip shows the whole frame
+	}
+	if zoom <= 0 || zoom > 1 {
+		return nil, xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+			"camera motion zoom %g out of (0,1] — a mode without a window is not a plan", zoom), nil)
+	}
+	switch mode {
 	case FramingPunchIn:
-		return &timeline.Motion{Zoom: z}
+		return &timeline.Motion{Zoom: zoom}, nil
 	case FramingDrift:
 		from, to := 0.35, 0.65
 		if ordinal%2 == 1 {
 			from, to = to, from
 		}
-		return &timeline.Motion{Zoom: z, From: []float64{from, 0.5}, To: []float64{to, 0.5}}
+		return &timeline.Motion{Zoom: zoom, From: []float64{from, 0.5}, To: []float64{to, 0.5}}, nil
 	case FramingROI:
-		if a.ROI == nil {
-			return nil // nothing to aim at: the clip shows the whole frame
+		if roi == nil {
+			return nil, xcerr.E(xcerr.CodeValidation,
+				"this asset has no region to aim at — draw one in the Regions panel first", nil)
 		}
-		cx, cy := clamp(a.ROI.X+a.ROI.W/2, 0, 1), clamp(a.ROI.Y+a.ROI.H/2, 0, 1)
-		return &timeline.Motion{Zoom: z, From: []float64{cx, cy}, To: []float64{cx, cy}}
+		cx, cy := clamp(roi.X+roi.W/2, 0, 1), clamp(roi.Y+roi.H/2, 0, 1)
+		return &timeline.Motion{Zoom: zoom, From: []float64{cx, cy}, To: []float64{cx, cy}}, nil
 	}
-	return nil
+	return nil, xcerr.E(xcerr.CodeValidation,
+		fmt.Sprintf("camera motion %q is not one of none/punch_in/drift/roi", mode), nil)
+}
+
+// framingPlan turns the style's camera-motion policy into one clip's plan (运镜).
+// The ordinal only decides which way a drift runs, so a reel alternates its pans
+// instead of repeating one metronome, while the same inputs still produce the
+// same document.
+func framingPlan(p *Preset, a AssetInfo, ordinal int) *timeline.Motion {
+	plan, err := MotionFor(p.CameraMotion.Mode, p.CameraMotion.Zoom, a.ROI, ordinal)
+	if err != nil {
+		// A preset's mode and zoom are both validated in Resolve, so in practice
+		// this is "roi on an asset with no region": the clip frames the whole
+		// picture, which is what it did before this function had a second caller.
+		return nil
+	}
+	return plan
 }
 
 // snapEnd moves an otherwise-unfixed clip end onto the nearest beat of the

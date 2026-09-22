@@ -19,6 +19,8 @@ func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/styles", s.handleStyles)
 	mux.HandleFunc("GET /api/v1/styles/{name}/roi", s.handleStyleROIGet)
 	mux.HandleFunc("PUT /api/v1/styles/{name}/roi", s.handleStyleROIPut)
+	// The per-clip motion picker asks the same rule the reel builder uses.
+	mux.HandleFunc("POST /api/v1/projects/{id}/motion/plan", s.handleMotionPlan)
 	mux.HandleFunc("DELETE /api/v1/styles/{name}/roi", s.handleStyleROIDelete)
 	mux.HandleFunc("GET /api/v1/projects/{id}/render", s.handleRenderDownload)
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/file", s.handleAssetFile)

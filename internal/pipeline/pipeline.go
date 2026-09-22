@@ -580,7 +580,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 					ID:          asset.ID,
 					Path:        asset.Path,
 					DurationSec: asset.DurationSec,
-					ROI:         assetMotionROI(&asset),
+					ROI:         AssetMotionROI(&asset),
 				},
 				Segments:   segs,
 				Boundaries: marks,
@@ -602,10 +602,12 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 	}
 }
 
-// assetMotionROI carries the asset's analysis region into the style layer, which
+// AssetMotionROI carries the asset's analysis region into the style layer, which
 // keeps its own type for it (style must not import storage). nil means the asset
-// was analyzed full-frame, so a "roi" framing policy has nothing to aim at.
-func assetMotionROI(a *storage.Asset) *style.MotionROI {
+// was analyzed full-frame, so a "roi" framing policy has nothing to aim at. The
+// per-clip motion endpoint calls the same bridge, so a pick aims at what the reel
+// builder would have aimed at rather than at whatever rect the page remembers.
+func AssetMotionROI(a *storage.Asset) *style.MotionROI {
 	if a.MotionROI == nil {
 		return nil
 	}

@@ -132,7 +132,7 @@ progress — the rendered MP4 plays right in the page.
 The editing workspace is a real timeline: clips render as blocks sized by
 duration with client-captured thumbnails, joins show editable transition
 badges (cut / fade / xfade), blocks drag to reorder, edge handles trim,
-and the inspector edits trim, speed, volume and the transition of the
+and the inspector edits trim, speed, volume, the transition and the camera motion (运镜) of the
 selected clip (Delete removes, Space plays, Ctrl+S saves). The per-clip
 preview follows the ruler playhead. Projects can also transcribe speech
 to subtitles through an AI sidecar and burn them (plain SRT, styled

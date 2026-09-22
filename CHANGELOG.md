@@ -3,9 +3,33 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [Unreleased] — 2026-09-22 session #20 (Phase 5 opens: the beat grid)
+## [Unreleased] — 2026-09-22 → 09-23, session #20 (Phase 5: beat grid, captions, one tap)
 
 ### Added
+- **A camera-motion picker for one clip, not one for the whole style (ROADMAP
+  Phase 5, B6c).** The inspector's clip panel now offers 运镜 per clip — still,
+  punch in, drift, follow the region — and asks the server what each of those
+  means rather than computing it in the page. `style.MotionFor` is the single rule,
+  and `framingPlan` is now a thin caller of it, so the geometry a hand pick produces
+  is the geometry the builder would have produced for the same mode, zoom and
+  region; the endpoint reads the region off the asset row for the same reason.
+  Nothing new is stored: the reply carries `motion` plus the `framing` claim, the page
+  puts both on the clip, and the ordinary Apply → PUT round trip keeps its revision
+  check and its pre-regeneration backup. `none` answers with no window and no claim,
+  because a clip that says it is framed while showing the whole frame is the same lie
+  the style tests already refuse.
+  Verified: eleven new cases — six in `style` (each mode's numbers, the drift
+  alternation by ordinal, a region hanging off the frame edge still centring inside
+  it, the refusals naming what to do, and the builder and the picker agreeing by
+  construction across every mode × ordinal × has-region combination) and five at the
+  api (the wire keys and the default window, the aim taken from the region row, the
+  refusal without one, `none` claiming nothing, another project's asset being a 404),
+  plus a guard that the page writes geometry and claim together. Six mutations
+  replayed, each killed by a named assertion: drift stops alternating, roi without a
+  region invents a centre, the framing claim is never answered, the zoom bound is
+  dropped, the builder stops asking the shared rule, and the page writes the geometry
+  without its claim. Not verified: no browser was opened — the select's on-screen
+  behaviour rests on `node --check` and that text guard.
 - **One tap to a post-ready reel — `POST /api/v1/projects/{id}/export` and the
   ★ button in the timeline pane (ROADMAP Phase 5, B6d).** The sequence a user
   otherwise clicks through (generate the reel, transcribe, burn, render) became

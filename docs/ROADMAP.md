@@ -270,7 +270,30 @@ Every item states how it is measured before it is built, because the eval harnes
       observation, not a gate) and B6b (the music-bed field, the three-way beat-snap
       selector, and a second line stating what the saved document chose — bed + BPM +
       how many cuts followed it, or which of the three "no" cases applied). Remaining:
-      beat ticks on the ruler and the per-clip motion picker.
+      beat ticks on the ruler.
+      B6c — the per-clip motion picker — was specified here before it was built, and it
+      hit the numbers. The mode→geometry rule moved into `style.MotionFor`, which
+      `framingPlan` now calls, so the builder and the picker cannot hold two versions of
+      what "drift" means; the inspector asks `POST …/motion/plan` and stores the answer
+      on the clip through the existing Apply → PUT round trip. Measured against each
+      criterion: (1) the two callers agree — a case walks every mode × ordinal ×
+      has-region combination, and the pre-existing framing and preset tests pass
+      unchanged, which is the half that says the refactor moved nothing; (2) a mode that
+      needs a window without one is a refusal naming the fix ("this asset has no region
+      to aim at — draw one in the Regions panel first"), and a zoom outside (0,1] is
+      refused in the preset's own words; (3) `none` and an unset mode both answer with no
+      window and no `framing` claim; (4) the endpoint is project-scoped (another
+      project's asset is a 404), reads the region off the asset row instead of trusting
+      the page, and answers with `motion.zoom` / `motion.from` / `motion.to` /
+      `framing`; (5) the write-back is the ordinary clip save, so the revision check and
+      the pre-regeneration backup were not touched — a text guard fails if the page
+      starts writing the geometry without its claim; (6) six mutations, each killed by a
+      named case: drift stops alternating, roi without a region invents a centre, the
+      framing claim is never answered, the zoom bound is dropped, the builder stops
+      asking the shared rule, and the page writes the geometry without its claim.
+      Not done: no browser was opened, so the select's on-screen behaviour rests on
+      `node --check` and that text guard, and hand-picked motion still does not survive
+      regenerating the reel — which the pane already says.
       B6d — one tap to a post-ready reel — was specified here before it was built,
       with the numbers it had to hit, and it hit them. A new `export` job type does
       three things in one body and waits for none of them: it builds a timeline if the
