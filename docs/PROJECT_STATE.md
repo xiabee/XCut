@@ -580,7 +580,12 @@ way, both mine: a `xcut timeline` "restore" run silently did nothing because
 `serve` held the workspace lock and the failure line was grep'd away, and a copy in
 an edit changed a neighbouring translated sentence that a Go test pins — the second
 was caught by diffing, the first only by looking at the output instead of the exit
-code.
+code. Accepted at `4873320`: control-plane local gate 525 passed / 8 skipped with
+`steps not run: none`, win-devops `OVERALL PASS` at that head
+(`exit=0 duration=1m48.421s`, `local CI PASS at 18:38:13 for 48733204`), Linux full
+gate 514/13 with `not run: nothing`, zero `DATA RACE` lines, and the two-ended wire
+pins plus the asset guards run explicitly on the node (`ui_pacing ran=5`,
+`shape+pacing+order ran=17`, `skipped=0` in both).
 
 
 ## Version / HEAD
