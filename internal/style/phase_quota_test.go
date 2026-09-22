@@ -64,3 +64,76 @@ func TestPhaseQuotaScalesWithReelBudget(t *testing.T) {
 		}
 	}
 }
+
+// The ceiling has a hole the owner's match showed: a 60 s reel took eight clips
+// out of a 603 s match and left ten consecutive rallies unrepresented, because
+// "at most 2 per window" is satisfied by two clips in window 0 and nothing in
+// window 4. A floor is the other half of the same rule — before a window gets
+// its second clip, the windows still empty get their first one.
+func TestPhaseFloorTakesAnEmptyWindowBeforeDoublingUp(t *testing.T) {
+	p := testPreset()
+	p.MaxClipDuration = 8
+	p.MinClipDuration = 2
+	p.TargetDuration = 40 // five clips at the ceiling of 8 s each
+	p.Diversity = Diversity{MinGap: 1, MaxOverlapIoU: 0.4, MaxPerWindow: 2, Phases: 5}
+	asset := AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 600}
+
+	// Six strong segments in the first window (0..120 s) and one merely good
+	// segment in each later window: the ceiling lets a window take two, so a
+	// five-clip reel spends four of them on the two richest openings and never
+	// reaches the closing phases. That is the shape the floor is for.
+	var segs []event.Segment
+	for i := 0; i < 6; i++ {
+		st := float64(5 + i*18)
+		segs = append(segs, seg(st, st+10, 0.9, -6))
+	}
+	for i := 0; i < 4; i++ {
+		st := float64(130 + i*18)
+		segs = append(segs, seg(st, st+10, 0.8, -7))
+	}
+	for i, st := range []float64{250, 370, 490} {
+		segs = append(segs, seg(st, st+10, 0.5-float64(i)*0.01, -14))
+	}
+	items := []AssetEvents{{Asset: asset, Segments: segs}}
+
+	// Positive control first: without a floor this reel must leave a phase empty
+	// while doubling up elsewhere, or the assertion below would pass on a reel
+	// that spread anyway.
+	noFloor, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 600 s / 5 phases = a 120 s window.
+	const win = 120.0
+	clustered := map[int]int{}
+	for _, c := range noFloor.Tracks[0].Clips {
+		clustered[int(c.SourceStart/win)]++
+	}
+	if len(clustered) >= len(noFloor.Tracks[0].Clips) {
+		t.Fatalf("control broken: the floorless reel already covered every clip's own window %v — this fixture no longer shows the bug", clustered)
+	}
+
+	p.Diversity.MinPerWindow = 1
+	floored, err := Build(p, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int]int{}
+	for _, c := range floored.Tracks[0].Clips {
+		seen[int(c.SourceStart/win)]++
+	}
+	for w := 0; w < p.Diversity.Phases; w++ {
+		if seen[w] == 0 {
+			t.Fatalf("floor left window %d empty anyway: %v (floorless reel: %v)", w, seen, clustered)
+		}
+	}
+	// The floor must not cost the reel: same budget, same number of clips.
+	if len(floored.Tracks[0].Clips) != len(noFloor.Tracks[0].Clips) {
+		t.Fatalf("floored reel has %d clips against %d without a floor", len(floored.Tracks[0].Clips), len(noFloor.Tracks[0].Clips))
+	}
+	// ...and it must not throw the top-ranked moment away either: window 0 keeps
+	// its best clip, it just stops taking a second before the tail has a first.
+	if seen[0] == 0 {
+		t.Fatalf("floor dropped window 0 entirely: %v", seen)
+	}
+}

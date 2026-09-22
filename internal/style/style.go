@@ -78,6 +78,13 @@ type Diversity struct {
 	// rule keeps doing its job (spread) instead of quietly deciding how long
 	// the reel may be — see docs/EVAL.md for the measurement that found this.
 	MaxPerWindow int `json:"max_per_window,omitempty"`
+	// MinPerWindow is the other half of MaxPerWindow: before any window may take
+	// a second clip, each window that still has none takes its first one. A
+	// ceiling alone is satisfied by two clips in the opening minute and nothing
+	// in the closing one — which is the reel the owner's match produced (8 clips,
+	// ten consecutive rallies unrepresented, docs/EVAL.md). 0 = rule disabled,
+	// so an unset preset keeps today's ranking exactly.
+	MinPerWindow int `json:"min_per_window,omitempty"`
 	Phases       int `json:"phases,omitempty"`
 }
 
@@ -182,6 +189,17 @@ func (p *Preset) Validate() error {
 	}
 	if p.Diversity.MaxPerWindow == 0 && p.Diversity.Phases < 0 {
 		add("diversity.phases must be >= 0")
+	}
+	if p.Diversity.MinPerWindow < 0 {
+		add("diversity.min_per_window must be >= 0")
+	}
+	if p.Diversity.MinPerWindow > 0 && p.Diversity.Phases < 2 {
+		add("diversity.phases must be >= 2 when min_per_window is set")
+	}
+	if p.Diversity.MinPerWindow > 0 && p.Diversity.MaxPerWindow > 0 &&
+		p.Diversity.MinPerWindow > p.Diversity.MaxPerWindow {
+		add("diversity.min_per_window %d exceeds max_per_window %d, which no candidate could satisfy",
+			p.Diversity.MinPerWindow, p.Diversity.MaxPerWindow)
 	}
 	if err := p.EventConfig.Validate(); err != nil {
 		add("event_config: %v", err)

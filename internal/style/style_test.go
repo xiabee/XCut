@@ -358,6 +358,25 @@ func TestPresetDiversityValidation(t *testing.T) {
 	if err := p.Validate(); err != nil {
 		t.Errorf("valid diversity rejected: %v", err)
 	}
+	// The floor is only meaningful between 0 and the ceiling it lives inside:
+	// a window that must hold 3 clips where another may hold 2 has no answer,
+	// and a floor without windows has nothing to floor.
+	p.Diversity = Diversity{MaxPerWindow: 2, Phases: 5, MinPerWindow: 1}
+	if err := p.Validate(); err != nil {
+		t.Errorf("a floor inside the ceiling rejected: %v", err)
+	}
+	p.Diversity = Diversity{MaxPerWindow: 2, Phases: 5, MinPerWindow: 3}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "max_per_window") {
+		t.Errorf("a floor above the ceiling must name the ceiling it contradicts, got %v", err)
+	}
+	p.Diversity = Diversity{MaxPerWindow: 2, MinPerWindow: 1}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "phases") {
+		t.Errorf("a floor with no windows must say so, got %v", err)
+	}
+	p.Diversity = Diversity{MaxPerWindow: 2, Phases: 5, MinPerWindow: -1}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "min_per_window") {
+		t.Errorf("a negative floor must be refused by name, got %v", err)
+	}
 }
 
 func TestPresetMotionROIParseAndAutoWire(t *testing.T) {

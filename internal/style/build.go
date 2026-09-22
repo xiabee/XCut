@@ -190,57 +190,79 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	var chosen []selInterval
 	var clips []timeline.Clip
 	n := 0
-	for _, c := range cands {
-		remaining := preset.TargetDuration - total
-		if remaining <= 0 {
-			budgetRanOut = true
+	// A per-phase floor runs the same greedy pass twice: the first pass takes
+	// only each window's first picks, the second fills what is left of the
+	// budget in the ordinary score order. Without a floor this is one pass,
+	// byte-for-byte the previous behaviour.
+	passes := 1
+	if preset.Diversity.MinPerWindow > 0 {
+		passes = 2
+	}
+	used := make([]bool, len(cands))
+	for pass := 0; pass < passes; pass++ {
+		for i, c := range cands {
+			if used[i] {
+				continue
+			}
+			remaining := preset.TargetDuration - total
+			if remaining <= 0 {
+				budgetRanOut = true
+				break
+			}
+			srcStart, srcEnd, atBoundary, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
+			if !ok {
+				continue
+			}
+			// Clamp to the real media duration: events should never exceed it,
+			// but a trimmed window may start late enough to poke past the end.
+			if c.asset.DurationSec > 0 && srcEnd > c.asset.DurationSec {
+				srcEnd = c.asset.DurationSec
+			}
+			if srcEnd-srcStart < preset.MinClipDuration {
+				continue
+			}
+			// Diversity operates on the trimmed window — what the reel will
+			// actually show — not on the wider source segment.
+			cand := selInterval{assetID: c.asset.ID, start: srcStart, end: srcEnd}
+			if !diverse(preset, chosen, cand, durations[c.asset.ID]) {
+				continue
+			}
+			if pass == 0 && preset.Diversity.MinPerWindow > 0 &&
+				!withinFloor(preset, chosen, cand, durations[c.asset.ID]) {
+				continue
+			}
+			used[i] = true
+			n++
+			chosen = append(chosen, cand)
+			md := map[string]string{
+				"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
+				"score_breakdown": c.f.breakdown(preset),
+				"reason":          c.f.reason(preset),
+			}
+			if c.seg.HitCount > 0 {
+				md["hit_count"] = strconv.Itoa(c.seg.HitCount)
+				md["hit_density"] = strconv.FormatFloat(c.seg.HitDensity, 'f', -1, 64)
+			}
+			if atBoundary > 0 {
+				// Which boundary shaped this clip — so a reader can check the
+				// scoreboard rule per clip instead of trusting an aggregate score.
+				md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
+			}
+			clips = append(clips, timeline.Clip{
+				ID:          "clip_" + strconv.Itoa(n),
+				AssetID:     c.asset.ID,
+				SourcePath:  c.asset.Path,
+				SourceStart: srcStart,
+				SourceEnd:   srcEnd,
+				Speed:       1,
+				Volume:      preset.Audio.Gain,
+				Metadata:    md,
+			})
+			total += srcEnd - srcStart
+		}
+		if budgetRanOut {
 			break
 		}
-		srcStart, srcEnd, atBoundary, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
-		if !ok {
-			continue
-		}
-		// Clamp to the real media duration: events should never exceed it,
-		// but a trimmed window may start late enough to poke past the end.
-		if c.asset.DurationSec > 0 && srcEnd > c.asset.DurationSec {
-			srcEnd = c.asset.DurationSec
-		}
-		if srcEnd-srcStart < preset.MinClipDuration {
-			continue
-		}
-		// Diversity operates on the trimmed window — what the reel will
-		// actually show — not on the wider source segment.
-		cand := selInterval{assetID: c.asset.ID, start: srcStart, end: srcEnd}
-		if !diverse(preset, chosen, cand, durations[c.asset.ID]) {
-			continue
-		}
-		n++
-		chosen = append(chosen, cand)
-		md := map[string]string{
-			"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
-			"score_breakdown": c.f.breakdown(preset),
-			"reason":          c.f.reason(preset),
-		}
-		if c.seg.HitCount > 0 {
-			md["hit_count"] = strconv.Itoa(c.seg.HitCount)
-			md["hit_density"] = strconv.FormatFloat(c.seg.HitDensity, 'f', -1, 64)
-		}
-		if atBoundary > 0 {
-			// Which boundary shaped this clip — so a reader can check the
-			// scoreboard rule per clip instead of trusting an aggregate score.
-			md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
-		}
-		clips = append(clips, timeline.Clip{
-			ID:          "clip_" + strconv.Itoa(n),
-			AssetID:     c.asset.ID,
-			SourcePath:  c.asset.Path,
-			SourceStart: srcStart,
-			SourceEnd:   srcEnd,
-			Speed:       1,
-			Volume:      preset.Audio.Gain,
-			Metadata:    md,
-		})
-		total += srcEnd - srcStart
 	}
 	if len(clips) == 0 {
 		return nil, xcerr.E(xcerr.CodeValidation, "style constraints rejected all events", nil)
@@ -314,36 +336,68 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 
 // diverse reports whether a candidate respects the preset's diversity rules
 // against everything selected so far. Disabled rules (zero values) pass.
+// windowPhases divides an asset's own duration into the windows the spread rules
+// work on. The ceiling and the floor both call it: two rules that disagree about
+// where a window starts leave one of them silently unsatisfied.
+//
+// A reel asked for longer than the quota can hold needs *more* windows, not a
+// looser quota per window: that keeps the spread discipline the rule exists for
+// while letting the cut use the budget it was given. Measured on a 603 s match:
+// with a fixed 5×2 quota a 240 s request stopped at 10 clips / 80 s (recall
+// 0.140); scaling the window count instead reached 19 clips at equal precision
+// (0.267).
+func windowPhases(p *Preset, assetDur float64) (float64, bool) {
+	if p.Diversity.Phases < 2 || assetDur <= 0 {
+		return 0, false
+	}
+	phases := float64(p.Diversity.Phases)
+	if p.Diversity.MaxPerWindow > 0 && p.MaxClipDuration > 0 && p.TargetDuration > 0 {
+		room := int(math.Ceil(p.TargetDuration / p.MaxClipDuration))
+		if quota := p.Diversity.Phases * p.Diversity.MaxPerWindow; room > quota {
+			phases = math.Max(phases, math.Ceil(float64(room)/float64(p.Diversity.MaxPerWindow)))
+		}
+	}
+	return phases, true
+}
+
+// windowCount counts the already-chosen clips that sit in the same window as the
+// candidate, on this candidate's asset.
+func windowCount(chosen []selInterval, cand selInterval, win float64) int {
+	phase := int(cand.start / win)
+	n := 0
+	for _, c := range chosen {
+		if c.assetID == cand.assetID && int(c.start/win) == phase {
+			n++
+		}
+	}
+	return n
+}
+
+// withinFloor reports whether the candidate's window may still receive a clip in
+// the seeding pass. Ranking alone spends the whole budget on whichever phase is
+// richest — the ceiling bounds a window but never asks an empty one to be
+// filled — so the owner's match produced 8 clips and left ten consecutive rallies
+// unrepresented (docs/EVAL.md). Without windows to divide there is nothing to
+// floor, and the fill pass decides.
+func withinFloor(p *Preset, chosen []selInterval, cand selInterval, assetDur float64) bool {
+	phases, ok := windowPhases(p, assetDur)
+	if !ok {
+		return true
+	}
+	return windowCount(chosen, cand, assetDur/phases) < p.Diversity.MinPerWindow
+}
+
 func diverse(p *Preset, chosen []selInterval, cand selInterval, assetDur float64) bool {
-	if p.Diversity.MaxPerWindow > 0 && p.Diversity.Phases >= 2 && assetDur > 0 {
+	if p.Diversity.MaxPerWindow > 0 {
 		// The window is a slice of *this* asset's own duration, so the rule
 		// means "at most N clips per phase" on a 47-second drill clip just as
 		// it does on a 10-minute match. An absolute window length would
 		// silently truncate short sources into a single phase and drop the
 		// reel's tail — which is exactly what this rule exists to prevent.
-		phases := float64(p.Diversity.Phases)
-		// A reel asked for longer than the quota can hold needs *more* windows,
-		// not a looser quota per window: that keeps the spread discipline that
-		// the rule exists for while letting the cut use the budget it was
-		// given. Measured on a 603 s match: with a fixed 5×2 quota a 240 s
-		// request stopped at 10 clips / 80 s (recall 0.140); scaling the
-		// window count instead reached 19 clips at equal precision (0.267).
-		if p.MaxClipDuration > 0 && p.TargetDuration > 0 {
-			room := int(math.Ceil(p.TargetDuration / p.MaxClipDuration))
-			if quota := p.Diversity.Phases * p.Diversity.MaxPerWindow; room > quota {
-				phases = math.Max(phases, math.Ceil(float64(room)/float64(p.Diversity.MaxPerWindow)))
+		if phases, ok := windowPhases(p, assetDur); ok {
+			if windowCount(chosen, cand, assetDur/phases) >= p.Diversity.MaxPerWindow {
+				return false
 			}
-		}
-		win := assetDur / phases
-		phase := int(cand.start / win)
-		inPhase := 0
-		for _, c := range chosen {
-			if c.assetID == cand.assetID && int(c.start/win) == phase {
-				inPhase++
-			}
-		}
-		if inPhase >= p.Diversity.MaxPerWindow {
-			return false
 		}
 	}
 	for _, c := range chosen {
