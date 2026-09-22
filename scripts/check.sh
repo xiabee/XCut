@@ -136,6 +136,17 @@ END { printf "%d %d", p+0, s+0 }' "$test_json")
 TestPass=${counts%% *}
 TestSkip=${counts##* }
 echo "== go test: $TestPass passed, $TestSkip skipped"
+if [ "$TestPass" -eq 0 ] && [ "$TestSkip" -eq 0 ]; then
+    # The Windows leg learned this shape at 03:21: the step ran, `go test` never did
+    # (its stderr redirect hit a file another gate had open), exit code stayed 0, and
+    # the verdict printed PASS over "0 passed, 0 skipped". A step that observed no
+    # test at all is a step that did not run, whatever its exit code says.
+    echo "go test produced no test events (stdout bytes: $(wc -c < "$test_json"))"
+    echo "--- stderr tail:"
+    tail -20 "$test_err"
+    rm -f "$test_json" "$test_err"
+    exit 1
+fi
 if [ "$TestSkip" -gt 0 ]; then
     awk '/"Action":"skip"/ && /"Test":"/ {
         t = ""; pk = ""
