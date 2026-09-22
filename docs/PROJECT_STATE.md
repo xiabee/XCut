@@ -718,7 +718,11 @@ Two honest remainders from this slice, both in `docs/ROADMAP.md`: the geometry i
 decided when the transcript runs, and the transcript payload is not stored, so
 switching a project to a vertical style re-runs the transcription to restyle its
 captions; and B5's other half — wrapping long lines to the frame and holding each one
-long enough to read — was left for B5b.
+long enough to read — was left for B5b. Accepted at `539c1f7`: control-plane local
+gate 532 passed / 8 skipped with `steps not run: none`, win-devops `OVERALL PASS` at
+that head (`exit=0 duration=1m47.356s`), Linux full gate 521/13 with
+`not run: nothing`, zero `DATA RACE` lines, and the new suites run explicitly there
+(`subs ran=10`, the subtitle chain `ran=2`, `skipped=0` in both).
 
 **B5b (captions, second slice): a cue fits its frame and stays long enough to
 read.** Words are grouped into lines that fit the frame's usable width
