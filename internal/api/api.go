@@ -158,6 +158,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/projects/{id}/timeline/restore-backup", s.handleTimelineRestore)
 	mux.HandleFunc("POST /api/v1/projects/{id}/render", s.handleRender)
 	mux.HandleFunc("POST /api/v1/projects/{id}/subtitles", s.handleSubtitlesTranscribe)
+	mux.HandleFunc("POST /api/v1/projects/{id}/export", s.handleExport)
 
 	// Timeline inspection and manual editing.
 	mux.HandleFunc("GET /api/v1/projects/{id}/timeline", s.handleTimelineGet)

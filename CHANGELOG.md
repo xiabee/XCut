@@ -6,6 +6,32 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-22 session #20 (Phase 5 opens: the beat grid)
 
 ### Added
+- **One tap to a post-ready reel — `POST /api/v1/projects/{id}/export` and the
+  ★ button in the timeline pane (ROADMAP Phase 5, B6d).** The sequence a user
+  otherwise clicks through (generate the reel, transcribe, burn, render) became
+  one job that builds the timeline if the project has none, transcribes if
+  captions were asked for and none exist, and then **queues** the render. It
+  waits for no other job on purpose: a parent that blocks holds one of two queue
+  slots, so two taps would deadlock each other, and a render run inside the tap
+  would escape `resource.max_render_workers`. The response carries the plan —
+  each stage as `reuse`, `create` or `skip` with a reason — because the stage a
+  machine cannot do (no sidecar to transcribe with) is exactly the one that must
+  not be a silent absence. Two side effects worth naming: `export` joined the
+  exclusive job set (migration v7 rebuilds the partial unique index, so a second
+  press is a clean 409 rather than two reels), and building the reel before
+  transcribing means the captions are styled against a canvas that did not exist
+  when the request arrived. Default style for the tap is `beat_shortform`.
+  Verified: eight new cases — three through the real pipeline on generated media
+  (a file on disk, the `.ass` declaring 1080×1920 for the reel the same tap
+  built, one export row and one render row), one with no sidecar on `PATH`
+  (the tap succeeds and says why there are no captions), one that hand-writes a
+  horizontal reel and a sentinel `.ass` to prove a reused stage leaves both byte
+  for byte — four at the api on the wire keys, and one that fails if
+  `exclusiveTypes` and the storage index ever disagree. Five mutations replayed,
+  each killed by a named case: the body always rebuilds the reel, the body
+  always transcribes, the skip stops naming itself, the render runs inside the
+  tap (`one tap wrote 1 export and 0 render rows`), and `export` leaves the
+  exclusive set.
 - **A transcript without word timings gets the styled caption file too (ROADMAP
   Phase 5, B5c).** Which artifact a burn-in drew turned on a sidecar detail
   nobody chose: the same words with per-syllable timings got the designed

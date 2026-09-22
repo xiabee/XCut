@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/xiabee/XCut/internal/xcerr"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -177,19 +178,47 @@ func TestExclusiveActiveJobConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
+	// Every type the schema's index declares is driven off that declaration rather
+	// than a hand-copied list: a type added to the migration with no test here (or
+	// the reverse) is the same drift the index exists to make impossible.
+	exclusive := ExclusiveJobTypes()
+	if len(exclusive) == 0 {
+		t.Fatal("the schema names no exclusive job types at all")
+	}
+	t.Logf("exclusive types enforced by the index: %v", exclusive)
+	for _, typ := range exclusive {
+		first, err := db.CreateJob(ctx, typ, p.ID, "CPU_HEAVY", "")
+		if err != nil {
+			t.Fatalf("first %s job: %v", typ, err)
+		}
+		if _, err := db.CreateJob(ctx, typ, p.ID, "CPU_HEAVY", ""); !xcerr.IsCode(err, xcerr.CodeConflict) {
+			t.Fatalf("duplicate %s err = %v, want conflict", typ, err)
+		}
+		// Once the first reaches a terminal state the type is available again — and
+		// that second row has to be finished too, or it is still active and the
+		// assertions below are testing a leftover.
+		if err := db.FinishJob(ctx, first.ID, StatusSucceeded, "", ""); err != nil {
+			t.Fatal(err)
+		}
+		second, err := db.CreateJob(ctx, typ, p.ID, "CPU_HEAVY", "")
+		if err != nil {
+			t.Fatalf("%s after its job finished: %v", typ, err)
+		}
+		if err := db.FinishJob(ctx, second.ID, StatusSucceeded, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A different exclusive type is fine while one runs.
+	active, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Same type, still active → conflict (storage-layer guarantee).
-	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); !xcerr.IsCode(err, xcerr.CodeConflict) {
-		t.Fatalf("duplicate render err = %v, want conflict", err)
-	}
-
-	// A different exclusive type is fine.
 	if _, err := db.CreateJob(ctx, "analyze", p.ID, "CPU_HEAVY", ""); err != nil {
 		t.Fatalf("analyze while render active: %v", err)
+	}
+	if err := db.FinishJob(ctx, active.ID, StatusSucceeded, "", ""); err != nil {
+		t.Fatal(err)
 	}
 
 	// Import is not exclusive: concurrent imports must stay legitimate.
@@ -199,14 +228,8 @@ func TestExclusiveActiveJobConflict(t *testing.T) {
 	if _, err := db.CreateJob(ctx, "import", p.ID, "IO_HEAVY", `{"path":"b"}`); err != nil {
 		t.Fatalf("second import must not conflict: %v", err)
 	}
-
-	// After the first render reaches a terminal state, rendering is possible
-	// again.
-	if err := db.FinishJob(ctx, first.ID, StatusSucceeded, "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); err != nil {
-		t.Fatalf("render after terminal state: %v", err)
+	if slices.Contains(ExclusiveJobTypes(), "import") {
+		t.Error("import became exclusive, which would refuse legitimate parallel imports")
 	}
 }
 
@@ -375,5 +398,62 @@ func TestDeleteProjectGateIsAtomic(t *testing.T) {
 	}
 	if n, err := db.DeleteProject(ctx, p.ID); err != nil || n != 1 {
 		t.Fatalf("delete after terminal jobs = %d rows, %v — must succeed", n, err)
+	}
+}
+
+// TestExclusiveIndexMigrationAppliesToAnOlderDatabase: a schema change is only real
+// when it applies to a file that predates it. v7 replaces the exclusive-jobs index
+// while active rows written under the old one are still in the table, so the test
+// rolls a database back to its v6 shape (drop the index, forget the migration),
+// leaves an active job behind, and upgrades again.
+func TestExclusiveIndexMigrationAppliesToAnOlderDatabase(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	p, err := db.CreateProject(ctx, "upgrader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); err != nil {
+		t.Fatal(err) // one still-active row from the old world
+	}
+	path := db.path
+	if _, err := db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_jobs_active_exclusive`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_migrations WHERE id >= 7`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded, err := Open(path)
+	if err != nil {
+		t.Fatalf("the v7 upgrade refused a database that predates it: %v", err)
+	}
+	t.Cleanup(func() { upgraded.Close() })
+	var applied int
+	if err := upgraded.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE id = 7`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Fatalf("schema_migrations records v7 %d times, want 1", applied)
+	}
+	// The rebuilt index must cover the widened list — and it applies retroactively:
+	// the render left running above is refused a partner even though it was written
+	// before the upgrade.
+	if _, err := upgraded.CreateJob(ctx, "render", p.ID, "CPU_HEAVY", ""); !xcerr.IsCode(err, xcerr.CodeConflict) {
+		t.Fatalf("the index does not reach a row written before the upgrade (err = %v)", err)
+	}
+	for _, typ := range ExclusiveJobTypes() {
+		if typ == "render" {
+			continue
+		}
+		if _, err := upgraded.CreateJob(ctx, typ, p.ID, "CPU_HEAVY", ""); err != nil {
+			t.Fatalf("first %s after the upgrade: %v", typ, err)
+		}
+		if _, err := upgraded.CreateJob(ctx, typ, p.ID, "CPU_HEAVY", ""); !xcerr.IsCode(err, xcerr.CodeConflict) {
+			t.Fatalf("%s is not exclusive after the upgrade (err = %v)", typ, err)
+		}
 	}
 }

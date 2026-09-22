@@ -154,6 +154,7 @@ curl -X POST http://127.0.0.1:8619/api/v1/projects -d '{"name":"new-project"}'
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/assets -d '{"path":"D:/videos/clip.mp4"}'
 curl -X POST "http://127.0.0.1:8619/api/v1/projects/<id>/assets/upload?filename=clip.mp4" --data-binary @clip.mp4  # content upload (where drag-drop lands; 8 GiB per file)
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{}'
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/export -d '{"style":"beat_shortform","music":"D:/music/bed.mp3","subs":true}'  # one tap: fill in the reel, then the captions, then queue the render (202 + the step plan)
 curl -X POST http://127.0.0.1:8619/api/v1/jobs/<jobID>/cancel            # cancel a queued/running job (202; 409 when terminal)
 curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # clip preview (range-capable)
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # speech-to-text via the AI sidecar (202 + job)
@@ -287,7 +288,7 @@ changes. Then:
 ```
 
 In the web UI the same loop is a button: Transcribe (pick the asset) →
-status + download links → check "burn subtitles" → Render. Word timings
+status + download links → check "burn subtitles" → Render. The timeline pane has one more: ★ Post-ready takes the knobs already on screen (style, length, bed, snap) and runs the whole sequence as one job, answering with what it did at each stage — reused, built, or skipped with the reason. Word timings
 drive the karaoke fill (each word sweeps as it is sung; sidecar text is
 escaped, so stray braces or newlines cannot corrupt the ASS events);
 without them the same frame, wrap and dwell produce a plain caption ASS — only

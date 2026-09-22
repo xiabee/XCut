@@ -599,3 +599,28 @@ func (b *syncBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+// TestExclusiveTypesMatchIndex keeps the two halves of one rule honest. The queue
+// refuses a duplicate with a clean 409 from its own map; the storage index refuses
+// the same duplicate at insert time, which is the half that survives a race. A type
+// in one list and not the other loses one of those two, silently, so the lists are
+// compared rather than kept in sync by a comment.
+func TestExclusiveTypesMatchIndex(t *testing.T) {
+	fromSchema := storage.ExclusiveJobTypes()
+	if len(fromSchema) == 0 {
+		t.Fatal("the schema declares no exclusive job types — the reader found nothing to compare")
+	}
+	for _, typ := range fromSchema {
+		if !exclusiveTypes[typ] {
+			t.Errorf("%s is exclusive in the index but not in the queue: no clean 409, only a raw insert failure", typ)
+		}
+	}
+	for typ := range exclusiveTypes {
+		if !strings.Contains(","+strings.Join(fromSchema, ",")+",", ","+typ+",") {
+			t.Errorf("%s is refused by the queue but not by the index: the check races itself", typ)
+		}
+	}
+	if !exclusiveTypes[TypeExport] {
+		t.Error("the export tap must be exclusive — two taps would build two reels for one project")
+	}
+}

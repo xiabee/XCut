@@ -183,6 +183,47 @@ ALTER TABLE assets ADD COLUMN score_marks TEXT NOT NULL DEFAULT '';
 	{id: 6, name: "asset-score-crop", stmt: `
 ALTER TABLE assets ADD COLUMN score_crop TEXT NOT NULL DEFAULT '';
 `},
+	// v7: the one-tap export joins the exclusive set. Its stages run inside the
+	// job — the reel is built there, the transcript written there — so two active
+	// taps on one project would build two reels and queue two renders for the same
+	// output. As in v3, the index is replaced rather than edited: v2's and v3's
+	// statements stay applied-as-written and this one widens the type list.
+	{id: 7, name: "exclusive-active-export", stmt: `
+DROP INDEX IF EXISTS idx_jobs_active_exclusive;
+CREATE UNIQUE INDEX idx_jobs_active_exclusive
+ON jobs(project_id, type)
+WHERE status IN ('queued', 'running')
+  AND type IN ('analyze', 'timeline', 'render', 'subtitles', 'export');
+`},
+}
+
+// ExclusiveJobTypes returns the job types the *last* migration's partial unique
+// index declares exclusive. It reads the schema text rather than carrying a
+// second list, so a queue that adds a type to its own map without a migration
+// fails a test instead of losing the race-proof half of the rule in silence.
+func ExclusiveJobTypes() []string {
+	last := ""
+	for _, m := range migrations {
+		if strings.Contains(m.stmt, "CREATE UNIQUE INDEX idx_jobs_active_exclusive") {
+			last = m.stmt
+		}
+	}
+	i := strings.Index(last, "type IN (")
+	if i < 0 {
+		return nil
+	}
+	list := last[i+len("type IN ("):]
+	if j := strings.Index(list, ")"); j >= 0 {
+		list = list[:j]
+	}
+	var out []string
+	for _, part := range strings.Split(list, ",") {
+		name := strings.Trim(strings.TrimSpace(part), "'")
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // Migrate applies pending schema migrations. Each runs in a transaction and is

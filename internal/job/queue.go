@@ -38,6 +38,10 @@ const (
 	TypeTimeline  = "timeline"
 	TypeRender    = "render"
 	TypeSubtitles = "subtitles"
+	// TypeExport is the one tap — reel, subtitles, then the render it queues. Its
+	// own stages run inline in this job, so it must be exclusive like them: two
+	// taps would build two reels and queue two renders for one project.
+	TypeExport = "export"
 )
 
 // Queue runs jobs with bounded concurrency.
@@ -156,13 +160,16 @@ func (q *Queue) WaitContext(ctx context.Context) error {
 
 // exclusiveTypes may have at most one queued/running job per project.
 // Import is deliberately excluded — concurrent imports of different files
-// are legitimate. Must stay in sync with migration v2's partial unique
-// index, which enforces the same rule at the storage layer.
+// are legitimate. The same rule is enforced at the storage layer by the
+// partial unique index in storage.ExclusiveJobTypes(); TestExclusiveTypesMatchIndex
+// fails if the two lists ever disagree, because a type added to one and not the
+// other loses its race-proof half in silence.
 var exclusiveTypes = map[string]bool{
 	TypeAnalyze:   true,
 	TypeTimeline:  true,
 	TypeRender:    true,
 	TypeSubtitles: true,
+	TypeExport:    true,
 }
 
 // RunAsync records a job row and executes fn in a background goroutine,

@@ -96,13 +96,19 @@ func (s *Server) decodeBody(w http.ResponseWriter, r *http.Request, v any) bool 
 // requireProjectRow and CreateJob would leave the job running against a
 // ghost project no endpoint can address again. Gone → cancel the job
 // (queued jobs cancel before their body runs) and report 404.
-func (s *Server) writeJobAccepted(w http.ResponseWriter, r *http.Request, projectID, jobID string) {
+func (s *Server) writeJobAccepted(w http.ResponseWriter, r *http.Request, projectID, jobID string, extra ...map[string]any) {
 	if p, err := s.DB.GetProject(r.Context(), projectID); err != nil || p == nil {
 		s.Pipe.Queue.Cancel(jobID)
 		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, "project not found", nil))
 		return
 	}
-	writeAccepted(w, jobID)
+	fields := map[string]any{"queued": true, "job_id": jobID}
+	for _, m := range extra {
+		for k, v := range m {
+			fields[k] = v
+		}
+	}
+	writeJSON(w, http.StatusAccepted, fields)
 }
 
 // decodeOptionalBody parses a small JSON body that may be omitted entirely
@@ -262,9 +268,48 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	s.writeJobAccepted(w, r, p.ID, id)
 }
 
-func writeAccepted(w http.ResponseWriter, jobID string) {
-	writeJSON(w, http.StatusAccepted, map[string]any{
-		"queued": true,
-		"job_id": jobID,
-	})
+// POST /api/v1/projects/{id}/export {"style":"beat_shortform","duration":30,
+// "beat_snap":0.12,"music":"bed.mp3","subs":true,"out":"D:/videos/reel.mp4"}
+// (every field optional — the tap defaults to the short-form shape)
+//
+// One tap for a post-ready reel: it builds the timeline if the project has none,
+// transcribes if subtitles were asked for and none exist, then queues the
+// render. The response carries the plan as "steps" — including the stages that
+// will not happen and the reason — because a reel that silently lost its
+// captions is the failure this endpoint exists to avoid.
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	var body struct {
+		Style    string   `json:"style"`
+		Duration float64  `json:"duration"`
+		BeatSnap *float64 `json:"beat_snap"`
+		Music    string   `json:"music"`
+		Subs     *bool    `json:"subs"`
+		Out      string   `json:"out"`
+	}
+	if !s.decodeOptionalBody(w, r, &body) {
+		return
+	}
+	if body.Style == "" {
+		body.Style = pipeline.DefaultExportStyle
+	}
+	req := pipeline.ExportRequest{
+		Timeline: pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration, Music: body.Music},
+		Out:      body.Out,
+	}
+	if body.BeatSnap != nil {
+		req.Timeline.BeatSnap = *body.BeatSnap
+	}
+	// Absent means yes: the tap's whole point is the reel a platform takes, and
+	// captions are part of that shape, not an extra the user has to know about.
+	req.Subs = body.Subs == nil || *body.Subs
+	id, steps, err := s.Pipe.ExportProjectAsync(p, req)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	s.writeJobAccepted(w, r, p.ID, id, map[string]any{"steps": steps})
 }

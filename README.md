@@ -147,6 +147,7 @@ curl http://127.0.0.1:8619/api/v1/projects/<id>/assets/<assetID>/file   # 片段
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/subtitles -d '{}'  # 经 AI sidecar 语音转写（202 + 任务）
 curl http://127.0.0.1:8619/api/v1/projects/<id>/subtitles               # 查询已有字幕产物
 curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/render -d '{"subs": true}'  # 把字幕烧录进成片
+curl -X POST http://127.0.0.1:8619/api/v1/projects/<id>/export -d '{"style":"beat_shortform","music":"D:/music/bed.mp3","subs":true}'  # 一键成片：补时间线→补字幕→排队渲染（202 + 步骤清单）
 curl -X PUT  http://127.0.0.1:8619/api/v1/projects/<id>/assets/<aid>/roi -d '{"x":0.1,"y":0.1,"w":0.5,"h":0.6}'  # 每源球场 ROI
 ```
 
@@ -252,7 +253,7 @@ whisper.cpp 的 `whisper-cli`——没有安装时如实报告不可用；装好
 ```
 
 在 Web UI 里同样的链路就是一个按钮：转写（选素材）→ 状态 + 下载链接 →
-勾选"烧录字幕"→ 渲染。词级时间戳驱动卡拉 OK 填充（每个字随演唱扫过；
+勾选"烧录字幕"→ 渲染。时间线面板还多一个 ★ 一键成片：它沿用页面上已选好的参数（风格、时长、底乐、卡点），把补时间线 → 补字幕 → 排队渲染并成一个任务，并逐步告诉你每一步是沿用、新建，还是跳过了（以及为什么）。词级时间戳驱动卡拉 OK 填充（每个字随演唱扫过；
 sidecar 文本会被转义，杂散花括号或换行无法破坏 ASS 事件）；没有词级
 时间戳时产出同一套版式、同一套换行与停留时间的普通字幕 ASS——两者共用
 一个排版器，差别只是没有填充。SRT 生成后，"预览文本"开关可以内联显示字幕内容。

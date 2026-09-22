@@ -176,6 +176,14 @@ window.XCUT_I18N = {
     "{n} boundaries from an older region ({crop}) — analyze again to re-measure": "区域已改变（{crop}），{n} 个边界是旧的 — 重新分析以重测",
     "Scoreboard region cleared": "记分牌区域已清除",
     "Scoreboard region saved — the point boundaries are measured on the next analyze run": "记分牌区域已保存 — 得分边界将在下一次分析时测得",
-    "drag a rectangle over the court area — saved for this asset; it overrides the style's region.": "在球场区域拖出一个矩形——保存到该素材，并覆盖风格设置的区域。"
+    "drag a rectangle over the court area — saved for this asset; it overrides the style's region.": "在球场区域拖出一个矩形——保存到该素材，并覆盖风格设置的区域。",
+    "★ Post-ready: reel, captions, render": "★ 一键成片：时间线 + 字幕 + 渲染",
+    "reel": "时间线",
+    "captions": "字幕",
+    "render": "渲染",
+    "reused": "沿用现有",
+    "built": "本次生成",
+    "skipped": "跳过",
+    "The one-tap export failed: {msg}": "一键成片失败：{msg}"
   }
 };

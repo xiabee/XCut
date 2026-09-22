@@ -270,7 +270,30 @@ Every item states how it is measured before it is built, because the eval harnes
       observation, not a gate) and B6b (the music-bed field, the three-way beat-snap
       selector, and a second line stating what the saved document chose — bed + BPM +
       how many cuts followed it, or which of the three "no" cases applied). Remaining:
-      beat ticks on the ruler, the per-clip motion picker, and the post-ready export.
+      beat ticks on the ruler and the per-clip motion picker.
+      B6d — one tap to a post-ready reel — is specified here before it is built, with
+      the numbers it has to hit. A new `export` job type does three things in one body
+      and waits for none of them: build a timeline if the project has none, transcribe
+      if subtitles are asked for and none exist, then queue the ordinary render.
+      Acceptance, each a test rather than an intention:
+      (1) a project with only assets, run with a sidecar present, ends with a timeline
+      file, both subtitle artifacts, and a *separate* render job row — the export must
+      not render inside itself, so a one-tap reel still queues behind
+      `resource.max_render_workers` like any other;
+      (2) the ordering property that makes the sequence worth having: the `.ass`
+      written by the one tap declares the canvas of the timeline built by the same
+      tap, which no tap that generated the timeline afterwards could claim;
+      (3) with no sidecar the export still succeeds and says so on the wire — a
+      `steps` array where the subtitle step reads `skip` with a reason naming the
+      sidecar, never a silent omission;
+      (4) a project that already has both artifacts gets `reuse` for both and their
+      bytes unchanged (byte compare, not mtime);
+      (5) two presses cannot both run: the handler answers 409, and because that check
+      is racy by itself, the partial unique index is extended over the new type and
+      tested by inserting the second active row directly;
+      (6) each of those claims gets a mutation — reuse removed, the reason emptied,
+      `export` dropped from the exclusive set, and the render called inline instead of
+      queued — and a named assertion has to kill every one.
 - [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.

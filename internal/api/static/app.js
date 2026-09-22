@@ -168,7 +168,7 @@ async function post(path, body) {
 }
 
 function busy(on) {
-  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-subtitles", "btn-subs-preview"]) {
+  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-export", "btn-subtitles", "btn-subs-preview"]) {
     $(id).disabled = on;
   }
 }
@@ -1638,6 +1638,44 @@ $("btn-render").addEventListener("click", async () => {
   try { await trigger("/render", { subs: $("burn-subs").checked }); showPlayerSoon(); }
   catch (e) { banner(tf("Render failed: {msg}", { msg: e.message })); }
 });
+
+// The one tap sends the knobs that are on screen (style, length, bed, snap) and
+// always asks for captions — a reel without them is not the shape the button
+// promises. What the server answers with is a plan: which stages it will run,
+// which it found already done, and which it cannot do, said out loud.
+$("btn-export").addEventListener("click", async () => {
+  const req = Object.assign(timelineRequest(), { subs: true });
+  try {
+    busy(true);
+    const res = await post(`/api/v1/projects/${currentProject.id}/export`, req);
+    renderExportSteps(res.steps);
+    await refreshJobs();
+    watchUntilDone(jobIdOf(res.job_id));
+    showPlayerSoon();
+  } catch (e) {
+    busy(false);
+    banner(tf("The one-tap export failed: {msg}", { msg: e.message }));
+  }
+});
+
+function renderExportSteps(steps) {
+  const el = $("export-note");
+  if (!el) return;
+  if (!Array.isArray(steps) || steps.length === 0) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  // The server writes its reasons in English; the client owns the sentence shape
+  // and passes an unknown action or reason through as it arrived, because a stage
+  // it cannot name is still a stage the user needs to see.
+  el.textContent = steps.map((s) => {
+    const name = { timeline: t("reel"), subtitles: t("captions"), render: t("render") }[s.step] || s.step;
+    const did = { reuse: t("reused"), create: t("built"), skip: t("skipped") }[s.action] || s.action;
+    return s.reason ? `${name}: ${did} (${s.reason})` : `${name}: ${did}`;
+  }).join(" · ");
+  el.hidden = false;
+}
 
 let playerTimer = null;
 function showPlayerSoon() {
