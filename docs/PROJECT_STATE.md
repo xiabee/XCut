@@ -842,7 +842,12 @@ Accepted at `c794786`: the control-plane local gate ran `555 passed, 8 skipped` 
 `DATA_RACE_lines=0`, and this milestone's suites were then run explicitly on that
 machine — `export_rc=0 ran=11 skipped=0`, including the three real-media taps
 (`TestExportTapReachesAFile 5.22s`, `TestExportReusesArtifactsItDidNotMake 2.26s`)
-against the snapshot's own ffmpeg.
+against the snapshot's own ffmpeg. The ledger commit `69a52d3`, which added the `.srt`
+assertion beside the `.ass` one, passed the same three channels: local `555 passed,
+8 skipped` / `steps not run: none`, win-devops `OVERALL  PASS`
+(`exit=0 duration=1m35.539s`), and Linux `== done gate_rc=0 tap_rc=0 guards_rc=0` with
+`not run: nothing`, `DATA_RACE_lines=0`, `tap … ran=3 skipped=0` and the guards
+`ran=8 skipped=0`.
 
 ## Version / HEAD
 
