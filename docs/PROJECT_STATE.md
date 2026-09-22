@@ -718,8 +718,37 @@ Two honest remainders from this slice, both in `docs/ROADMAP.md`: the geometry i
 decided when the transcript runs, and the transcript payload is not stored, so
 switching a project to a vertical style re-runs the transcription to restyle its
 captions; and B5's other half — wrapping long lines to the frame and holding each one
-long enough to read — is not built yet, so a 40-character lyric is still one line and
-`WrapStyle: 0` leaves the overflow to libass.
+long enough to read — was left for B5b.
+
+**B5b (captions, second slice): a cue fits its frame and stays long enough to
+read.** Words are grouped into lines that fit the frame's usable width
+(`(PlayResX − 2·MarginL)/FontSize` units, a word's separator included), at most two
+lines per cue (the `\N` line break between them), and a segment longer than that becomes
+successive cues whose times tile the original span — no hole, no overlap. A cue
+shorter than 1.2 s is held into the silence after it, stopping at the next cue's start,
+and the hold extends only the *display*: `speechEnd` is what the karaoke fill runs to,
+so a held caption never finishes its highlight after the singing did. On a 1080×1920
+frame that is twelve units a line, so a 40-character lyric becomes four cues of two
+lines of six characters, every sweep still 20 cs.
+
+Measured on the generated file rather than on the code: `TestCuesWrapToTheFramesWidth`
+(cue count, at most one line break per cue, at most twelve units a line, all forty
+sweeps and forty characters present), `TestShortCueIsNotSplit` (the control — two
+characters stay one cue, so the wrap cannot be accused of always firing),
+`TestCueTimesAreMonotonicAndNeverOverlap`, `TestBriefCueIsHeldLongEnoughToRead`,
+`TestHoldStopsAtTheNextCue` (a floor, not a target) and `TestHoldDoesNotStretchTheFill`.
+Six mutations, each killed by a named assertion: wrap off, dwell zero, hold uncapped,
+sweep crossing a line break, margins ignored in the width maths, dwell leaking into the
+fill.
+
+Two things fell out of doing it, both worth keeping. The full suite caught a regression
+the new tests did not cover — the dwell had stretched the last word's fill
+(`{\kf50}你 {\kf70}好` where it had been 50/50) — and `TestSubtitlesCommandEndToEnd`,
+written for the old behaviour, is what said so. And **two of my first assertions could
+not fail**: counting characters but not the separators the code budgets, so the
+margins-ignored mutation survived (fourteen units measured as seven characters ≤ 12),
+and a hold fixture with enough gap that removing the clamp changed nothing. Both were
+rewritten until their mutations died, which is the only reason either is in the file.
 
 
 ## Version / HEAD

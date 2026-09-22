@@ -169,6 +169,12 @@ it writes the shipped 1280×720 reference. Restyling an existing project's capti
 after changing its canvas means re-running the transcription — the transcript itself is
 not kept, only the files rendered from it.
 
+Within that file, a caption line is as wide as the frame allows — `(width − 2·margin)`
+divided by the font size, separators included — two lines appear at a time, and anything
+longer becomes successive cues. A cue is shown for at least 1.2 s where the silence
+after it allows (never stealing the next cue's time), and the karaoke fill still follows
+the words, not the hold.
+
 ## xcut timeline
 ```
 usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] | xcut timeline <project> --restore-backup

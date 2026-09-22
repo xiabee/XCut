@@ -181,53 +181,215 @@ func WriteKaraokeASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
 	bw := bufio.NewWriter(w)
 	fmt.Fprintf(bw, assHeader, f.playResX, f.playResY, font, f.fontSize, style.HighlightColor,
 		f.outline, f.shadow, f.marginL, f.marginR, f.marginV)
+	// Layout is decided for the whole transcript at once: a cue may only borrow the
+	// silence up to the next one, and after wrapping a long segment there may be no
+	// gap at all where the speech had one.
+	var cues []laidCue
+	perLine := f.lineRunes()
 	for _, s := range t.Segments {
-		line, end := karaokeLine(s)
+		cues = append(cues, layoutCues(s, perLine)...)
+	}
+	holdCues(cues)
+	for _, c := range cues {
 		fmt.Fprintf(bw, "Dialogue: 0,%s,%s,Karaoke,,0,0,0,,%s\n",
-			assTime(s.Start), assTime(end), line)
+			assTime(c.start), assTime(c.end), karaokeCue(c))
 	}
 	return bw.Flush()
 }
 
-// karaokeLine builds the {\kf} tag stream for one segment. Each word's fill
-// runs until the next word starts (gaps belong to the previous word, the
-// classic KTV feel); the last word fills to the segment end.
+// lineRunes is how many characters fit on one caption line of this frame: the width
+// between the side margins, divided by the em. A CJK glyph is about one em wide and a
+// Latin one less, so this over-wraps English slightly and never under-wraps Chinese —
+// the failure worth avoiding is text running off the frame, and a line that is a
+// little short is only ever that. Clamped because a frame narrow enough to fit three
+// characters is a sign, not a caption, and a very wide one should not run a full
+// sentence on one line either.
+func (f assFrame) lineRunes() int {
+	usable := float64(f.playResX - 2*f.marginL)
+	n := int(math.Floor(usable / float64(f.fontSize)))
+	switch {
+	case n < 4:
+		return 4
+	case n > 42:
+		return 42
+	}
+	return n
+}
+
+// maxLinesPerCue and minCueDwell are the other half of the convention: two lines on
+// screen at a time, and a cue held long enough to be read even when the speech that
+// produced it was very short. The hold borrows silence after the words, never the
+// next cue's time.
+const (
+	maxLinesPerCue = 2
+	minCueDwell    = 1.2
+)
+
+// laidCue is one caption on the screen: the display lines it shows — each a run of
+// words, because words carry the timings the karaoke sweeps are built from — and the
+// window it shows them in. A segment longer than maxLinesPerCue lines becomes several
+// cues, because the alternative (one cue running past the frame) is the thing being
+// fixed.
+type laidCue struct {
+	lines      [][]Word
+	start, end float64
+	// speechEnd is where the words stop; `end` is where the caption leaves the
+	// screen. They differ by the dwell hold, and the karaoke fill must follow the
+	// words: stretching a cue to keep it readable should not stretch its last
+	// character's sweep too, or the highlight finishes after the singing did.
+	speechEnd float64
+}
+
+func (c laidCue) firstWord() (Word, bool) {
+	for _, l := range c.lines {
+		if len(l) > 0 {
+			return l[0], true
+		}
+	}
+	return Word{}, false
+}
+
+func (c laidCue) lastWord() (Word, bool) {
+	for i := len(c.lines) - 1; i >= 0; i-- {
+		if len(c.lines[i]) > 0 {
+			return c.lines[i][len(c.lines[i])-1], true
+		}
+	}
+	return Word{}, false
+}
+
+// layoutCues wraps one segment's words into lines that fit the frame and groups those
+// lines into cues. A word wider than a line stays on it alone: breaking it would put
+// characters on screen at times the sidecar never claimed they were spoken.
+func layoutCues(s Segment, perLine int) []laidCue {
+	if len(s.Words) == 0 {
+		return []laidCue{{start: s.Start, end: s.End}}
+	}
+	var lines [][]Word
+	var line []Word
+	width := 0
+	for _, w := range s.Words {
+		n := len([]rune(w.Word)) + 1 // the space the renderer puts between words
+		if len(line) > 0 && width+n > perLine {
+			lines = append(lines, line)
+			line, width = nil, 0
+		}
+		line = append(line, w)
+		width += n
+	}
+	if len(line) > 0 {
+		lines = append(lines, line)
+	}
+	var cues []laidCue
+	for i := 0; i < len(lines); i += maxLinesPerCue {
+		last := i + maxLinesPerCue
+		if last > len(lines) {
+			last = len(lines)
+		}
+		c := laidCue{lines: lines[i:last]}
+		if w, ok := c.firstWord(); ok {
+			// The first cue starts where the segment does, not where its first word
+			// does: the gap between the two is real (the sidecar heard the line a
+			// moment after it began) and the leading {\k} span below is what keeps
+			// each word's fill landing on the word it belongs to.
+			c.start = s.Start
+			if i > 0 {
+				c.start = w.Start
+			}
+		}
+		if w, ok := c.lastWord(); ok {
+			c.end = w.End
+		}
+		cues = append(cues, c)
+	}
+	if len(cues) == 0 {
+		return nil
+	}
+	// The segment's own tail belongs to its last cue — a word's fill runs to the end
+	// of what it is part of, which is what this did before any layout existed — and
+	// successive cues meet at the next cue's start, so one line of speech does not
+	// leave a hole or double-book a moment on screen.
+	cues[len(cues)-1].end = s.End
+	for i := 0; i+1 < len(cues); i++ {
+		cues[i].end = cues[i+1].start
+	}
+	for i := range cues {
+		cues[i].speechEnd = cues[i].end
+	}
+	return cues
+}
+
+// holdCues lengthens any cue that would flash by, borrowing the silence until the next
+// cue starts. The last cue is left alone: nothing here knows how long the media is,
+// and a hold that outruns the picture is worse than a short caption.
+func holdCues(cues []laidCue) {
+	for i := range cues {
+		if cues[i].end-cues[i].start >= minCueDwell {
+			continue
+		}
+		want := cues[i].start + minCueDwell
+		if i+1 < len(cues) && want > cues[i+1].start {
+			want = cues[i+1].start
+		} else if i+1 == len(cues) {
+			continue
+		}
+		if want > cues[i].end {
+			cues[i].end = want // the hold is display time, not singing time
+		}
+	}
+}
+
+// karaokeCue builds the {\kf} tag stream for one cue: each word fills until the next
+// word starts (gaps belong to the previous word, the classic KTV feel) and the last
+// fills to the cue's end; the cue's lines are joined by the break libass understands.
 //
-// ASS sweeps are cumulative from the Dialogue start (s.Start), but whisper-
-// style word timestamps typically begin slightly AFTER the segment start —
-// without a leading offset every sweep fires early by that gap. A zero-width
-// {\k} span absorbs it so word i's fill lands on word i.
-func karaokeLine(s Segment) (string, float64) {
-	end := s.End
+// ASS sweeps are cumulative from the Dialogue start, which is the cue's start, while
+// whisper-style word timestamps typically begin slightly after it — without a leading
+// offset every sweep fires early by that gap. A zero-width {\k} span absorbs it.
+func karaokeCue(c laidCue) string {
 	var b strings.Builder
-	if len(s.Words) > 0 {
-		if lead := int(math.Round((s.Words[0].Start - s.Start) * 100)); lead > 0 {
-			// {\k} (instant) with no text advances the karaoke clock without
-			// showing anything.
-			fmt.Fprintf(&b, "{\\k%d}", lead)
+	lead := ""
+	if w, ok := c.firstWord(); ok {
+		if n := int(math.Round((w.Start - c.start) * 100)); n > 0 {
+			lead = fmt.Sprintf("{\\k%d}", n)
 		}
 	}
-	for i, wd := range s.Words {
-		next := s.End
-		if i+1 < len(s.Words) && s.Words[i+1].Start > wd.Start {
-			next = s.Words[i+1].Start
+	for li, line := range c.lines {
+		if li > 0 {
+			b.WriteString(`\N`)
 		}
-		if next < wd.Start {
-			next = wd.Start
-		}
-		cs := int(math.Round((next - wd.Start) * 100))
-		if cs < 0 {
-			cs = 0
-		}
-		fmt.Fprintf(&b, "{\\kf%d}%s", cs, assEscape(wd.Word))
-		if i+1 < len(s.Words) {
-			b.WriteString(" ")
+		b.WriteString(lead)
+		lead = ""
+		for i, wd := range line {
+			// The sweep runs to the next word *anywhere in the cue*, not to the next
+			// word on this line: a line's last character is sung at its own moment,
+			// and letting it fill to the cue's end would have the first line finish
+			// its highlight long after the singer did. And the cue's end for this
+			// purpose is where the words stop, not where the caption leaves — the
+			// dwell hold belongs to reading, not to singing.
+			next := c.speechEnd
+			if next <= 0 {
+				next = c.end
+			}
+			if li+1 < len(c.lines) && i+1 == len(line) {
+				next = c.lines[li+1][0].Start
+			} else if i+1 < len(line) && line[i+1].Start > wd.Start {
+				next = line[i+1].Start
+			}
+			if next < wd.Start {
+				next = wd.Start
+			}
+			cs := int(math.Round((next - wd.Start) * 100))
+			if cs < 0 {
+				cs = 0
+			}
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(&b, "{\\kf%d}%s", cs, assEscape(wd.Word))
 		}
 	}
-	if b.Len() == 0 { // words empty — HasWordTimings guards, belt and braces
-		b.WriteString(assEscape(s.Text))
-	}
-	return b.String(), end
+	return b.String()
 }
 
 // assEscape neutralizes ASS control characters in sidecar-produced text.

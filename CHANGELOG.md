@@ -191,6 +191,25 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   reads the PlayRes back out of the served `.ass`) and at the unit level; five
   mutations each killed one assertion, including `terr != nil`, which is "the wiring
   never looked at the canvas" and fails the chain test rather than the unit one.
+- **A caption now fits the frame and stays long enough to read** (B5b, the other half
+  of the slice above). Words are grouped into lines that fit the frame's usable width —
+  `(PlayResX − 2·MarginL) / FontSize`, with the separator between words counted, because
+  that is what the layout budgets — at most two lines per cue, and a longer segment is
+  split into successive cues whose times tile the original span: no silence hole between
+  them, no overlap. A cue under 1.2 s is held into the silence that follows it, stopping
+  at the next cue's start, and the hold extends the *display* only: the karaoke fill runs
+  to `speechEnd`, because a caption that stays on screen must not stretch the highlight
+  past the singing. On a 1080×1920 reel that is twelve units a line, so a 40-character
+  lyric becomes four cues of two lines of six characters, every word's sweep still 20cs.
+  Six assertions on the generated file (cue count, line breaks, units per line, all
+  characters and sweeps present, monotonic non-overlapping times, hold that stops at the
+  next cue, fill that does not stretch) plus a control that a two-character line is not
+  split at all; six mutations, each killed by exactly one of them. Two lessons in the
+  same commit: the full suite caught a regression the new tests could not see (the dwell
+  had lengthened the last `\kf` sweep — `\kf50` / `\kf70` where it had been 50/50),
+  and two of the first assertions could not fail, so their mutations survived until they
+  were rewritten to measure what the code actually budgets (characters *and* separators)
+  and to leave the fixture no gap the missing clamp could hide in.
   Known remainder, stated because it will bite: the geometry is decided when the
   transcript runs, so switching a project to a vertical style re-runs the transcript to
   restyle its captions (the transcript payload is not stored, so the burn cannot
