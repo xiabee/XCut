@@ -2,21 +2,22 @@
 # Attribution-correct coverage sweep.
 #
 # Why this exists: `go test -coverpkg=... -coverprofile=x.out ./p1 ./p2` writes
-# every test binary's blocks into the *same* file, and a block hit by one binary
-# and untouched by a later one is reported with the later binary's count. The
-# result is a "0.0%" list full of functions that are covered — by another
-# package's tests — which is how this repository ended up chasing phantom gaps
-# (`pipeline.AnalyzeProjectAsync` reads 0.0% merged and 100% when its own
-# consumer, internal/api, is measured alone).
+# every test binary's blocks into one file, and a block one binary hit and a
+# later binary did not is reported with the later count. The 0% list that
+# produces is therefore full of functions that *are* covered — by another
+# package's tests. Not theoretical: the sweep at `5a8a4ff` put
+# `pipeline.AnalyzeProjectAsync` on its list and the ledger carried it as an open
+# gap, while profiling its own consumer (`internal/api`, `TestAsyncJobFlow`
+# posting `/analyze`) measures it at 100%.
 #
-# So: one profile per test binary, merged by taking the maximum hit count per
-# block. Nothing is averaged and nothing is dropped.
+# So: one profile per test binary (with -v, so skips are visible), merged by
+# taking the maximum hit count per block. Nothing is averaged, nothing dropped.
 #
-# Usage: sh scripts/cover-sweep.sh            # whole repo
+# Usage: sh scripts/cover-sweep.sh
 #        sh scripts/cover-sweep.sh ./internal/api ./internal/pipeline
 #
-# Exit 0 only if every package's tests passed; a red package makes the coverage
-# numbers meaningless, so it is reported rather than tolerated.
+# Exit 0 only when every package's tests passed and the merge parsed: a red
+# package or an empty merge would otherwise read as "no gaps left".
 set -e
 cd "$(dirname "$0")/.."
 
@@ -27,8 +28,8 @@ echo "== coverage sweep environment"
 echo "  ffmpeg:  $(command -v ffmpeg || echo MISSING)"
 echo "  python:  $(command -v python3 || command -v python || echo MISSING)"
 echo "  go:      $(go version)"
-echo "  note:    tests that skip for a missing tool count as NOT executed;"
-echo "           read the skip line below before trusting any 0.0%."
+echo "  note:    a test that skips for a missing tool counts as NOT executed,"
+echo "           so read the skip line before trusting any 0.0% below."
 
 if [ "$#" -gt 0 ]; then
     pkgs="$*"
@@ -39,7 +40,7 @@ fi
 failed=""
 for p in $pkgs; do
     slug=$(printf '%s' "$p" | tr '/.' '__')
-    if ! go test -count=1 -coverpkg=./internal/...,./cmd/... \
+    if ! go test -count=1 -v -coverpkg=./internal/...,./cmd/... \
             -coverprofile="$tmp/$slug.out" "$p" > "$tmp/$slug.log" 2>&1; then
         failed="$failed $p"
     fi
@@ -60,15 +61,28 @@ fi
 
 merged="$tmp/merged.out"
 printf 'mode: set\n' > "$merged"
-# max count per block: the first field is file:start.line.col,end.line.col,
-# second is statement count, third is the hit count.
-awk 'NR==1 { next }
-     { key = $1 " " $2; c = $3 + 0; if (!(key in best) || c > best[key]) best[key] = c }
+# Each per-package profile starts with its own `mode:` line: skip all of them,
+# not just the first file's, or the header lands in the data as a bogus block.
+awk '/^mode:/ { next }
+     NF >= 3 { key = $1 " " $2; c = $3 + 0
+               if (!(key in best) || c > best[key]) best[key] = c }
      END { for (k in best) printf "%s %d\n", k, best[k] }' "$tmp"/*.out >> "$merged"
 
-go tool cover -func="$merged" | awk '$3 == "0.0%"' > "$tmp/zero.txt"
-total=$(go tool cover -func="$merged" | tail -1)
-echo "  $total"
+# An empty merge or a profile the parser rejects looks identical to "nothing left
+# untested" from here, so both are hard failures.
+blocks=$(grep -c ':' "$merged" || true)
+if [ "$blocks" -lt 100 ]; then
+    echo "  ABORT: merged profile holds only $blocks blocks — the runs or the merge failed"
+    exit 2
+fi
+if ! go tool cover -func="$merged" > "$tmp/func.txt" 2>"$tmp/cover.err"; then
+    echo "  ABORT: go tool cover rejected the merged profile"
+    head -3 "$tmp/cover.err"
+    exit 2
+fi
+awk '$3 == "0.0%"' "$tmp/func.txt" > "$tmp/zero.txt"
+echo "  merged blocks: $blocks"
+tail -1 "$tmp/func.txt"
 echo "  functions at 0.0% after max-merge: $(wc -l < "$tmp/zero.txt" | tr -d ' ')"
 sed 's|github.com/xiabee/XCut/||' "$tmp/zero.txt"
-echo "== sweep done (any 0.0% above is unexecuted by every package's tests)"
+echo "== sweep done (every 0.0% above is unexecuted by all $(echo "$pkgs" | wc -w | tr -d ' ') test binaries)"
