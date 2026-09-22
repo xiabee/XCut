@@ -460,7 +460,15 @@ backing up `internal/pipeline/music.go` and `internal/render/music.go` under the
 basename meant the second copy overwrote the first, so the "restore" installed the
 render package into the pipeline package and every later case reported
 `INVALID(build failed)` while the harness's own `cmp` said everything was
-byte-identical.
+byte-identical. Accepted at `930b49b`: control-plane local gate 505 passed / 8
+skipped with `steps not run: none` (`local CI PASS at 16:56:42 for 930b49b2`),
+win-devops `OVERALL PASS` at that head (`exit=0 duration=1m39.735s`), Linux full
+gate 494/13 with `not run: nothing`, zero `DATA RACE` lines, and the four
+bed/mix/grid/snap suites run explicitly on the node (`ran=3/3/6/6`, `skipped=0` in
+each). The node's numbers are a little different from the laptop's and are recorded
+as the range they are: **8** bed-unique transients against 0 (not 9), mixed −34.4 dB
+against bare −33.0 dB (not −34.3/−32.9). The assertion is "more than none", so both
+builds satisfy it; the exact count belongs to whichever ffmpeg measured it.
 
 
 ## Version / HEAD
