@@ -153,6 +153,15 @@ every end is already pinned; it is there for material that has one, and for the
 music bed coming in `docs/ROADMAP.md` Phase 5 B4 (docs/EVAL.md, Cutting on the
 beat).
 
+`camera_motion` is the preset's own knob for 运镜: `{"mode":
+"punch_in"|"drift"|"roi", "zoom": 0.8}` frames every clip in the window it
+describes, which the renderer crops to and magnifies into the canvas (`drift`
+alternates the pan direction per clip; `roi` centers the window on the project's
+analysis region). No shipped style asks for it, and it is set in a style file
+rather than per run — a workspace copy under `<workspace>/styles/` is what the
+style editor writes. The measured cost is 8.6 s against 8.1 s per minute of
+output, at +11.5% file size (docs/PERFORMANCE.md).
+
 Asking for more than the material holds is safe and does not hang: the selection
 is bounded by the usable segments, not by the number. Measured on the same
 match — a 240 s target and a 14400 s (4 h) target both yield 21 clips / 168 s,

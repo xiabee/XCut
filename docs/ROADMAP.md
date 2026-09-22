@@ -123,15 +123,30 @@ Every item states how it is measured before it is built, because the eval harnes
       0.25 s (F1 0.389 marked / 0.330 unmarked) — recorded, not tuned away, because
       it reshapes B4: the pulse a reel cuts to has to come from the music laid
       under it, not from the source's own audio.
-- [ ] B3 — Camera motion (`运镜`): a per-clip framing plan (punch-in,
-      drift, reframe-to-ROI) carried in the timeline IR and rendered through the
-      existing crop/zoom path, with the vertical reframe (9:16 from a 16:9
-      source) as one of its modes.
-      Measured: rendering a fixture and sampling frames proves the crop actually
-      moves (it is not a static zoom), the framing keeps the motion ROI inside the
-      frame, and `docs/PERFORMANCE.md` carries the added render cost per minute
-      of output — the feature ships with a budget and the budget is enforced
-      (`resource.*`), not assumed.
+- [x] B3 — Camera motion (`运镜`): a per-clip framing plan in the timeline IR
+      (`{"motion":{"zoom":…,"from":[x,y],"to":[x,y]}}`) rendered through `crop` —
+      window sized to the canvas's aspect, magnified to fill it, center sliding
+      over the clip's own time. Styles ask for it with `camera_motion`
+      (`punch_in` | `drift` | `roi`, plus a zoom); `roi` centers the window on the
+      region the project was analyzed with, and a 9:16 canvas over a 16:9 source
+      is the vertical reframe (same arithmetic, asserted).
+      Measured: three levels, because the filter string proves nothing about the
+      picture — the text (aspect-derived window, per-frame `t`, clamps at both
+      edges of both axes, no time term for a still plan), the command (rendered
+      through `Render()` against the package's stand-in FFmpeg and read back from
+      the child's argv, including that a clip with no plan grows no crop stage),
+      and the pixels (a fixture whose only content is the top-left quadrant:
+      YAVG 94.17 → 19.24 when the window drifts to the far corner, 39.25 → 39.36
+      with no plan). Cost is in `docs/PERFORMANCE.md`: +0.5 s per minute of output
+      (8.6 s against 8.1 s) and +11.5% bytes at fixed CRF, so the render budget
+      needs no new ceiling — the size is the number to watch.
+      Not claimed: a plan *centered* on the ROI is not a plan that keeps the whole
+      region inside the frame — the selector does not know the source's pixel
+      aspect, and only the renderer does. A fit guarantee is either the renderer's
+      or the UI's, and it is recorded as the remainder rather than asserted.
+      Per-clip picker stays B6; no shipped preset enables motion, because cropping
+      a broadcast can cut the score bug out of the shot and no aesthetic claim has
+      been measured here to trade against that.
 - [ ] B4 — New presets on top of B1–B3: `beat_shortform` (music-driven pacing,
       2–3 s shots, hook first), `sports_vertical` (9:16, point-ending clips,
       punch-in on the hit), plus a pacing readout on the existing styles so the

@@ -80,6 +80,33 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   0.12 and 0.25 s. The consequence is written into `docs/EVAL.md` and moves B4:
   卡点 needs a music bed, because a location recording has no pulse to cut to.
 
+- **Camera motion (`运镜`): a per-clip framing plan, and the renderer crops to
+  it.** A clip may carry `{"motion": {"zoom": 0.8, "from": [x,y], "to": [x,y]}}` —
+  a window of the source sized to the canvas's aspect, magnified to fill it, whose
+  center slides over the clip's own time. Absent means the whole frame, which is
+  what every existing document carries, so an old timeline renders unchanged.
+  Styles ask for it as `camera_motion: {"mode": "punch_in" | "drift" | "roi",
+  "zoom": …}`; `drift` alternates the pan direction by clip position so a reel is
+  not one metronome, and `roi` centers the window on the region the project was
+  analyzed with. A 9:16 canvas over a 16:9 source is the vertical reframe from the
+  same arithmetic.
+  Proved at three levels, because the filter string alone proves nothing about the
+  picture: the expression text (window width carries the canvas aspect, a drifting
+  axis carries `t`, both axes are clamped at both edges, a still plan carries no
+  time term); the command line, read back from the child's argv through `Render()`
+  against the package's stand-in FFmpeg — including that a clip with no plan grows
+  no `crop` stage; and the pixels, on a fixture whose only content is the top-left
+  quadrant: YAVG 94.17 → 19.24 as the window drifts to the far corner, against
+  39.25 → 39.36 with no plan. Four policy mutations and four renderer mutations,
+  each killed by the assertion named.
+  Cost measured on the match's own default reel: **8.6 s against 8.1 s** of render
+  wall for 60.02 s out, and **16.57 MB against 14.86 MB** (+11.5%) at a fixed CRF —
+  the size, not the time, is what a plan buys. No shipped preset enables motion:
+  cropping a broadcast can cut the scoreboard out of the shot, and there is no
+  measured aesthetic claim to trade against that yet. What is *not* claimed: a plan
+  centered on the ROI does not guarantee the whole region stays in frame — the
+  selector does not know the source's pixel aspect, only the renderer does.
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 

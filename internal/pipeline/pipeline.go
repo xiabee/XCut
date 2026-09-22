@@ -559,6 +559,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 					ID:          asset.ID,
 					Path:        asset.Path,
 					DurationSec: asset.DurationSec,
+					ROI:         assetMotionROI(&asset),
 				},
 				Segments:   segs,
 				Boundaries: marks,
@@ -577,6 +578,16 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		*result = *tl
 		return nil
 	}
+}
+
+// assetMotionROI carries the asset's analysis region into the style layer, which
+// keeps its own type for it (style must not import storage). nil means the asset
+// was analyzed full-frame, so a "roi" framing policy has nothing to aim at.
+func assetMotionROI(a *storage.Asset) *style.MotionROI {
+	if a.MotionROI == nil {
+		return nil
+	}
+	return &style.MotionROI{X: a.MotionROI.X, Y: a.MotionROI.Y, W: a.MotionROI.W, H: a.MotionROI.H}
 }
 
 // beatGridFor derives the source's beat grid when the style asks to cut on it.

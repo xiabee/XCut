@@ -404,6 +404,29 @@ on `ad6ae7a445f0` — and there the snap suite really executed rather than skipp
 (`snap_rc=0 ran=6 skipped=0`, logging `1 of 1 ends moved onto the grid`), which is
 the cross-platform half of the proof.
 
+**Same session, later still:** B3 shipped the framing half of 运镜 — a per-clip
+plan in the IR (`{"motion":{zoom,from,to}}`), the renderer cropping to it, and the
+style policy `camera_motion` (`punch_in`/`drift`/`roi`). The proof is three-level on
+purpose (text, argv read back from the child through `Render()`, then pixels:
+YAVG 94.17 → 19.24 as a window drifts off the only lit quadrant, 39.25 → 39.36 with
+no plan), because a filter string is not a picture. Cost recorded in
+`docs/PERFORMANCE.md`: 8.6 s against 8.1 s per 60 s of output, +11.5% bytes — the
+size is the number to watch, not the wall time. Two FFmpeg details are now
+comments where they were found: crop's x/y expressions have no `w`/`h` (the window
+is `ow`/`oh`, and asking for the other thing fails at configure time), and a
+`metadata=print:file=` target cannot be a Windows path because `:` splits filter
+options — `file=-` writes the stats to stdout. Nothing is enabled by default and
+that is a decision, not an omission: cropping a broadcast can cut the score bug out
+of the shot, and no aesthetic claim has been measured to trade against it. And what
+the plan does *not* promise is written into `docs/ROADMAP.md` rather than implied —
+centering a window on the ROI keeps its *center* there, because only the renderer
+knows the source's pixel aspect. One gate observation, recorded rather than tuned
+away: the first `go test ./internal/...` after the render tests landed failed
+`api/TestSubtitlesFlow` at its 30 s cold-sidecar bound, while the same test passes
+in 0.45 s alone and a four-package concurrent rerun is green — new concurrent ffmpeg
+load met a known slow path. If it recurs it is the test's shape to fix, not the
+deadline to raise.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

@@ -17,6 +17,12 @@ type AssetInfo struct {
 	ID          string
 	Path        string
 	DurationSec float64
+	// ROI is the region the project's analysis was aimed at, when one is set.
+	// The framing plan can point a window at its center; it is a position, not a
+	// promise that the whole region fits in the frame — the selector does not
+	// know the source's pixel aspect, and saying otherwise would be a claim the
+	// renderer, not the plan, has to keep.
+	ROI *MotionROI
 }
 
 // AssetEvents pairs one asset with its event segments. Events are always
@@ -251,10 +257,17 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			used[i] = true
 			n++
 			chosen = append(chosen, cand)
+			plan := framingPlan(preset, c.asset, len(clips))
 			md := map[string]string{
 				"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
 				"score_breakdown": c.f.breakdown(preset),
 				"reason":          c.f.reason(preset),
+			}
+			if plan != nil {
+				// Which rule framed this clip — the geometry itself lives on the
+				// clip, so this is for a reader comparing a reel against the style
+				// that made it.
+				md["framing"] = preset.CameraMotion.Mode
 			}
 			if c.seg.HitCount > 0 {
 				md["hit_count"] = strconv.Itoa(c.seg.HitCount)
@@ -280,6 +293,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				SourceEnd:   srcEnd,
 				Speed:       1,
 				Volume:      preset.Audio.Gain,
+				Motion:      plan,
 				Metadata:    md,
 			})
 			total += srcEnd - srcStart
@@ -575,6 +589,31 @@ func reachableBoundary(boundaries []float64, seg event.Segment, minClip float64)
 		return 0, false
 	}
 	return best, true
+}
+
+// framingPlan turns the style's camera-motion policy into one clip's plan (运镜).
+// The ordinal only decides which way a drift runs, so a reel alternates its pans
+// instead of repeating one metronome, while the same inputs still produce the
+// same document.
+func framingPlan(p *Preset, a AssetInfo, ordinal int) *timeline.Motion {
+	z := p.CameraMotion.Zoom
+	switch p.CameraMotion.Mode {
+	case FramingPunchIn:
+		return &timeline.Motion{Zoom: z}
+	case FramingDrift:
+		from, to := 0.35, 0.65
+		if ordinal%2 == 1 {
+			from, to = to, from
+		}
+		return &timeline.Motion{Zoom: z, From: []float64{from, 0.5}, To: []float64{to, 0.5}}
+	case FramingROI:
+		if a.ROI == nil {
+			return nil // nothing to aim at: the clip shows the whole frame
+		}
+		cx, cy := clamp(a.ROI.X+a.ROI.W/2, 0, 1), clamp(a.ROI.Y+a.ROI.H/2, 0, 1)
+		return &timeline.Motion{Zoom: z, From: []float64{cx, cy}, To: []float64{cx, cy}}
+	}
+	return nil
 }
 
 // snapEnd moves an otherwise-unfixed clip end onto the nearest beat of the

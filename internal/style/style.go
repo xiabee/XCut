@@ -88,6 +88,29 @@ type Diversity struct {
 	Phases       int `json:"phases,omitempty"`
 }
 
+// Framing modes for CameraMotion (运镜). Each is one sentence about where the
+// window sits; the renderer turns it into pixels and nothing else reads them.
+const (
+	FramingNone    = "none"
+	FramingPunchIn = "punch_in"
+	FramingDrift   = "drift"
+	FramingROI     = "roi"
+)
+
+// CameraMotion assigns a framing plan to every clip the style selects.
+//
+// The default is no motion, and not for lack of a use case: cropping a broadcast
+// can cut the score bug out of the shot, and no aesthetic claim about pans has
+// been measured on this project's footage, so a style has to ask for it by name.
+// Zoom is the window's height as a fraction of the source's, so 0.8 magnifies by
+// 1.25x; it is required when a mode is set rather than defaulted, because a
+// preset that says "punch_in" and a preset that says nothing should not render
+// the same.
+type CameraMotion struct {
+	Mode string  `json:"mode,omitempty"` // none | punch_in | drift | roi
+	Zoom float64 `json:"zoom,omitempty"` // (0,1]
+}
+
 // MotionROI is a normalized region of interest (0..1) for motion analysis
 // (a court area). When set and event_config.motion_track is empty, the
 // builder analyzes "frame_diff_roi" instead of full-frame motion — a
@@ -125,6 +148,7 @@ type Preset struct {
 	Transition        Transition   `json:"transition"`
 	Audio             Audio        `json:"audio"`
 	Diversity         Diversity    `json:"diversity,omitempty"`
+	CameraMotion      CameraMotion `json:"camera_motion,omitempty"`
 	MotionROI         *MotionROI   `json:"motion_roi,omitempty"`
 
 	// Source records where the preset was loaded from (not serialized).
@@ -218,6 +242,16 @@ func (p *Preset) Validate() error {
 		p.Diversity.MinPerWindow > p.Diversity.MaxPerWindow {
 		add("diversity.min_per_window %d exceeds max_per_window %d, which no candidate could satisfy",
 			p.Diversity.MinPerWindow, p.Diversity.MaxPerWindow)
+	}
+	switch p.CameraMotion.Mode {
+	case "", FramingNone, FramingPunchIn, FramingDrift, FramingROI:
+	default:
+		add("camera_motion.mode %q is not one of none/punch_in/drift/roi", p.CameraMotion.Mode)
+	}
+	if p.CameraMotion.Mode != "" && p.CameraMotion.Mode != FramingNone &&
+		(p.CameraMotion.Zoom <= 0 || p.CameraMotion.Zoom > 1) {
+		add("camera_motion.zoom %g out of (0,1] — a mode without a window is not a plan",
+			p.CameraMotion.Zoom)
 	}
 	if err := p.EventConfig.Validate(); err != nil {
 		add("event_config: %v", err)

@@ -58,6 +58,17 @@ func TestMotionFilterText(t *testing.T) {
 	if !strings.Contains(still, "crop=") {
 		t.Fatalf("a punch-in lost its crop stage: %s", still)
 	}
+
+	// The vertical reframe is the same arithmetic with a tall canvas: a 9:16
+	// window over any source takes 0.5625 of its height as width, which is what
+	// turns a 16:9 broadcast into a portrait shot rather than a letterbox.
+	vert := motionFilter(&timeline.Motion{Zoom: 1}, 270, 480, 4)
+	if !strings.Contains(vert, "trunc(ih*0.56250/2)*2") {
+		t.Fatalf("a 9:16 canvas gave the window the wrong width: %s", vert)
+	}
+	if !strings.Contains(vert, "trunc(ih*1.00000/2)*2") {
+		t.Fatalf("a 9:16 plan should still span the source's height: %s", vert)
+	}
 }
 
 // The command line is what FFmpeg actually executes, and the absence of a crop
