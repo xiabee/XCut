@@ -334,7 +334,7 @@ defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
 | `resource.max_concurrent_jobs` | 2 | hard cap on parallel jobs |
 | `resource.max_ffmpeg_processes` | 2 | hard cap on parallel ffmpeg/ffprobe |
 | `resource.max_render_workers` | 1 | independent cap on concurrent render jobs |
-| `resource.max_analysis_workers` | 2 | per-analysis ffmpeg call concurrency |
+| `resource.max_analysis_workers` | 2 | how many assets one analyze run keeps in flight (children still bounded by `max_ffmpeg_processes`) |
 | `resource.ffmpeg_threads` | 2 | per-process `-threads` |
 | `resource.ffmpeg_max_memory_mb` | 0 (uncapped) | per-ffmpeg memory cap enforced by the Windows job object; exceeding it fails the encoder on allocation and the render reports it loudly. Raise it for high-resolution renders |
 | `resource.frame_sample_fps` | 2 | analysis sampling rate |

@@ -302,6 +302,22 @@ Every item states how it is measured before it is built, because the eval harnes
       cache bytes, the motion render's cost.
       Measured: numbers in `docs/PERFORMANCE.md` from real runs, "not measured"
       where it has not been measured.
+      Partially landed as B7a (2026-09-23, four rows added to `docs/PERFORMANCE.md`):
+      serve idle re-measured after the whole Phase 5 arc — 18.1 and 17.7 MB on two
+      runs, CPU delta 0.000 s each, no media child alive at any sample; the analysis
+      fan-out traced to the knob that actually owns it (`max_ffmpeg_processes`: 2
+      children at 107 MB, 4 at 215 MB, wall 18.4 → 12.1 s, ~54 MB per 720p child,
+      while `max_analysis_workers` bounds assets in flight and changed nothing on its
+      own — the goal table named the wrong knob and now names the right one); the one
+      tap measured against the same stages run separately (9.2 s / 343 MB against
+      10.1 s / 339 MB, so the orchestration is free); and the xfade render's child
+      weighed (566 MB, single process, 1.75× the concat path).
+      Remaining: the decision B7a surfaced but did not take — whether
+      `resource.ffmpeg_max_memory_mb` should ship with a default instead of 0 =
+      uncapped. The number any default has to clear is 566 MB, and the surface that
+      tells the user today is `xcut doctor`'s `Process sandbox: OPTIONAL … memory
+      uncapped`. Proxy/cache bytes are enforced and tested at unit level
+      (`internal/analysis/cache_test.go`) but have no measured row yet.
 
 Order of attack is B1 → B2 → B3 → B4 (each depends on the one before), with B5
 independent and B6 landing per feature as its surface exists.

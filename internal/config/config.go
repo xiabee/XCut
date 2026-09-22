@@ -53,8 +53,12 @@ type Server struct {
 // scheduler must never exceed them. Zero/negative values are repaired to
 // defaults by Resolve.
 type Resource struct {
-	MaxConcurrentJobs   int      `json:"max_concurrent_jobs"`
-	MaxFFmpegProcesses  int      `json:"max_ffmpeg_processes"`
+	MaxConcurrentJobs  int `json:"max_concurrent_jobs"`
+	MaxFFmpegProcesses int `json:"max_ffmpeg_processes"`
+	// MaxAnalysisWorkers is how many assets one analyze run keeps in flight. It is
+	// not the ceiling on processes: every ffmpeg/ffprobe child still asks
+	// MaxFFmpegProcesses, so raising this past that changes nothing measurable
+	// (docs/PERFORMANCE.md, 2026-09-23).
 	MaxAnalysisWorkers  int      `json:"max_analysis_workers"`
 	MaxRenderWorkers    int      `json:"max_render_workers"`
 	FFmpegThreads       int      `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
