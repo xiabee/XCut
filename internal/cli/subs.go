@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	register("subtitles", "speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)",
+	register("subtitles", "speech-to-text subtitles via the AI sidecar (SRT or styled ASS)",
 		usageSyntax("xcut subtitles <media-file> [--ass] [--out path] [--lang code] [--model name]"), cmdSubtitles)
 }
 
@@ -124,19 +124,24 @@ func cmdSubtitles(a *App, args []string) error {
 		return xcerr.E(xcerr.CodeInternal, "cannot create subtitle file", err)
 	}
 	defer f.Close()
+	// --ass asks for the styled file. Only the karaoke fill needs to know where
+	// each syllable fell; the frame, the wrap and the dwell do not, so a sidecar
+	// that times lines gets captions rather than an error.
+	kind := "srt"
+	write := func() error { return subs.WriteSRT(t, f) }
 	if karaoke {
-		err = subs.WriteKaraokeASS(t, subs.KaraokeStyle{}, f)
-	} else {
-		err = subs.WriteSRT(t, f)
+		if t.HasWordTimings() {
+			kind = "karaoke ass"
+			write = func() error { return subs.WriteKaraokeASS(t, subs.KaraokeStyle{}, f) }
+		} else {
+			kind = "caption ass"
+			write = func() error { return subs.WriteCaptionASS(t, subs.KaraokeStyle{}, f) }
+		}
 	}
-	if err != nil {
+	if err := write(); err != nil {
 		return err
 	}
 
-	kind := "srt"
-	if karaoke {
-		kind = "karaoke ass"
-	}
 	fmt.Fprintf(a.Stdout, "wrote %s subtitles (%d segments, language %q): %s\n",
 		kind, len(t.Segments), t.Language, outPath)
 	return nil

@@ -6,6 +6,33 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-22 session #20 (Phase 5 opens: the beat grid)
 
 ### Added
+- **A transcript without word timings gets the styled caption file too (ROADMAP
+  Phase 5, B5c).** Which artifact a burn-in drew turned on a sidecar detail
+  nobody chose: the same words with per-syllable timings got the designed
+  `.ass` frame, without them they got an `.srt` and whatever libass defaults
+  to. Only the karaoke fill needs syllables — the frame, the wrap and the
+  dwell need the line and nothing more — so both writers now run the same
+  layout and the plain one just leaves the sweeps out. `xcut subtitles
+  --ass` answers an ordinary transcript with `Style: Caption,` instead of
+  "karaoke output needs them", and a project's second transcription
+  *replaces* the karaoke file the first left behind rather than only
+  deleting it, so a karaoke artifact can no longer shadow a newer, plainer
+  transcript. Verified: three api cases (a plain transcript's `.ass` names
+  the project's canvas; a re-transcription leaves no `\k` behind; the
+  karaoke pass is unchanged), one CLI case pinning the exact cue line
+  `Dialogue: 0,0:00:00.50,0:00:01.70,Caption,,0,0,0,,你好` — the dwell, not
+  the speech length — and `TestPlainCuesTileTheSegmentsTime`, which paid for
+  itself before the code was finished: the span was first shared per cue
+  instead of cumulatively, and the file it caught showed
+  `0:00:03.60,0:00:03.60` — two lines of text given no time on screen.
+  Four mutations replayed, each stopped by a named
+  assertion: the plain transcript writes nothing (`the second pass left no
+  .ass at all`, and the plain-transcript case with it), the write refuses to
+  clobber an existing file (only `TestReTranscribeReplacesTheKaraokeFile`
+  notices), the caption writer ignores the caller's canvas (`caption .ass
+  lacks "PlayResX: 1080"`), and the CLI branch calls the karaoke writer
+  (`subtitles --ass failed (1): xcut subtitles: transcript has no word
+  timings`).
 - **`analysis.EstimateBeatGrid` — the `卡点` foundation (ROADMAP Phase 5, B1).**
   A beat grid inferred from the onset track: the onsets are folded modulo each
   candidate period (30–300 BPM scanned geometrically), the single phase explaining

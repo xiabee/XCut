@@ -14,9 +14,29 @@ import (
 
 // fakeTranscriptSidecar writes a minimal protocol-v1 sidecar that advertises
 // an available transcript analyzer and answers analyze with a canned result.
-func fakeTranscriptSidecar(t *testing.T) string {
+// With wordTimings off it answers the way most backends do: where each line
+// falls, and nothing about the syllables inside it.
+func fakeTranscriptSidecar(t *testing.T, wordTimings bool) string {
 	t.Helper()
-	script := `#!/usr/bin/env python3
+	second := `{"start": 2.0, "end": 3.0, "text": "世界", "words": [
+            {"start": 2.0, "end": 3.0, "word": "世界"}]}`
+	first := `{"start": 0.5, "end": 1.5, "text": "你好", "words": [
+            {"start": 0.5, "end": 1.0, "word": "你"},
+            {"start": 1.0, "end": 1.5, "word": "好"}]}`
+	if !wordTimings {
+		first = `{"start": 0.5, "end": 1.5, "text": "你好"}`
+		second = `{"start": 2.0, "end": 3.0, "text": "世界"}`
+	}
+	script := fakeTranscriptBody(first, second)
+	path := filepath.Join(t.TempDir(), "fake-xcut-ai.py")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func fakeTranscriptBody(segments ...string) string {
+	return `#!/usr/bin/env python3
 import json, sys
 req = json.loads(sys.stdin.read() or "{}")
 op = req.get("op")
@@ -26,21 +46,11 @@ if op == "capabilities":
                           "loaded": False, "detail": "fake"}],
               "device": "cpu"}
 elif op == "analyze":
-    result = {"language": "zh", "segments": [
-        {"start": 0.5, "end": 1.5, "text": "你好", "words": [
-            {"start": 0.5, "end": 1.0, "word": "你"},
-            {"start": 1.0, "end": 1.5, "word": "好"}]},
-        {"start": 2.0, "end": 3.0, "text": "世界", "words": [
-            {"start": 2.0, "end": 3.0, "word": "世界"}]}]}
+    result = {"language": "zh", "segments": [` + strings.Join(segments, ",") + `]}
 else:
     result = {}
 sys.stdout.write(json.dumps({"protocol": 1, "ok": True, "op": op, "result": result}))
 `
-	path := filepath.Join(t.TempDir(), "fake-xcut-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }
 
 // TestSubtitlesCommandEndToEnd: the subtitles command drives the sidecar
@@ -50,7 +60,7 @@ func TestSubtitlesCommandEndToEnd(t *testing.T) {
 	requirePythonForFake(t)
 	root := t.TempDir()
 	t.Setenv("XCUT_WORKSPACE", root)
-	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t))
+	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, true))
 
 	media := filepath.Join(root, "song.mp4")
 	if err := os.WriteFile(media, []byte("not really a video"), 0o644); err != nil {
@@ -86,6 +96,43 @@ func TestSubtitlesCommandEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(string(ass), "Dialogue: 0,0:00:02.00,0:00:03.00,Karaoke,,0,0,0,,{\\kf100}世界") {
 		t.Fatalf("second karaoke line wrong:\n%s", ass)
+	}
+}
+
+// TestSubtitlesASSWithoutWordTimings: --ass asks for the styled file, and only
+// the karaoke fill needs syllable timings. Answering the ordinary transcript
+// with "karaoke output needs them" left the caller with no styled caption at
+// all — the same words, two qualities of output, decided by the sidecar.
+func TestSubtitlesASSWithoutWordTimings(t *testing.T) {
+	requirePythonForFake(t)
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false))
+	media := filepath.Join(root, "talk.mp4")
+	if err := os.WriteFile(media, []byte("not really a video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(root, "talk.ass")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"subtitles", media, "--out", out, "--ass"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("subtitles --ass failed (%d): %s", code, stderr.String())
+	}
+	file, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(file)
+	// 1.70 is the 1.2 s dwell the line needed, not the 1.5 s the speech took.
+	for _, want := range []string{"Style: Caption,", "Dialogue: 0,0:00:00.50,0:00:01.70,Caption,,0,0,0,,你好", "世界"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the caption file lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `\k`) {
+		t.Errorf("no syllable was timed, yet the file carries karaoke tags:\n%s", body)
+	}
+	if !strings.Contains(stdout.String(), "caption ass") {
+		t.Errorf("the report does not name what was written: %q", stdout.String())
 	}
 }
 

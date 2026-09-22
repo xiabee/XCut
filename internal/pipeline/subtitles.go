@@ -18,9 +18,10 @@ import (
 // Speech-to-text subtitles are an AI capability (DECISIONS D3): the core
 // never ships or downloads models, so transcription runs through the
 // configured AI sidecar and lands as project artifacts — subtitles.srt plus
-// subtitles.ass when the sidecar provides word timings. Everything here is
-// honest about a missing capability: it is a setup gap with a hint, never a
-// silent empty result.
+// subtitles.ass whenever the transcript has text to show (karaoke when the
+// sidecar timed the words, styled captions when it timed only the lines).
+// Everything here is honest about a missing capability: it is a setup gap with
+// a hint, never a silent empty result.
 
 // SubtitlesPath is where a project's subtitles live (ext: "srt" or "ass").
 func (d Deps) SubtitlesPath(projectID, ext string) (string, error) {
@@ -45,8 +46,8 @@ func (d Deps) TranscribeProjectAsync(project *storage.Project, assetID string) (
 }
 
 // ResolveSubtitlesPath returns the project's subtitle file for burn-in:
-// karaoke ASS when present, plain SRT otherwise. Not-found when the project
-// has none yet.
+// styled ASS (karaoke or captions) when present, plain SRT otherwise.
+// Not-found when the project has none yet.
 func (d Deps) ResolveSubtitlesPath(projectID string) (string, error) {
 	for _, ext := range []string{"ass", "srt"} {
 		p, err := d.SubtitlesPath(projectID, ext)
@@ -112,25 +113,38 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 		if aerr != nil {
 			return aerr
 		}
-		if t.HasWordTimings() {
-			// The caption box is laid out against the reel's own canvas, not
-			// against a reference the file invents: libass scales the whole
-			// script by PlayRes, so a 9:16 reel needs a 9:16 style or the text
-			// lands at the size and position meant for a different shape. With
-			// no timeline yet there is no canvas to match, and the writer's
-			// shipped 1280×720 reference stands. It is read at generation time,
-			// so switching to a vertical style re-runs the transcript to restyle
-			// the captions — recorded as a remainder in docs/ROADMAP.md.
-			style := subs.KaraokeStyle{}
-			if tp, terr := d.TimelinePath(project.ID); terr == nil {
-				if tl, lerr := timeline.LoadFile(tp); lerr == nil {
-					style.Width, style.Height = tl.Canvas.Width, tl.Canvas.Height
-				}
+		// The caption box is laid out against the reel's own canvas, not against
+		// a reference the file invents: libass scales the whole script by PlayRes,
+		// so a 9:16 reel needs a 9:16 style or the text lands at the size and
+		// position meant for a different shape. With no timeline yet there is no
+		// canvas to match, and the writer's shipped 1280×720 reference stands. It
+		// is read at generation time, so switching to a vertical style re-runs the
+		// transcript to restyle the captions — recorded as a remainder in
+		// docs/ROADMAP.md.
+		style := subs.KaraokeStyle{}
+		if tp, terr := d.TimelinePath(project.ID); terr == nil {
+			if tl, lerr := timeline.LoadFile(tp); lerr == nil {
+				style.Width, style.Height = tl.Canvas.Width, tl.Canvas.Height
 			}
-			var ass strings.Builder
+		}
+		var ass strings.Builder
+		switch {
+		case t.HasWordTimings():
 			if err := subs.WriteKaraokeASS(t, style, &ass); err != nil {
 				return err
 			}
+		case len(t.Segments) == 0:
+			// Nothing to lay out. An empty [Events] section would tell a later
+			// burn to draw nothing at all over the picture.
+		default:
+			// Missing word timings is not "no captions", only "no karaoke": a
+			// sidecar that knows where each line falls gets the same frame, the
+			// same wrap and the same dwell as one that knows each syllable.
+			if err := subs.WriteCaptionASS(t, style, &ass); err != nil {
+				return err
+			}
+		}
+		if ass.Len() > 0 {
 			if err := WriteAtomic(assPath, []byte(ass.String())); err != nil {
 				return err
 			}
@@ -158,7 +172,7 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 					"path", assPath)
 			}
 		}
-		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings())
+		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings(), "ass", ass.Len() > 0)
 		progress(1.0)
 		return nil
 	}

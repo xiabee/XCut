@@ -158,16 +158,21 @@ run the local HTTP API
 ```
 usage: xcut subtitles <media-file> [--ass] [--out path] [--lang code] [--model name]
 
-speech-to-text subtitles via the AI sidecar (SRT or karaoke ASS)
+speech-to-text subtitles via the AI sidecar (SRT or styled ASS)
 ```
 
-A karaoke `.ass` declares the frame it was styled for, and libass scales the whole
+A styled `.ass` declares the frame it was styled for, and libass scales the whole
 script by it. For a project the transcript stage reads the reel's own canvas, so a
 9:16 cut gets its caption sized and placed for 9:16 (`Fontsize` and the margins scale,
 720p stays exactly as it was). This standalone command has no project and so no canvas:
 it writes the shipped 1280×720 reference. Restyling an existing project's captions
 after changing its canvas means re-running the transcription — the transcript itself is
 not kept, only the files rendered from it.
+
+`--ass` asks for the styled file, and only the karaoke fill needs to know where each
+syllable fell. A sidecar that reports just the lines (most of them) gets the same frame,
+the same wrap and the same dwell without the sweep; `{\kf` tags appear only when words
+were actually timed.
 
 Within that file, a caption line is as wide as the frame allows — `(width − 2·margin)`
 divided by the font size, separators included — two lines appear at a time, and anything

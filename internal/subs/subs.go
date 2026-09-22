@@ -1,5 +1,6 @@
 // Package subs turns sidecar speech transcripts into subtitle files: plain
-// SRT for standard subtitles, and karaoke ASS (word-level \kf fills) for
+// SRT for standard subtitles, and styled ASS — karaoke (word-level \kf fills)
+// when the transcript times the words, captions when it only times the lines —
 // KTV-style sing-alongs. The transcript itself always comes from an AI
 // sidecar — the core never runs models and never downloads them (D3); this
 // package is the deterministic formatting half of that split.
@@ -179,17 +180,11 @@ func WriteKaraokeASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
 	f := style.frame()
 
 	bw := bufio.NewWriter(w)
-	fmt.Fprintf(bw, assHeader, f.playResX, f.playResY, font, f.fontSize, style.HighlightColor,
+	// Karaoke: the primary colour is the sung fill, the secondary is what unsung
+	// text is drawn in — white.
+	fmt.Fprintf(bw, assHeader, f.playResX, f.playResY, "Karaoke", font, f.fontSize, style.HighlightColor, "&H00FFFFFF",
 		f.outline, f.shadow, f.marginL, f.marginR, f.marginV)
-	// Layout is decided for the whole transcript at once: a cue may only borrow the
-	// silence up to the next one, and after wrapping a long segment there may be no
-	// gap at all where the speech had one.
-	var cues []laidCue
-	perLine := f.lineRunes()
-	for _, s := range t.Segments {
-		cues = append(cues, layoutCues(s, perLine)...)
-	}
-	holdCues(cues)
+	cues := layoutTranscript(t, f)
 	for _, c := range cues {
 		fmt.Fprintf(bw, "Dialogue: 0,%s,%s,Karaoke,,0,0,0,,%s\n",
 			assTime(c.start), assTime(c.end), karaokeCue(c))
@@ -214,6 +209,124 @@ func (f assFrame) lineRunes() int {
 		return 42
 	}
 	return n
+}
+
+// layoutTranscript wraps and holds the whole transcript at once: a cue may only
+// borrow the silence up to the next one, and after wrapping a long segment there may
+// be no gap at all where the speech had one.
+func layoutTranscript(t *Transcript, f assFrame) []laidCue {
+	var cues []laidCue
+	perLine := f.lineRunes()
+	for _, s := range t.Segments {
+		cues = append(cues, layoutCues(s, perLine)...)
+	}
+	holdCues(cues)
+	return cues
+}
+
+// layoutTextCues lays out a segment that has no word timings, where the unit of
+// layout is the character rather than the word. The budget, the lines-per-cue cap and
+// the time tiling are the same functions the timed path uses — only the unit differs,
+// because nothing told us where one word ends and the next begins.
+func layoutTextCues(s Segment, perLine int) []laidCue {
+	r := []rune(s.Text)
+	if len(r) == 0 {
+		return nil
+	}
+	if perLine < 1 {
+		perLine = 1
+	}
+	var lines [][]Word
+	for i := 0; i < len(r); i += perLine {
+		end := i + perLine
+		if end > len(r) {
+			end = len(r)
+		}
+		// One Word per line, not per character: the plain renderer prints the
+		// text and the timings only ever name the cue's window.
+		lines = append(lines, []Word{{Start: 0, End: 0, Word: string(r[i:end])}})
+	}
+	var cues []laidCue
+	// share is each cue's character count: the span is divided by it, because with
+	// no word timings nothing here can claim one line was spoken faster than another.
+	var share []int
+	total := 0
+	for i := 0; i < len(lines); i += maxLinesPerCue {
+		last := i + maxLinesPerCue
+		if last > len(lines) {
+			last = len(lines)
+		}
+		group := lines[i:last]
+		n := 0
+		for _, l := range group {
+			n += len([]rune(l[0].Word))
+		}
+		cues = append(cues, laidCue{lines: group})
+		share = append(share, n)
+		total += n
+	}
+	cursor := s.Start
+	span := s.End - s.Start
+	acc := 0
+	for i := range cues {
+		finish := s.End
+		if i+1 < len(cues) && total > 0 {
+			// Cumulative, not per cue: each share is of the whole span, so the
+			// boundary is where this much of the text ends — a per-cue addition
+			// from the segment start would hand every cue the same finish.
+			acc += share[i]
+			finish = s.Start + span*float64(acc)/float64(total)
+		}
+		cues[i].start, cues[i].end, cues[i].speechEnd = cursor, finish, finish
+		cursor = finish
+	}
+	return cues
+}
+
+// captionLine is one laid-out cue with no karaoke: words joined by the space the
+// renderer expects, lines joined by the break libass understands, every character
+// escaped because sidecar text is not trusted.
+func captionLine(c laidCue) string {
+	var b strings.Builder
+	for li, line := range c.lines {
+		if li > 0 {
+			b.WriteString("\\N")
+		}
+		for i, wd := range line {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(assEscape(wd.Word))
+		}
+	}
+	return b.String()
+}
+
+// WriteCaptionASS renders a transcript as ASS with a plain Caption style: the same
+// frame-derived metrics, the same wrapping and dwell, and no {\kf} fill. A transcript
+// without word timings used to get an SRT and nothing else, so the burn styled it
+// with libass defaults while the karaoke path got a designed frame — same words, two
+// different captions, depending on whether the sidecar happened to know when each
+// syllable fell.
+func WriteCaptionASS(t *Transcript, style KaraokeStyle, w io.Writer) error {
+	if len(t.Segments) == 0 {
+		return xcerr.E(xcerr.CodeValidation, "transcript has no segments to write", nil)
+	}
+	font := style.FontName
+	if font == "" {
+		font = "sans-serif"
+	}
+	f := style.frame()
+	bw := bufio.NewWriter(w)
+	// Both colours white: there is no sung/unsung distinction without word timings,
+	// and a leftover secondary would invite one.
+	fmt.Fprintf(bw, assHeader, f.playResX, f.playResY, "Caption", font, f.fontSize, "&H00FFFFFF", "&H00FFFFFF",
+		f.outline, f.shadow, f.marginL, f.marginR, f.marginV)
+	for _, c := range layoutTranscript(t, f) {
+		fmt.Fprintf(bw, "Dialogue: 0,%s,%s,Caption,,0,0,0,,%s\n",
+			assTime(c.start), assTime(c.end), captionLine(c))
+	}
+	return bw.Flush()
 }
 
 // maxLinesPerCue and minCueDwell are the other half of the convention: two lines on
@@ -263,7 +376,7 @@ func (c laidCue) lastWord() (Word, bool) {
 // characters on screen at times the sidecar never claimed they were spoken.
 func layoutCues(s Segment, perLine int) []laidCue {
 	if len(s.Words) == 0 {
-		return []laidCue{{start: s.Start, end: s.End}}
+		return layoutTextCues(s, perLine)
 	}
 	var lines [][]Word
 	var line []Word
@@ -422,7 +535,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,%s,%d,%s,&H00FFFFFF,&H00101010,&H96000000,0,0,0,0,100,100,0,0,1,%d,%d,2,%d,%d,%d,1
+Style: %s,%s,%d,%s,%s,&H00101010,&H96000000,0,0,0,0,100,100,0,0,1,%d,%d,2,%d,%d,%d,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
