@@ -29,6 +29,12 @@ type AssetEvents struct {
 	// scoreboard). Optional and empty by default: the core's own signals were
 	// measured and cannot infer it (docs/EVAL.md).
 	Boundaries []float64
+	// Beats is the source audio's beat grid (analysis.EstimateBeatGrid over the
+	// onset track), which the preset's beat_snap_tolerance may pull a clip end
+	// onto. It is the softer constraint: an end that Boundaries already fixed is
+	// never moved, because a cut landing on the score is worth more than one
+	// landing on the pulse. Empty by default, like Boundaries.
+	Beats []float64
 }
 
 // selInterval is a source-time span selected so far, kept per asset for the
@@ -134,6 +140,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		asset      AssetInfo
 		seg        event.Segment
 		boundaries []float64
+		beats      []float64
 		score      float64
 		f          factors
 	}
@@ -150,6 +157,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				asset:      it.Asset,
 				seg:        s,
 				boundaries: it.Boundaries,
+				beats:      it.Beats,
 			})
 		}
 	}
@@ -221,6 +229,15 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			if srcEnd-srcStart < preset.MinClipDuration {
 				continue
 			}
+			// Beat snapping only applies where nothing else has fixed the end: a
+			// measured point end is the harder constraint, so a clip that already
+			// stops as the score changes keeps that moment.
+			atBeat := 0.0
+			if atBoundary == 0 {
+				if snapped, moved := snapEnd(preset, srcStart, srcEnd, c.seg, c.beats); moved {
+					srcEnd, atBeat = snapped, snapped
+				}
+			}
 			// Diversity operates on the trimmed window — what the reel will
 			// actually show — not on the wider source segment.
 			cand := selInterval{assetID: c.asset.ID, start: srcStart, end: srcEnd}
@@ -247,6 +264,13 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				// Which boundary shaped this clip — so a reader can check the
 				// scoreboard rule per clip instead of trusting an aggregate score.
 				md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
+			}
+			if atBeat > 0 {
+				// Same argument for the grid: the beat is visible per clip. Four
+				// decimals because the estimate is not a round number — a
+				// refined 0.5 s grid sits at 7.5028, and rounding the evidence to
+				// two decimals would disagree with the geometry it documents.
+				md["beat"] = strconv.FormatFloat(round4(atBeat), 'f', 4, 64)
 			}
 			clips = append(clips, timeline.Clip{
 				ID:          "clip_" + strconv.Itoa(n),
@@ -551,6 +575,32 @@ func reachableBoundary(boundaries []float64, seg event.Segment, minClip float64)
 		return 0, false
 	}
 	return best, true
+}
+
+// snapEnd moves an otherwise-unfixed clip end onto the nearest beat of the
+// source's grid, within the preset's tolerance. It is deliberately narrower than
+// "cut on the beat": the end may not pass the material the detector attributed
+// to this event, may not lengthen the clip past max_clip_duration, and may not
+// eat the clip's own minimum. Nearest wins; the scan order breaks a tie, so an
+// unsorted grid is still deterministic.
+func snapEnd(p *Preset, start, end float64, seg event.Segment, beats []float64) (float64, bool) {
+	if p.BeatSnapTolerance <= 0 || len(beats) == 0 {
+		return end, false
+	}
+	lo := start + p.MinClipDuration
+	hi := math.Min(seg.End, start+p.MaxClipDuration)
+	best, bestDist := end, p.BeatSnapTolerance+1
+	for _, b := range beats {
+		d := math.Abs(b - end)
+		if d > p.BeatSnapTolerance || d >= bestDist || b < lo || b > hi {
+			continue
+		}
+		best, bestDist = b, d
+	}
+	if bestDist > p.BeatSnapTolerance {
+		return end, false
+	}
+	return round4(best), true
 }
 
 func clamp(v, lo, hi float64) float64 {

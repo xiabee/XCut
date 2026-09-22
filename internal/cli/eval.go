@@ -23,7 +23,7 @@ import (
 
 func init() {
 	register("eval", "score pipeline selection quality against an annotated manifest",
-		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--out results.json] [--iou 0.3] [--baseline results.json]"), cmdEval)
+		usageSyntax("xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--beat-snap seconds|off] [--out results.json] [--iou 0.3] [--baseline results.json]"), cmdEval)
 }
 
 // evalCaseResult is one case's outcome in the results document.
@@ -97,6 +97,7 @@ func cmdEval(a *App, args []string) error {
 	outPath := ""
 	iouFlag := "0.3"
 	durationFlag := "" // "" = each style's own target_duration
+	beatFlag := ""     // "" = the style's own beat_snap_tolerance, "off" = never
 	baselinePath := "" // results.json from a previous run, to diff against
 	// --check is a boolean-style flag; pull it out before parseCommandArgs
 	// (which requires values for its flags).
@@ -110,18 +111,19 @@ func cmdEval(a *App, args []string) error {
 		rest = append(rest, arg)
 	}
 	pos, err := parseCommandArgs(rest, map[string]*string{
-		"style":    &styleFlag,
-		"out":      &outPath,
-		"iou":      &iouFlag,
-		"duration": &durationFlag,
-		"baseline": &baselinePath,
+		"style":     &styleFlag,
+		"out":       &outPath,
+		"iou":       &iouFlag,
+		"duration":  &durationFlag,
+		"beat-snap": &beatFlag,
+		"baseline":  &baselinePath,
 	})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--out results.json] [--iou 0.3] [--baseline results.json]", nil)
+			"usage: xcut eval <manifest.json> [--check] [--style name] [--duration seconds] [--beat-snap seconds|off] [--out results.json] [--iou 0.3] [--baseline results.json]", nil)
 	}
 	if check {
 		if baselinePath != "" {
@@ -142,6 +144,10 @@ func cmdEval(a *App, args []string) error {
 	}
 
 	duration, err := parseDurationFlag(durationFlag)
+	if err != nil {
+		return err
+	}
+	beatSnap, err := parseBeatSnapFlag(beatFlag)
 	if err != nil {
 		return err
 	}
@@ -225,7 +231,7 @@ func cmdEval(a *App, args []string) error {
 		fmt.Fprintf(a.Stdout, "  [%d/%d] %s  (%s)\n", i+1, len(manifest.Cases), c.Name, styleName)
 		res := evalCaseResult{Name: c.Name, Style: styleName, Media: c.Media}
 
-		clips, marks, terr := evalRunCase(&ea, db, c, styleName, duration)
+		clips, marks, terr := evalRunCase(&ea, db, c, styleName, duration, beatSnap)
 		res.ScoreMarks = marks
 		var cm *eval.CaseMetrics
 		if terr != nil {
@@ -246,9 +252,9 @@ func cmdEval(a *App, args []string) error {
 			continue
 		}
 		m := res.Metrics
-		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d  missed run %d%s\n",
+		fmt.Fprintf(a.Stdout, "  %-24s P %.3f  R %.3f  F1 %.3f  ranges %d/%d  dup %.2f  clips %d  missed run %d%s%s\n",
 			c.Name, m.Precision, m.Recall, m.F1, m.RangesHit, m.RangesTotal, m.DuplicateRate, m.Clips,
-			m.LongestMissedRun, boundaryShaped(res))
+			m.LongestMissedRun, boundaryShaped(res), beatsShaped(clips))
 	}
 
 	totalRanges := 0
@@ -295,7 +301,7 @@ func cmdEval(a *App, args []string) error {
 // target), which is what lets the harness measure the length/coverage trade-off
 // instead of arguing about it. The second result is how many scoreboard marks
 // the case ran with (0 when the manifest asked for none).
-func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duration float64) ([]timeline.Clip, int, error) {
+func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duration, beatSnap float64) ([]timeline.Clip, int, error) {
 	if _, err := os.Stat(c.Media); err != nil {
 		return nil, 0, xcerr.E(xcerr.CodeNotFound, "media file missing: "+filepath.Base(c.Media), err)
 	}
@@ -346,7 +352,7 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 			return nil, 0, serr
 		}
 	}
-	tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration})
+	tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap})
 	if err != nil {
 		// The marks survive the failure: they were measured and stored before
 		// the reel was attempted, and a results document that reports 0 for a
@@ -359,6 +365,22 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 		clips = append(clips, tr.Clips...)
 	}
 	return clips, marks, nil
+}
+
+// beatsShaped reports how many clip ends the beat grid moved, so an eval run says
+// out loud whether the cut landed on the pulse — a tolerance that reaches no grid
+// is otherwise indistinguishable from one that snapped every cut.
+func beatsShaped(clips []timeline.Clip) string {
+	n := 0
+	for _, c := range clips {
+		if _, ok := c.Metadata["beat"]; ok {
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  beats %d/%d", n, len(clips))
 }
 
 // clipsToIntervals maps clips to source-time intervals for scoring. A valid

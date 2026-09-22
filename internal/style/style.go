@@ -115,12 +115,17 @@ type Preset struct {
 	TargetDuration  float64         `json:"target_duration"`
 	MinClipDuration float64         `json:"min_clip_duration"`
 	MaxClipDuration float64         `json:"max_clip_duration"`
-	Scoring         Scoring         `json:"scoring"`
-	EventConfig     event.Config    `json:"event_config"`
-	Transition      Transition      `json:"transition"`
-	Audio           Audio           `json:"audio"`
-	Diversity       Diversity       `json:"diversity,omitempty"`
-	MotionROI       *MotionROI      `json:"motion_roi,omitempty"`
+	// BeatSnapTolerance lets a clip end that nothing else has fixed move to the
+	// nearest beat of the source's own grid, so cuts land where the audio's
+	// pulse is (卡点). 0 = off. Capped well below a clip's length on purpose:
+	// past that it is re-timing the shot, not snapping the cut.
+	BeatSnapTolerance float64      `json:"beat_snap_tolerance,omitempty"`
+	Scoring           Scoring      `json:"scoring"`
+	EventConfig       event.Config `json:"event_config"`
+	Transition        Transition   `json:"transition"`
+	Audio             Audio        `json:"audio"`
+	Diversity         Diversity    `json:"diversity,omitempty"`
+	MotionROI         *MotionROI   `json:"motion_roi,omitempty"`
 
 	// Source records where the preset was loaded from (not serialized).
 	Source string `json:"-"`
@@ -154,6 +159,19 @@ func (p *Preset) Validate() error {
 	}
 	if p.MaxClipDuration > p.TargetDuration {
 		add("max_clip_duration %g exceeds target_duration %g", p.MaxClipDuration, p.TargetDuration)
+	}
+	if p.BeatSnapTolerance < 0 {
+		add("beat_snap_tolerance must be >= 0")
+	}
+	// A snap is a trim adjustment, not a re-timing: beyond half a second (a
+	// third of the shortest clip this project ships) it would move a cut further
+	// than the cut's own precision, and beyond that the grid stops being a hint.
+	if p.BeatSnapTolerance > 0.5 {
+		add("beat_snap_tolerance %g out of [0,0.5]", p.BeatSnapTolerance)
+	}
+	if p.BeatSnapTolerance > 0 && p.MinClipDuration > 0 && p.BeatSnapTolerance >= p.MinClipDuration {
+		add("beat_snap_tolerance %g is at least min_clip_duration %g, which would let a snap empty a clip",
+			p.BeatSnapTolerance, p.MinClipDuration)
 	}
 	w := p.Scoring
 	if w.Motion < 0 || w.Audio < 0 || w.Duration < 0 || w.Hits < 0 || w.Density < 0 {

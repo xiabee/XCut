@@ -163,7 +163,8 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	s.writeJobAccepted(w, r, p.ID, id)
 }
 
-// POST /api/v1/projects/{id}/timeline {"style": "generic_highlight"}
+// POST /api/v1/projects/{id}/timeline {"style": "generic_highlight",
+// "duration": 120, "beat_snap": 0.12}
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
@@ -172,6 +173,10 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Style    string  `json:"style"`
 		Duration float64 `json:"duration"`
+		// Pointer so "absent" and "0" differ: absent keeps the style's own
+		// tolerance, 0 means the same thing through the pipeline, and -1
+		// (pipeline.BeatSnapOff) is how a client forces it off.
+		BeatSnap *float64 `json:"beat_snap"`
 	}
 	if !s.decodeBody(w, r, &body) {
 		return
@@ -179,7 +184,11 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	if body.Style == "" {
 		body.Style = "generic_highlight"
 	}
-	id, err := s.Pipe.BuildTimelineAsync(p, pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration})
+	req := pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration}
+	if body.BeatSnap != nil {
+		req.BeatSnap = *body.BeatSnap
+	}
+	id, err := s.Pipe.BuildTimelineAsync(p, req)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -21,12 +21,14 @@ func init() {
 func cmdAuto(a *App, args []string) error {
 	styleName := "generic_highlight"
 	durationFlag := ""
+	beatFlag := "" // "" = the style's own tolerance, "off" = never
 	projectName := "auto"
 	outPath := ""
 	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
 	pos, err := parseCommandArgs(args, map[string]*string{
 		"style":      &styleName,
 		"duration":   &durationFlag,
+		"beat-snap":  &beatFlag,
 		"project":    &projectName,
 		"out":        &outPath,
 		"score-crop": &scoreCropFlag,
@@ -38,9 +40,13 @@ func cmdAuto(a *App, args []string) error {
 	if err != nil {
 		return err
 	}
+	beatSnap, err := parseBeatSnapFlag(beatFlag)
+	if err != nil {
+		return err
+	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 
@@ -130,7 +136,7 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		d := a.Pipeline(db)
-		tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration}, assetIDs...)
+		tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap}, assetIDs...)
 		if err != nil {
 			return err
 		}

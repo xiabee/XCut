@@ -361,7 +361,16 @@ func firstErr(ch chan error) error {
 type TimelineRequest struct {
 	Style    string
 	Duration float64
+	// BeatSnap overrides the style's beat_snap_tolerance. 0 keeps the preset's
+	// own value; BeatSnapOff forces it off for this run, which is how the A/B is
+	// reported both ways (docs/ROADMAP.md Phase 5, B2) and how a user says "not on
+	// this file".
+	BeatSnap float64
 }
+
+// BeatSnapOff is the TimelineRequest.BeatSnap sentinel that turns cutting on the
+// beat off regardless of what the style asks for.
+const BeatSnapOff = -1.0
 
 // Style returns a request that keeps the preset's own target duration.
 func Style(name string) TimelineRequest { return TimelineRequest{Style: name} }
@@ -375,14 +384,24 @@ const MaxRequestDuration = 4 * 3600
 // message); the check is deliberately unexported — the agreement between the
 // two is pinned by driving `xcut timeline --duration`, not by exposing a hook.
 func (r TimelineRequest) validate() error {
-	if r.Duration == 0 {
-		return nil
+	// Each knob is checked on its own: an early return for "the caller did not
+	// override this one" used to skip every later check, which is how a request
+	// with no duration but a 2-second snap reached the queue.
+	if r.Duration != 0 {
+		if math.IsNaN(r.Duration) || math.IsInf(r.Duration, 0) ||
+			r.Duration < 1 || r.Duration > MaxRequestDuration {
+			return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+				"timeline duration must be between 1 and %d seconds (got %g), or 0 to keep the style's own target",
+				MaxRequestDuration, r.Duration), nil)
+		}
 	}
-	if math.IsNaN(r.Duration) || math.IsInf(r.Duration, 0) ||
-		r.Duration < 1 || r.Duration > MaxRequestDuration {
+	// The same bound style.Preset.Validate applies to the preset field, checked
+	// here too because an override bypasses the preset file: a snap the length of
+	// a clip is a re-timing, not a cut.
+	if r.BeatSnap != 0 && r.BeatSnap != BeatSnapOff && !(r.BeatSnap > 0 && r.BeatSnap <= 0.5) {
 		return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
-			"timeline duration must be between 1 and %d seconds (got %g), or 0 to keep the style's own target",
-			MaxRequestDuration, r.Duration), nil)
+			"beat snap tolerance must be 0 (the style's own), %g (off), or a duration in (0,0.5] seconds (got %g)",
+			BeatSnapOff, r.BeatSnap), nil)
 	}
 	return nil
 }
@@ -454,6 +473,20 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
 					"reel length %gs is shorter than style %q's minimum clip (%gs): no clip could fit",
 					req.Duration, preset.Name, preset.MinClipDuration), nil)
+			}
+		}
+		switch {
+		case req.BeatSnap == BeatSnapOff:
+			preset.BeatSnapTolerance = 0
+		case req.BeatSnap > 0:
+			preset.BeatSnapTolerance = req.BeatSnap
+			// Same reasoning as the reel-length check above: a snap that is a
+			// whole minimum clip could empty the shortest clip it touched, and
+			// selection would then fail further downstream naming neither number.
+			if preset.BeatSnapTolerance >= preset.MinClipDuration {
+				return xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+					"beat snap %gs is at least style %q's minimum clip (%gs), which could empty a clip",
+					req.BeatSnap, preset.Name, preset.MinClipDuration), nil)
 			}
 		}
 		// Rally segmentation keys off audio transients: with no audio stream
@@ -529,6 +562,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				},
 				Segments:   segs,
 				Boundaries: marks,
+				Beats:      beatGridFor(d.Log, res, &asset, preset),
 			})
 			progress(float64(i+1) / float64(len(assets)+1))
 		}
@@ -543,6 +577,36 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		*result = *tl
 		return nil
 	}
+}
+
+// beatGridFor derives the source's beat grid when the style asks to cut on it.
+// It reads the onset track analysis already cached and estimates from there, so
+// the grid has no cache entry of its own — the estimate costs microseconds, while
+// another stored track would be one more thing to invalidate (docs/ARCHITECTURE.md
+// on the analysis cache). Returns nil when the style does not snap, the asset has
+// no onsets, or the onsets carry no grid worth believing; the caller then selects
+// exactly as it did before this rule existed.
+func beatGridFor(log *slog.Logger, res *analysis.Result, a *storage.Asset, preset *style.Preset) []float64 {
+	if preset.BeatSnapTolerance <= 0 {
+		return nil
+	}
+	var onsets []float64
+	for _, tr := range res.Tracks {
+		if tr.Kind == "audio_onset" {
+			for _, s := range tr.Samples {
+				onsets = append(onsets, s.T)
+			}
+		}
+	}
+	grid, ok := analysis.EstimateBeatGrid(onsets, a.DurationSec)
+	if !ok {
+		log.Debug("no beat grid in this asset's audio; cuts stay where the length rules put them",
+			"asset", a.ID, "onsets", len(onsets))
+		return nil
+	}
+	log.Info("beat grid estimated", "asset", a.ID, "bpm", grid.BPM,
+		"coverage", grid.Coverage, "beats", len(grid.Beats), "onsets", len(onsets))
+	return grid.Beats
 }
 
 // eventConfigFor returns the event config for ONE asset: an asset-scoped

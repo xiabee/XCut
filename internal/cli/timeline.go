@@ -18,6 +18,7 @@ func init() {
 func cmdTimeline(a *App, args []string) error {
 	styleName := "generic_highlight"
 	durationFlag := ""
+	beatFlag := ""
 	restore := false
 	// --restore-backup is a boolean-style flag; pull it out before
 	// parseCommandArgs (which requires values for its flags).
@@ -29,13 +30,14 @@ func cmdTimeline(a *App, args []string) error {
 		}
 		rest = append(rest, arg)
 	}
-	pos, err := parseCommandArgs(rest, map[string]*string{"style": &styleName, "duration": &durationFlag})
+	pos, err := parseCommandArgs(rest, map[string]*string{
+		"style": &styleName, "duration": &durationFlag, "beat-snap": &beatFlag})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut timeline <project> [--style name] [--duration seconds] | xcut timeline <project> --restore-backup", nil)
+			"usage: xcut timeline <project> [--style name] [--duration seconds] [--beat-snap seconds|off] | xcut timeline <project> --restore-backup", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -66,7 +68,11 @@ func cmdTimeline(a *App, args []string) error {
 	if err != nil {
 		return err
 	}
-	req := pipeline.TimelineRequest{Style: styleName, Duration: duration}
+	beatSnap, err := parseBeatSnapFlag(beatFlag)
+	if err != nil {
+		return err
+	}
+	req := pipeline.TimelineRequest{Style: styleName, Duration: duration, BeatSnap: beatSnap}
 	tl, err := d.BuildTimeline(p, req)
 	if err != nil {
 		return err
@@ -75,8 +81,17 @@ func cmdTimeline(a *App, args []string) error {
 	if duration > 0 {
 		fmt.Fprintf(a.Stdout, "target duration: %.0fs (overriding the style's own)\n", duration)
 	}
+	switch {
+	case beatSnap == pipeline.BeatSnapOff:
+		fmt.Fprintln(a.Stdout, "beat snap: off (overriding the style's own)")
+	case beatSnap > 0:
+		fmt.Fprintf(a.Stdout, "beat snap: ±%gs (overriding the style's own)\n", beatSnap)
+	}
 	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+	if snapped := snappedClipCount(tl); snapped > 0 {
+		fmt.Fprintf(a.Stdout, "cuts on the beat: %d of %d clips\n", snapped, countTimelineClips(tl))
+	}
 	if note := footageLimitNote(tl, req.Duration); note != "" {
 		fmt.Fprintln(a.Stdout, note)
 	}
@@ -111,6 +126,41 @@ func parseDurationFlag(v string) (float64, error) {
 				" seconds (got "+v+")", nil)
 	}
 	return f, nil
+}
+
+// parseBeatSnapFlag reads --beat-snap: "" keeps the style's own tolerance,
+// "off" forces snapping off, and a number in (0, 0.5] sets it for this run.
+func parseBeatSnapFlag(v string) (float64, error) {
+	switch strings.TrimSpace(v) {
+	case "":
+		return 0, nil
+	case "off", "none":
+		return pipeline.BeatSnapOff, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || !(f > 0 && f <= 0.5) {
+		return 0, xcerr.E(xcerr.CodeValidation,
+			"--beat-snap must be off, or a tolerance in (0, 0.5] seconds (got "+v+")", nil)
+	}
+	return f, nil
+}
+
+// snappedClipCount counts the clips whose end was moved onto a beat. The CLI
+// prints it because a flag line alone would read as "it snapped" for a run where
+// the audio carried no grid — which is a different answer with a different fix.
+func snappedClipCount(tl *timeline.Timeline) int {
+	if tl == nil {
+		return 0
+	}
+	n := 0
+	for _, tr := range tl.Tracks {
+		for _, c := range tr.Clips {
+			if _, ok := c.Metadata["beat"]; ok {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // footageLimitNote explains a reel that came out shorter than asked when the
