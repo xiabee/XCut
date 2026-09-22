@@ -737,6 +737,7 @@ async function refreshTimeline() {
   renderInspector();
   renderTimeline();
   renderFootageNote();
+  renderBedNote();
   renderPacing(null);
   if (!currentProject) return;
   const pid = currentProject.id;
@@ -751,6 +752,7 @@ async function refreshTimeline() {
   } catch (_) { /* no timeline yet — expected before first generation */ }
   renderTimeline();
   renderFootageNote();
+  renderBedNote();
   renderPacing(pacing);
 }
 
@@ -823,6 +825,44 @@ function renderPacing(p) {
     el.textContent = tf("{shots} shots · mean {mean}s · median {median}s · longest {longest}s · no shot is scored in this document", args);
   }
   el.hidden = false;
+}
+
+// renderBedNote states what the saved document actually chose for music, in four
+// distinguishable situations rather than one: a bed whose beat the cuts followed, a
+// bed whose beat was measured and still moved nothing (every end was already
+// pinned — a scoreboard, a length rule), a bed whose audio held no grid the
+// estimator would believe, and no bed at all with snapping that came from the
+// source's own pulse. Collapsing those into "music: on" is how a user learns the
+// wrong lesson about their own footage.
+function renderBedNote() {
+  const el = $("tl-bed");
+  if (!el) return;
+  const md = (timelineDoc && timelineDoc.metadata) || {};
+  const first = ((timelineDoc || {}).tracks || [])[0] || {};
+  const clips = Array.isArray(first.clips) ? first.clips : [];
+  const snapped = clips.filter(c => c.metadata && c.metadata.beat).length;
+  const total = clips.length;
+  const args = { n: snapped, total };
+  if (md.music) {
+    args.name = String(md.music).split(/[\\/]/).pop();
+    args.bpm = (Number(md.music_bpm) || 0).toFixed(2);
+    if (snapped > 0) {
+      el.textContent = tf("music bed “{name}” at {bpm} BPM · {n} of {total} cuts landed on its beat", args);
+    } else if (Number(md.music_bpm) > 0) {
+      el.textContent = tf("music bed “{name}” at {bpm} BPM · its beat was measured, and no cut needed to move to it", args);
+    } else {
+      el.textContent = tf("music bed “{name}” plays under the reel · its audio had no beat a grid could be believed in", args);
+    }
+    el.hidden = false;
+    return;
+  }
+  if (snapped > 0) {
+    el.textContent = tf("{n} of {total} cuts landed on the source audio's own beat", args);
+    el.hidden = false;
+    return;
+  }
+  el.hidden = true;
+  el.textContent = "";
 }
 
 // renderTimeline draws the visual strip: a time ruler, one block per clip
@@ -1584,6 +1624,13 @@ function timelineRequest() {
   const raw = $("tl-duration").value.trim();
   const secs = Number(raw);
   if (raw !== "" && Number.isFinite(secs) && secs >= 1) req.duration = secs;
+  const bed = $("tl-music").value.trim();
+  if (bed !== "") req.music = bed;
+  // Empty means "whatever the style says"; -1 is how a client forces the snap off.
+  // The two must not collapse into the same request, or "off" would silently mean
+  // "on, at the style's tolerance".
+  const snap = $("tl-snap").value;
+  if (snap !== "") req.beat_snap = Number(snap);
   return req;
 }
 

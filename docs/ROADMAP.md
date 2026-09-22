@@ -104,6 +104,21 @@ Every item states how it is measured before it is built, because the eval harnes
       estimator, reporting `period=0.4999 bpm=120.0 coverage=1.00 beats=24`.
       Four mutations of the constants and the two rules each killed a named
       assertion (`ran=5`, no build failure).
+- [ ] B1b — The grid refuses (and mis-fits) a bed longer than ~96 beats, found by
+      using `--music` through the UI on a 60 s metronome: 20 s of exact 0.5 s clicks
+      gives `bpm=120.00 coverage=1 beats=39`, 60 s of the *same* clicks gives
+      "no beat grid the estimator will believe, onsets=119"; and 119 onsets at 1.0 s
+      returns `period=0.2 bpm=300 coverage=1.000`, a confidently wrong grid rather
+      than a refusal. The numbers point at one cause — coverage is judged on the
+      unrefined candidate period, so the ladder's ~1% error accumulates per beat and
+      only grids whose period happens to sit on a rung survive — while the
+      least-squares refinement that would correct it runs after the verdict.
+      Measured: two regressions, because there are two symptoms (a 119-onset 0.5 s
+      lattice must be *accepted* at 120 BPM, a 1.0 s lattice must come back at 60 BPM
+      and not 300), the five B1 cases must stay green (they are the short-file half of
+      the contract), and the claim is re-measured end to end through `--music` on a
+      3-minute bed — the length a real pop track actually has. If the cause turns out
+      to be something else, this line gets rewritten to say what was measured.
 - [x] B2 — Beat-snapped selection (`卡点`). `beat_snap_tolerance` on the preset,
       `--beat-snap seconds|off` on timeline/auto/eval, `beat_snap` on the API: a
       clip end that nothing else fixed may move to the nearest beat of the
@@ -217,13 +232,15 @@ Every item states how it is measured before it is built, because the eval harnes
       Measured: the DOM-structure guards the repo already has, plus a browser
       probe reading the *computed style of the nodes that changed* — a CSS rule
       that renders on nothing has fooled this project before.
-      Partially landed as B6a — the pacing chip: `GET …/timeline` returns a derived
+      Partially landed as B6a (the pacing chip: `GET …/timeline` returns a derived
       `pacing` object computed by the same `timeline.Pacing` the CLI line uses, the
-      chip renders it (including the unscored-document branch), its wire keys are
-      pinned in Go, and the browser session confirmed the rendered node — with the
-      note that no browser runs in CI, so that last level is a performed
-      observation, not a gate. Remaining: beat ticks on the ruler, the per-clip
-      motion picker, the music/bed field, and the post-ready export.
+      chip renders it including the unscored-document branch, its wire keys are
+      pinned in Go on both ends, and the browser confirmed the rendered node — with
+      the note that no browser runs in CI, so that last level is a performed
+      observation, not a gate) and B6b (the music-bed field, the three-way beat-snap
+      selector, and a second line stating what the saved document chose — bed + BPM +
+      how many cuts followed it, or which of the three "no" cases applied). Remaining:
+      beat ticks on the ruler, the per-clip motion picker, and the post-ready export.
 - [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.

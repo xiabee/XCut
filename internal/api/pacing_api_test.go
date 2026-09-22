@@ -189,4 +189,17 @@ func TestTheScriptReadsTheseWireKeys(t *testing.T) {
 			t.Errorf("app.js never reads %q, but the pacing object still writes it — the chip is showing a name that no longer exists", field)
 		}
 	}
+	// The bed sentence reads what the document was stamped with (B4a's metadata),
+	// so the same two-ended pin applies: the writer's keys must be the reader's.
+	for _, field := range []string{"md.music", "md.music_bpm", "c.metadata.beat"} {
+		if !strings.Contains(src, field) {
+			t.Errorf("the timeline document still writes %q, but nothing in the UI reads it any more", field)
+		}
+	}
+	// The request the UI sends must name the fields the API body decodes.
+	for _, field := range []string{"req.music", "req.beat_snap"} {
+		if !strings.Contains(src, field) {
+			t.Errorf("app.js never sends %q, though POST …/timeline still accepts it", field)
+		}
+	}
 }

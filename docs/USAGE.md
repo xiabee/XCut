@@ -207,6 +207,13 @@ the one the style's own scoring rated best and leaves the rest in match order. O
 loads rather than read as the default, and the pacing line above is what shows
 whether the promise was kept (`top shot starts at 0.0s`).
 
+In the web UI those knobs are controls rather than flags: a **music bed** path field
+and a **cut on the beat** selector (`style's own` sends nothing, `±0.12 s` sends the
+product default, `off` sends `-1`). Under the timeline, the document reports what it
+actually chose — `music bed "<name>" at <bpm> BPM · 1 of 8 cuts landed on its beat`,
+or the sentence for a bed whose audio held no grid, or for one whose cut points were
+already pinned. The name shown is the file's, not the caller's path.
+
 Asking for more than the material holds is safe and does not hang: the selection
 is bounded by the usable segments, not by the number. Measured on the same
 match — a 240 s target and a 14400 s (4 h) target both yield 21 clips / 168 s,

@@ -587,6 +587,57 @@ gate 514/13 with `not run: nothing`, zero `DATA RACE` lines, and the two-ended w
 pins plus the asset guards run explicitly on the node (`ui_pacing ran=5`,
 `shape+pacing+order ran=17`, `skipped=0` in both).
 
+**B6b (UI): the bed and the beat, where they belong — the request form.** The
+pipeline panel now has a **music bed** path field and a **cut on the beat** selector
+(`style's own` / `±0.12 s (product default)` / `off — keep the music, move nothing`),
+and `timelineRequest()` sends `music` and `beat_snap` only when the user chose them,
+so "absent", "0.12" and "−1 (off)" stay the three different requests the API already
+distinguishes — verified in the page itself, by calling the shipping function:
+`{style, duration:60, music:"…bed60.m4a", beat_snap:0.12}` → `beat_snap:-1` with the
+off option → `{style, duration:60}` with both left alone. Below the timeline, a
+second line states what the *saved document* chose, in the four cases that mean
+different things: a bed whose beat the cuts followed (`背景音乐「click20.wav」120.00 BPM
+· 1/8 个剪辑点落在它的节拍上`), a bed whose beat was measured but moved nothing, a bed
+whose audio held no believable grid, and no bed with snapping driven by the source's
+own pulse. The path is echoed as a file *name*, never as the caller's path. The four
+keys the note reads (`md.music`, `md.music_bpm`, `c.metadata.beat`, and the two
+request fields) are pinned in Go on both sides, the same way the pacing chip is.
+
+### Known issue — the beat grid refuses (or mis-fits) a bed longer than ~96 beats
+
+Found by using B4a's own feature at product scale, through the UI. Two synthetic
+click beds, one tempo, two lengths:
+
+- `click20.wav` (20 s of exact 0.5 s clicks): `bpm=120.00 coverage=1 beats=39
+  onsets=39` → accepted, and the reel snapped (1 of 8 ends moved).
+- `click120.wav` (60 s of the *same* 0.5 s clicks): `the music bed carries no beat
+  grid the estimator will believe … onsets=119` → **refused**. A perfect metronome the
+  estimator calls unbelievable.
+
+A scratch matrix over `EstimateBeatGrid` (run, then deleted — the numbers are the
+record) places the boundary by onset count, not by span: a 0.5 s lattice is accepted
+at 6, 8, 10, 20, 30, 40 and 60 onsets and refused at 119; 119 onsets at 0.4 s are
+accepted; 119 at 0.25 s are refused. And a second failure mode is worse than refusal:
+119 onsets at 1.0 s returned `period=0.2 bpm=300 coverage=1.000 beats=591` — the
+"longest period that explains the onsets" rule collapsed onto the ladder's own start
+value, which is a **confidently wrong grid**, not an honest refusal.
+
+The mechanism the numbers point at (to be tested, not assumed, when fixing): coverage
+is judged on the *unrefined* candidate period. The candidate ladder multiplies by 2%
+from 0.2 s, so a true period usually sits between two rungs with ~1% error, and that
+error accumulates per beat — around ±48 beats from the phase centre before onsets fall
+outside `beatTolerance`. Short files stay inside it; long ones do not, so long grids
+are refused, and the only long-span grids that survive are the ones whose period
+happens to land exactly on a rung (0.4, 0.2) — which is also why the 1.0 s case fell
+back to 0.2. The least-squares refinement that would fix the period runs *after* the
+verdict (beats.go: `bestPhase` → coverage gate → `refineGrid`), so it never gets to
+save a candidate the ladder mis-fitted. The fix is to judge the candidate by its
+refined coverage; the regression must include the 119-onset lattice (refusal) and the
+1.0 s lattice (mis-fit), because they are different symptoms of one cause.
+
+This is why `--music` on a real 3-minute pop track should be expected to play without
+snapping today: the bed is analyzed over its own length, and 3 minutes is 360 beats.
+
 
 ## Version / HEAD
 

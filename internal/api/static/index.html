@@ -62,6 +62,19 @@
                  aria-label="reel length (s)" data-i18n-aria="reel length (s)"
                  data-i18n-placeholder="style default" placeholder="style default">
         </label>
+        <label class="field"><span data-i18n="music bed (path)">music bed (path)</span>
+          <input id="tl-music" type="text" placeholder="D:\music\bed.mp3"
+                 aria-label="music bed (path)" data-i18n-aria="music bed (path)"
+                 data-i18n-placeholder="optional — its beat grid is what the cuts snap to"
+                 placeholder="optional — its beat grid is what the cuts snap to">
+        </label>
+        <label class="field"><span data-i18n="cut on the beat">cut on the beat</span>
+          <select id="tl-snap" aria-label="cut on the beat" data-i18n-aria="cut on the beat">
+            <option value="" data-i18n="style's own">style's own</option>
+            <option value="0.12" data-i18n="±0.12 s (product default)">±0.12 s (product default)</option>
+            <option value="-1" data-i18n="off — keep the music, move nothing">off — keep the music, move nothing</option>
+          </select>
+        </label>
         <div class="step-row">
           <button id="btn-analyze" class="step" data-i18n="1 · Analyze">1 · Analyze</button>
           <button id="btn-timeline" class="step" data-i18n="2 · Timeline">2 · Timeline</button>
@@ -156,6 +169,7 @@
         <p class="hint" data-i18n="click a clip to inspect · drag blocks to reorder · edits save via “Save changes”">click a clip to inspect · drag blocks to reorder · edits save via “Save changes”</p>
         <p class="hint" id="tl-footage-note" hidden></p>
         <p class="hint" id="tl-pacing" hidden></p>
+        <p class="hint" id="tl-bed" hidden></p>
       </div>
     </div>
   </section>

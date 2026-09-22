@@ -201,6 +201,32 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   *script* side (`app.js never reads "p.mean_seconds"`) each failed exactly one named
   test — the last one is what makes the two ends of the wire a gate rather than an
   observation. The tree was restored byte-for-byte afterwards.
+- **The web UI can now ask for music and for the beat, and it says what the document
+  actually did.** The pipeline panel gained a **music bed** path field and a three-way
+  **cut on the beat** selector — `style's own` sends no field at all, `±0.12 s` sends
+  the product default, `off` sends `-1` — so the three states the API already
+  distinguishes stay distinguishable from the browser (`timelineRequest()` called in
+  the page returned `{style, duration:60, music:"…bed60.m4a", beat_snap:0.12}`, then
+  `beat_snap:-1`, then `{style, duration:60}`). Under the timeline, a second line
+  reports the saved document's choice in the four cases that mean different things: a
+  bed the cuts followed (`music bed "click20.wav" at 120.00 BPM · 1 of 8 cuts landed
+  on its beat`), a bed whose beat was measured while nothing needed to move, a bed
+  whose audio held no grid, and no bed at all with snapping from the source's own
+  pulse. File *names*, never the caller's path. The keys both sides speak are pinned in
+  Go (`md.music`, `md.music_bpm`, `c.metadata.beat`, `req.music`, `req.beat_snap`).
+- **Known issue found by using `--music` at product scale (ROADMAP B1b).** 20 seconds
+  of exact 0.5 s clicks is accepted as a 120 BPM grid (`coverage=1 beats=39`); sixty
+  seconds of the *same* clicks is refused ("no beat grid the estimator will believe,
+  onsets=119"), and 119 onsets spaced 1.0 s apart returns `period=0.2 bpm=300
+  coverage=1.000` — a confidently wrong grid, which is worse than the refusal. A
+  scratch matrix (run, then deleted) puts the boundary at the number of beats rather
+  than the span: accepted at 6/8/10/20/30/40/60 onsets, refused at 119, and accepted at
+  119 only where the period lands on a rung of the 2% candidate ladder (0.4 s). The
+  numbers point at coverage being judged on the *unrefined* candidate period, so the
+  ladder's ~1% error accumulates per beat while the least-squares refinement that would
+  correct it runs after the verdict. Until it is fixed, a three-minute pop bed should
+  be expected to play without snapping — which is exactly the promise B4a made and did
+  not measure at that length.
 
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
