@@ -366,7 +366,13 @@ filter into the single-pass path: my condition had also gated it on
 `pass == 0`, and the one-pass case *is* pass 0, so the floorless reel rejected
 every event. Generic presets keep their 45 s ask: nothing annotated
 in generic content has been measured, and "the sports ladder says longer" is not
-evidence about a drill montage.
+evidence about a drill montage. Accepted at `69a1ad6` (the floor in `4357497`, the
+preset and these docs in `69a1ad6`): control-plane local gate 481/8 with
+`steps not run: none` (`local CI PASS at 13:12:45 for 69a1ad60`), win-devops
+`OVERALL PASS` for that head (`exit=0 duration=1m51.309s`, counts not reported by
+the node), Linux full gate 470/13 with `not run: nothing`, zero `DATA RACE` lines,
+gosec clean on `ad6ae7a445f0`, and both new suites run explicitly on the node
+(`floor_rc=0 ran=1`, `beats_rc=0 ran=6`).
 
 ## Version / HEAD
 
