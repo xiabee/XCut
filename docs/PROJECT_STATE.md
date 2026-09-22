@@ -687,7 +687,12 @@ the ladder's longest-rule and its refinement **survived** the whole suite, and r
 the suite and the sweep with the ladder disabled gave identical numbers (271/0/0, the
 jitter cases the same to six decimals, the spurious-trailing-click case the same
 1.003877) while halving the long-lattice test's time. Code that cannot be shown to
-matter does not stay.
+matter does not stay. Accepted at `4f305c7`: control-plane local gate 531 passed / 8
+skipped with `steps not run: none` (`local CI PASS at 20:52:06 for 4f305c7a`),
+win-devops `OVERALL PASS` at that head (`exit=0 duration=1m50.137s`), Linux full gate
+520/13 with `not run: nothing`, zero `DATA RACE` lines, and the suites run explicitly
+on the node (`TestBeatGrid ran=12`, the bed and snap suites `ran=9`, `skipped=0` in
+both) — so the race detector saw the new scan too.
 
 
 ## Version / HEAD
