@@ -23,17 +23,39 @@ type Transition struct {
 
 // Clip is one source-media excerpt placed on the timeline.
 type Clip struct {
-	ID            string            `json:"id"`
-	AssetID       string            `json:"asset_id"`
-	SourcePath    string            `json:"source_path,omitempty"` // filled at generation; renderer input
-	SourceStart   float64           `json:"source_start"`
-	SourceEnd     float64           `json:"source_end"`
-	TimelineStart float64           `json:"timeline_start"`
-	Speed         float64           `json:"speed"`  // 1 = normal; >0
-	Volume        float64           `json:"volume"` // 0..1
-	Transition    *Transition       `json:"transition,omitempty"`
-	Effects       []string          `json:"effects,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	ID            string      `json:"id"`
+	AssetID       string      `json:"asset_id"`
+	SourcePath    string      `json:"source_path,omitempty"` // filled at generation; renderer input
+	SourceStart   float64     `json:"source_start"`
+	SourceEnd     float64     `json:"source_end"`
+	TimelineStart float64     `json:"timeline_start"`
+	Speed         float64     `json:"speed"`  // 1 = normal; >0
+	Volume        float64     `json:"volume"` // 0..1
+	Transition    *Transition `json:"transition,omitempty"`
+	// Motion is the clip's framing plan: show a window of the source rather than
+	// the whole frame, and slide that window while the clip plays (运镜). nil =
+	// the whole frame, which is what every timeline written before this field
+	// existed carries, so an old document renders exactly as it did.
+	Motion   *Motion           `json:"motion,omitempty"`
+	Effects  []string          `json:"effects,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// Motion describes the framed window as a zoom factor and the normalized center
+// it holds at the start and the end of the clip. Both centers are optional (a
+// missing one means the middle of the frame), and equal centers give a still
+// punch-in; different ones are a drift the renderer interpolates over the
+// clip's own time.
+//
+// Zoom is a fraction of the source's height, so 0.5 shows half the frame's
+// height magnified to fill the canvas. The window always takes the canvas's
+// aspect ratio, which is why a 9:16 canvas over a 16:9 source reframes instead
+// of letterboxing — and why a zoom that cannot fit horizontally is clamped by
+// the renderer rather than refused.
+type Motion struct {
+	Zoom float64   `json:"zoom"`
+	From []float64 `json:"from,omitempty"` // [x,y], 0..1
+	To   []float64 `json:"to,omitempty"`   // [x,y], 0..1
 }
 
 // Duration is the clip's playback duration on the timeline, accounting for

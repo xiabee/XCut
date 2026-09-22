@@ -17,6 +17,16 @@ import (
 // would reject before any test ran.
 func TestMain(m *testing.M) {
 	if os.Getenv("XCUT_FAKE_FFMPEG") == "1" {
+		// A test that wants the command line, not the failure, names a file for
+		// it: the arguments the product assembled are the thing under test, and
+		// reading them back from the child is the only way to see them without
+		// handing production a seam.
+		if p := os.Getenv("XCUT_FAKE_FFMPEG_ARGV"); p != "" {
+			if f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+				fmt.Fprintln(f, strings.Join(os.Args[1:], " "))
+				f.Close()
+			}
+		}
 		var flood strings.Builder
 		flood.WriteString("START-MARKER ")
 		for flood.Len() < 3000 {

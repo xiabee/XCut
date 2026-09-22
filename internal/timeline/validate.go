@@ -86,6 +86,9 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			if c.Volume < 0 || c.Volume > 1 {
 				errs = append(errs, fmt.Sprintf("%s: volume %g out of [0,1]", ctx, c.Volume))
 			}
+			if c.Motion != nil {
+				errs = append(errs, motionErrors(ctx, c.Motion)...)
+			}
 			if c.Duration() <= 0 {
 				errs = append(errs, fmt.Sprintf("%s: non-positive duration", ctx))
 			}
@@ -232,3 +235,32 @@ func (m *MultiError) Unwrap() error { return m.Err }
 
 // Details returns the individual violation strings (for logs/UI lists).
 func (m *MultiError) Details() []string { return m.Errors }
+
+// motionErrors bounds a framing plan. The zoom ceiling is 1 because a window
+// larger than the source would be a crop of nothing; the coordinates are
+// normalized to the frame so a plan survives a re-export at another resolution
+// and a hand-edited document cannot ask the renderer to sample outside it.
+func motionErrors(ctx string, mv *Motion) []string {
+	var errs []string
+	if !finite(mv.Zoom) || mv.Zoom <= 0 || mv.Zoom > 1 {
+		errs = append(errs, fmt.Sprintf("%s: motion.zoom %g out of (0,1]", ctx, mv.Zoom))
+	}
+	for _, p := range []struct {
+		name string
+		pt   []float64
+	}{{"motion.from", mv.From}, {"motion.to", mv.To}} {
+		if p.pt == nil {
+			continue
+		}
+		if len(p.pt) != 2 {
+			errs = append(errs, fmt.Sprintf("%s: %s needs [x,y], got %d number(s)", ctx, p.name, len(p.pt)))
+			continue
+		}
+		for _, c := range p.pt {
+			if !finite(c) || c < 0 || c > 1 {
+				errs = append(errs, fmt.Sprintf("%s: %s coordinate %g out of [0,1]", ctx, p.name, c))
+			}
+		}
+	}
+	return errs
+}

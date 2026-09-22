@@ -202,6 +202,11 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s,format=yuv420p",
 		tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.Width, tl.Canvas.Height,
 		strconv.FormatFloat(tl.Canvas.FPS, 'f', -1, 64))
+	if c.Motion != nil {
+		// Framing first, normalization after: the crop chooses *which* pixels the
+		// clip shows, and the scale/pad below only has to fit them to the canvas.
+		vf = motionFilter(c.Motion, tl.Canvas.Width, tl.Canvas.Height, dur) + "," + vf
+	}
 	af := "aresample=48000,volume=" + strconv.FormatFloat(c.Volume, 'f', 4, 64)
 	if c.Speed != 1 {
 		// Speed applies before the fps resample so the canvas rate is
