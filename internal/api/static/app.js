@@ -1336,8 +1336,12 @@ async function saveTimeline() {
     }));
     const body = await resp.json();
     if (!resp.ok) {
+      // A 409 has two causes — the saved document moved under this window, or the
+      // document being sent never carried a revision at all — and the server is the
+      // one that knows which. Quote it; what only the UI can add is the name of the
+      // button that recovers.
       banner(resp.status === 409
-        ? t("Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits")
+        ? tf("Save rejected: {msg} — in this window, press Reset to start again from the saved document", { msg: body.message || resp.statusText })
         : tf("Save rejected: {msg}", { msg: body.message || resp.statusText }));
       return;
     }

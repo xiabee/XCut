@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -96,8 +97,18 @@ func (s *Server) handleTimelinePut(w http.ResponseWriter, r *http.Request) {
 	var storedRev int64
 	if current != nil {
 		if tl.Revision != current.Revision {
-			s.writeErr(w, r, xcerr.E(xcerr.CodeConflict,
-				"timeline changed since you loaded it (saved revision differs) — GET the current document and reapply your edits", nil))
+			// Two mistakes reach this branch, and the walk over the editing surface
+			// found them answered with one sentence. A tab that saved while you were
+			// typing did move the document under you; a script that PUTs a document it
+			// authored — revision 0, never read — has no "since you loaded it" to
+			// complain about, and being told to look for a change sends it hunting for
+			// one that never happened.
+			msg := fmt.Sprintf("timeline changed since you loaded it — you sent revision %d, the saved document is at revision %d. Reload the current document and reapply your edits",
+				tl.Revision, current.Revision)
+			if tl.Revision == 0 {
+				msg = fmt.Sprintf("this document carries no revision, so there is nothing to check it against — the saved timeline is at revision %d. Reload the current document and edit that", current.Revision)
+			}
+			s.writeErr(w, r, xcerr.E(xcerr.CodeConflict, msg, nil))
 			return
 		}
 		storedRev = current.Revision

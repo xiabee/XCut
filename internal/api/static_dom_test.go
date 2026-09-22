@@ -58,6 +58,48 @@ func TestDollarIsGetElementById(t *testing.T) {
 	}
 }
 
+// TestSaveRejectionQuotesTheServer: the API distinguishes two 409s (the saved
+// document moved under this window / the document sent carries no revision), and the
+// distinction dies the moment the UI replaces it with a sentence of its own. The walk
+// over the editing surface found the banner asserting "the timeline changed elsewhere"
+// for every rejection — a cause the UI cannot check. Pin the failure path to the
+// server's words.
+func TestSaveRejectionQuotesTheServer(t *testing.T) {
+	js := staticFile(t, "static/app.js")
+	end := strings.Index(js, "timelineDoc.revision = body.revision;")
+	if end < 0 {
+		t.Fatal("saveTimeline's success path no longer records the returned revision — find the rejection block above it")
+	}
+	start := strings.LastIndex(js[:end], "if (!resp.ok) {")
+	if start < 0 {
+		t.Fatal("no `if (!resp.ok) {` above the success path — the rejection block moved out of saveTimeline")
+	}
+	// Without this the check would silently fall back to some other function's
+	// rejection block if saveTimeline ever lost its own.
+	if fn := strings.Index(js, "async function saveTimeline("); fn < 0 || start < fn {
+		t.Fatal("the rejection block being checked is not inside saveTimeline")
+	}
+	path := js[start:end]
+	for _, want := range []string{"banner(", "resp.status === 409"} {
+		if !strings.Contains(path, want) {
+			t.Errorf("the rejection path never reaches %s on screen:\n%s", want, path)
+		}
+	}
+	// The 409 arm's own key literal. Checking `{msg}` anywhere in the block would
+	// pass with the conflict text dropped from that arm alone, since the other arm
+	// already interpolates it.
+	arm := regexp.MustCompile(`(?s)resp\.status === 409\s*\n\s*\?\s*tf\("([^"]*)"`).FindStringSubmatch(path)
+	if arm == nil {
+		t.Fatalf("the 409 arm is no longer a tf() call with a literal key — read the block above and update this check:\n%s", path)
+	}
+	if !strings.Contains(arm[1], "{msg}") {
+		t.Errorf("the 409 banner writes its own sentence instead of the server's: %s", arm[1])
+	}
+	if strings.Contains(path, "changed elsewhere") {
+		t.Errorf("the UI is back to naming a cause the server did not report:\n%s", path)
+	}
+}
+
 func TestEveryIDTheScriptReachesForExists(t *testing.T) {
 	js := staticFile(t, "static/app.js")
 	defined := definedIDs(t)

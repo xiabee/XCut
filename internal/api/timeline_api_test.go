@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -306,7 +307,69 @@ func TestTimelineRevisionGuard(t *testing.T) {
 	}
 }
 
-// TestTimelineRevisionGuardConcurrent: N writers PUTting the same revision
+// TestRevisionRefusalsTellTheTwoCasesApart: two different client mistakes both land on
+// 409, and the walk over the editing surface found them sharing one sentence. A tab that
+// saved while you were typing really did move the document under you; a script that PUTs
+// an authored-from-scratch document never read anything, and being told "it changed since
+// you loaded it" sends it looking for a conflict that never happened. Each refusal names
+// its own case.
+func TestRevisionRefusalsTellTheTwoCasesApart(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "rev-words"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "rev-words")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(rev int64) string {
+		return marshalTimeline(t, &timeline.Timeline{
+			Version: timeline.Version, Revision: rev,
+			Canvas: timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+			Tracks: []timeline.Track{{ID: "v1", Kind: "video", Clips: []timeline.Clip{{
+				ID: "c1", AssetID: asset.ID, SourceStart: 0, SourceEnd: 5,
+				TimelineStart: 0, Speed: 1, Volume: 1,
+			}}}},
+		})
+	}
+	// Two saves, so the stored document sits at revision 2.
+	for _, rev := range []int64{0, 1} {
+		if rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(rev)); rec.Code != http.StatusOK {
+			t.Fatalf("seed save at revision %d: %d %v", rev, rec.Code, out)
+		}
+	}
+
+	// Stale: the client read revision 1 and someone else saved since.
+	rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(1))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("stale save: %d (want 409) %v", rec.Code, out)
+	}
+	stale := fmt.Sprint(out["message"])
+	if !strings.Contains(stale, "changed since you loaded it") {
+		t.Errorf("the stale refusal does not describe a document that moved: %s", stale)
+	}
+	if !strings.Contains(stale, "revision 1") || !strings.Contains(stale, "revision 2") {
+		t.Errorf("the stale refusal does not name both revisions: %s", stale)
+	}
+
+	// Blind: the document carries no revision at all — it was never read.
+	rec, out = do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", mk(0))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("revision-less save: %d (want 409) %v", rec.Code, out)
+	}
+	blind := fmt.Sprint(out["message"])
+	if !strings.Contains(blind, "carries no revision") {
+		t.Errorf("the blind refusal should say the document was never read: %s", blind)
+	}
+	if strings.Contains(blind, "changed since you loaded it") {
+		t.Errorf("the blind refusal blames a change nobody could have missed: %s", blind)
+	}
+	if !strings.Contains(blind, "revision 2") {
+		t.Errorf("the blind refusal does not say what revision is stored: %s", blind)
+	}
+}
+
 // concurrently — exactly one may win, the rest must 409 (the guard's
 // check-and-write is serialized; lost updates are impossible by design).
 func TestTimelineRevisionGuardConcurrent(t *testing.T) {
@@ -559,5 +622,76 @@ func TestPutFailureCarriesItsReason(t *testing.T) {
 	if !strings.Contains(strings.ToLower(body), "invalid") &&
 		!strings.Contains(strings.ToLower(body), "timeline") {
 		t.Fatalf("body %q does not name what was wrong", body)
+	}
+}
+
+// docWithClips is a document whose clips all sit inside the project's media, varying
+// only the framing zoom — so a rejected save can only be about the zoom.
+func docWithClips(t *testing.T, assetID string, n int, zoom float64) *timeline.Timeline {
+	t.Helper()
+	tl := &timeline.Timeline{
+		Version: timeline.Version,
+		Canvas:  timeline.Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks:  []timeline.Track{{ID: "v1", Kind: "video"}},
+	}
+	for i := 0; i < n; i++ {
+		tl.Tracks[0].Clips = append(tl.Tracks[0].Clips, timeline.Clip{
+			ID: fmt.Sprintf("c%d", i+1), AssetID: assetID,
+			SourceStart: float64(i) * 2, SourceEnd: float64(i)*2 + 1.5,
+			TimelineStart: float64(i) * 1.5, Speed: 1, Volume: 1,
+			Motion: &timeline.Motion{Zoom: zoom},
+		})
+	}
+	return tl
+}
+
+// TestTimelinePUTSaysWhatItRejected: the walk over the editing surface sent a zoom of
+// 3.0 and was told "timeline validation failed (1 problem(s))" — the same sentence an
+// unknown asset and an empty document produce. A refused save has to point at the
+// field, because the alternative is that the user guesses and re-sends.
+func TestTimelinePUTSaysWhatItRejected(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.DB.CreateProject(t.Context(), "reject"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.DB.GetProjectByName(t.Context(), "reject")
+	asset := storageAssetFor(p.ID)
+	if err := s.DB.UpsertAsset(t.Context(), &asset); err != nil {
+		t.Fatal(err)
+	}
+	assets, _ := s.DB.ListAssets(t.Context(), p.ID)
+	aid := assets[0].ID
+
+	// The shape is known good before it is broken: the same document at zoom 0.8
+	// saves, so anything the next request is refused for is the zoom.
+	if rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline",
+		marshalTimeline(t, docWithClips(t, aid, 2, 0.8))); rec.Code != http.StatusOK {
+		t.Fatalf("a valid document was refused: %d %v", rec.Code, out)
+	}
+	rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline",
+		marshalTimeline(t, docWithClips(t, aid, 2, 3)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("a zoom of 3.0 (larger than the source) was accepted: %d %v", rec.Code, out)
+	}
+	msg := fmt.Sprint(out["message"])
+	for _, want := range []string{"zoom", "3", "c1"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not name %q: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "problem(s)") {
+		t.Errorf("the refusal still counts instead of naming: %s", msg)
+	}
+
+	// Four problems, three named, the fourth counted — the message stays readable on
+	// a document that is wrong in many places at once.
+	rec, out = do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline",
+		marshalTimeline(t, docWithClips(t, aid, 4, 3)))
+	msg = fmt.Sprint(out["message"])
+	if !strings.Contains(msg, "and 1 more") {
+		t.Errorf("the fourth problem is neither named nor counted: %s", msg)
+	}
+	if strings.Contains(msg, "c4") {
+		t.Errorf("problems past the cap should be counted, not printed: %s", msg)
 	}
 }

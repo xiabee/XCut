@@ -141,7 +141,7 @@ window.XCUT_I18N = {
     "Timeline backup restored (the regenerated version is now the backup)": "已恢复时间线备份（重新生成的版本转为备份）",
     "Restore failed: {msg}": "恢复失败：{msg}",
     "Cannot save: every clip is removed": "无法保存：所有片段都被移除了",
-    "Save rejected: the timeline changed elsewhere — press Reset to load the current version, then reapply your edits": "保存被拒绝：时间线已在别处变更——请点击重置载入当前版本后重新应用编辑",
+    "Save rejected: {msg} — in this window, press Reset to start again from the saved document": "保存被拒绝：{msg}——在本页面请点击「重置」，从已保存的文档重新开始编辑",
     "Save rejected: {msg}": "保存被拒绝：{msg}",
     "Timeline saved ({n} clips)": "时间线已保存（{n} 个片段）",
     " — {n} transition(s) dropped (their joins no longer fit)": " — {n} 个转场被丢弃（接合处已放不下）",

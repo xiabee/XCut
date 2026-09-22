@@ -141,3 +141,99 @@ func TestMotionFieldSet(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateNamesWhatItRejected: the walk over the manual-editing surface sent a
+// document with a zoom of 3.0 and got back "timeline validation failed (2
+// problem(s))". A count is not something a person can act on — the list already
+// exists (Details), so the message has to carry it. Three named, the rest counted:
+// a document with forty problems still fits on a terminal line.
+func TestValidateNamesWhatItRejected(t *testing.T) {
+	tl := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 1280, Height: 720, FPS: 30},
+		Tracks: []Track{{ID: "v1", Kind: "video", Clips: []Clip{{
+			ID: "c1", AssetID: "a1", SourceStart: 0, SourceEnd: 2, TimelineStart: 0,
+			Speed: 1, Volume: 1, Motion: &Motion{Zoom: 3},
+		}}}},
+	}
+	lookup := func(string) (float64, bool) { return 10, true }
+	err := tl.Validate(lookup)
+	if err == nil {
+		t.Fatal("a zoom of 3 (larger than the source) validated")
+	}
+	msg := err.Error()
+	for _, want := range []string{"zoom", "3", "c1"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the message %q does not name %q", msg, want)
+		}
+	}
+}
+
+func TestValidateCountsWhatItDoesNotName(t *testing.T) {
+	tl := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 1280, Height: 720, FPS: 30},
+	}
+	tr := Track{ID: "v1", Kind: "video"}
+	for i := 0; i < 5; i++ {
+		tr.Clips = append(tr.Clips, Clip{
+			ID: "c" + string(rune('0'+i)), AssetID: "missing", Motion: &Motion{Zoom: 2},
+		})
+	}
+	tl.Tracks = []Track{tr}
+	err := tl.Validate(func(string) (float64, bool) { return 0, false })
+	if err == nil {
+		t.Fatal("clips with no media and a zoom of 2 validated")
+	}
+	me, ok := err.(*MultiError)
+	if !ok {
+		t.Fatalf("want a MultiError, got %T", err)
+	}
+	if len(me.Details()) < 5 {
+		t.Fatalf("Details() dropped problems: %v", me.Details())
+	}
+	msg := err.Error()
+	for _, want := range []string{"and 7 more", "c0", "c1", "c2"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the message %q should name the first three and count the rest (%q missing)", msg, want)
+		}
+	}
+	if strings.Contains(msg, "c4") {
+		t.Errorf("every problem should not be printed after the count:\n%s", msg)
+	}
+}
+
+// TestValidateTimesAreReadable: the same float noise the pacing readout carried shows
+// up in the validator's own sentences, and these go to a person fixing a document. A
+// gap of 4.1+6.4 is 10.500000000000002 in IEEE and 10.5 in English; the message that
+// prints the first spends the reader's attention on digits that mean nothing.
+func TestValidateTimesAreReadable(t *testing.T) {
+	// What adding up played durations actually produces: this literal is one of
+	// those values whose shortest round-trip form is seventeen characters. (The
+	// first draft of this case used 4.1+6.4 and went green for the wrong reason —
+	// Go folds constant arithmetic exactly, so that sum *is* 10.5.)
+	starts := 10.500100000000003
+	tl := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks:  []Track{timelineTrackFor(starts)},
+	}
+	err := tl.Validate(func(string) (float64, bool) { return 60, true })
+	if err == nil {
+		t.Fatal("a 6.4 s gap between clips validated")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "10.5001") {
+		t.Errorf("the message should read the boundary as 10.5001: %s", msg)
+	}
+	if strings.Contains(msg, "10.500100000000003") {
+		t.Errorf("the raw float reached the user-facing message: %s", msg)
+	}
+}
+
+func timelineTrackFor(start float64) Track {
+	return Track{ID: "v1", Kind: "video", Clips: []Clip{
+		{ID: "c1", AssetID: "a1", SourceStart: 0, SourceEnd: 4, TimelineStart: 0, Speed: 1, Volume: 1},
+		{ID: "c2", AssetID: "a1", SourceStart: 0, SourceEnd: 2, TimelineStart: start, Speed: 1, Volume: 1},
+	}}
+}

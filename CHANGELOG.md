@@ -310,6 +310,31 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   re-render the style at its own time).
 
 ### Improved
+- **A refused save now says which refusal it is.** The second walk through the product
+  spent its time on the manual-editing surface, and it turned up three sentences that
+  could not be acted on. A document rejected for a zoom of 3.0 was answered with
+  `timeline validation failed (1 problem(s))` — the same words an unknown asset and an
+  empty document produce, so the reader guesses and re-sends. A validator that prints a
+  float prints `starts 10.500100000000003`, seventeen characters standing for a moment
+  nobody can point at. And both kinds of revision conflict said "timeline changed since
+  you loaded it", which is no use at all to a client that never loaded anything.
+  `Validate` now names up to three problems (`track "v1" clip[1] "c2": motion.zoom 3 out
+  of (0,1]`) and counts the rest (`(and 1 more)`) rather than hiding them; every time in
+  those sentences goes through the same rounding the pacing readout uses, because a
+  millisecond is all a readout can claim and the fastest canvas frame is 4.17 ms, so what
+  gets dropped is the residue, not the number. The 409 split names both sides of a
+  mismatch (stale: "you sent revision 1, the saved document is at revision 2") and, for a
+  document carrying no revision, says there was nothing to check it against. The UI's
+  banner stopped asserting "the timeline changed elsewhere" and quotes the server
+  instead, keeping only what only the page can know: that the button to press is Reset.
+  Verified: six new cases, two of them written red first (the raw-float assertion, and
+  the requirement that the two 409 wordings differ). Four mutations, each killed and each
+  restored byte-identical: the seconds formula back to `%g` (the readability case dies
+  naming the float), the blind/stale condition made unreachable (the blind case inherits
+  the stale sentence), the 409 key literal stripped of `{msg}` (the DOM gate and the i18n
+  gate fire independently), and the UI reverted to its fixed sentence. The DOM check
+  reads the 409 arm's own key literal rather than `{msg}` anywhere in the block, because
+  the other arm interpolates it and would have covered for a missing one.
 - **The web UI now shows what a reel is made of, not only what it contains.** The
   timeline panel carries a pacing chip — `{shots} shots · mean …s · median …s ·
   longest …s · best shot starts at …s` — beside the existing footage note, and the
