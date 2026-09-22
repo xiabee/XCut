@@ -294,6 +294,20 @@ The Linux leg had to be dispatched twice: the first attempt's script was empty,
 because cleaning this session's scratch had deleted the template the dispatch
 reads — a `ssh_rc=0` with no output at all, which is what a self-inflicted
 no-op looks like from the client side.
+
+Three of the sweep's real gaps are closed at `5d2eaad` and two dead twins are
+gone: `api`'s save response now has to report the clip count the UI prints
+(`save reported clips=0, want 1` under mutation), `worker.stderrTail` is reached
+by a new stub mode (a worker answering an empty envelope, exiting 1 and flooding
+stderr) whose test and the render test both fail on one mutation of `media.Tail`
+to the head — the consolidation paying for itself — and `BrandICO`, the icon the
+Windows binary embeds, is parsed for magic, count, sizes and contiguous offsets.
+`pipeline.countClips` and `storage.TouchProject` had zero callers and were
+deleted. Accepted: local 474/8, win-devops job `20260922-121047-5fc392` 475/7,
+and the re-run sweep reporting **40** functions at 0.0% against 46 before with
+statement coverage 79.0% → 79.3% — measured by running it, not inferred from how
+many files changed.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha

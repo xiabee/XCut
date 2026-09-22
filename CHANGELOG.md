@@ -94,6 +94,15 @@ tailnet recipe, reel cost, rally slicing, the Windows 500)
   reported number actually measures.
 
 ### Added
+- **`scripts/cover-sweep.sh`, a coverage sweep that attributes honestly.** One
+  profile per test binary, merged by taking the maximum hit count per block:
+  letting several packages share a single `-coverprofile` reports the *last*
+  writer's count for each block, so code covered only through another package's
+  tests reads 0.0% — that artifact put `pipeline.AnalyzeProjectAsync` on a gap
+  list while it measures 100% through its own consumer (`internal/api` posting
+  `/analyze`). The script names the toolchain it had (ffmpeg/python present or
+  not — a skipped test is an unexecuted one), aborts on an empty or unparseable
+  merge rather than reporting "no gaps", and fails when any package's tests fail.
 - **The eval harness now reports the longest missed run** — how many annotated
   rallies in a row the reel did not touch at all. P/R/F1 and range hits are
   indifferent to *where* picks fall, so three clips on the first three rallies of
