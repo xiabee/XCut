@@ -895,8 +895,18 @@ no-op looks like from the client side.
 ## Next Priorities
 
 1. Live paths still without a test, from the coverage sweep recorded in the
-   session log: the `pipeline` `*Async` wrappers, which the job runner may reach
-   by another route.
+   session log is closed: `scripts/cover-sweep.sh` (max-merge across 22 test
+   binaries) shows those wrappers were a *measurement* artifact — merged profiles
+   report the last writer's count per block, so code covered only by another
+   package's tests reads 0.0%. `pipeline.AnalyzeProjectAsync`, the loudest of
+   them, is 100% when profiled through its own consumer (`internal/api`,
+   `TestAsyncJobFlow` posting `/analyze`). Remaining 0.0% entries after that
+   correction: 46, of which the ones still worth work are the CLI command
+   (`cmdVersion`, `cmdConfig`, `usage`) and serve-lifecycle
+   (`startServeCore`, `shutdownServe`, `newServeLogger`) paths, and the
+   environment-conditional ones (`analysis.RustAudioAnalyzer.*` need the built
+   Rust worker; `setup.*` runs only on Windows). Platform stubs
+   (`*_other.go`) and interface shims (`Error`, `String`, `Name`) are not gaps.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and

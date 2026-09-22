@@ -77,6 +77,79 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] KTV pipeline v2: onset-density weighted selection (honest naming — high-energy signal, no chorus claims)
 - [x] AI sidecar protocol v1 (capabilities/health/analyze, bounded output), capability detection in doctor; reference sidecar ships, models remain optional/local
 
+## Phase 5 — Product-grade auto-editing (opened 2026-09-22, owner direction)
+
+Goal: an auto-edit that produces something worth posting, not just something
+correct. Grounded in what short-form practice reports today rather than on
+impression — the recurring numbers are: a decision happens in the first 3
+seconds, a visual change every 3–5 s (2–3 s in high-tempo content), key cuts
+synced to the music beat, captions of 5–7 characters per line held 2–3 s in
+white-with-thin-outline or a translucent box, and a slightly longer static shot
+after a rapid burst to let the viewer breathe. Sources are listed at the bottom
+of this section; they set targets, they are not evidence about our own footage.
+
+Every item states how it is measured before it is built, because the eval harness
+(`xcut eval`) is what keeps "new style" from meaning "new untested heuristic".
+
+- [ ] B1 — Beat grid (`卡点` foundation). Estimate a beat grid from the onset
+      track (inter-onset histogram + phase), emit it as a `beats` FeatureTrack
+      with provenance, and cache it like any other track.
+      Measured: a fixture generated with an exact click grid (testmedia grows a
+      `beats` generator, so truth is known by construction) must land every grid
+      beat within half the beat period, report `beats` empty rather than
+      invented for silence, and refuse to extrapolate past the audio's end.
+- [ ] B2 — Beat-snapped selection. The style engine may move a clip boundary to
+      the nearest beat inside a tolerance (default ±0.12 s) and must never move
+      it so far that a scored point is missed; the scoreboard-mark rule stays the
+      harder constraint.
+      Measured: on the badminton manifest, `卡点` on vs off changes clip ends only
+      within tolerance, precision does not drop, and the eval `missed run` metric
+      is reported both ways; on the click fixture, boundary-vs-beat error goes to
+      ~0 with the feature on.
+- [ ] B3 — Camera motion (`运镜`): a per-clip framing plan (punch-in,
+      drift, reframe-to-ROI) carried in the timeline IR and rendered through the
+      existing crop/zoom path, with the vertical reframe (9:16 from a 16:9
+      source) as one of its modes.
+      Measured: rendering a fixture and sampling frames proves the crop actually
+      moves (it is not a static zoom), the framing keeps the motion ROI inside the
+      frame, and `docs/PERFORMANCE.md` carries the added render cost per minute
+      of output — the feature ships with a budget and the budget is enforced
+      (`resource.*`), not assumed.
+- [ ] B4 — New presets on top of B1–B3: `beat_shortform` (music-driven pacing,
+      2–3 s shots, hook first), `sports_vertical` (9:16, point-ending clips,
+      punch-in on the hit), plus a pacing readout on the existing styles so the
+      owner can compare.
+      Measured: each preset has an eval case (synthetic where truth is
+      constructed, the owner's match where it is annotated), the harness's
+      `--check` gate carries it, and a preset that does not beat the shipped one
+      on its own case does not become a default.
+- [ ] B5 — Caption/subtitle styling to the convention above (line length,
+      dwell time, white + thin outline or translucent box), shared by the
+      subtitle burn and the KTV lyric path.
+      Measured: the generated ASS text is asserted (the wire format, not a
+      struct), including a long-lyric case that must wrap rather than overflow.
+- [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion
+      picker in the inspector, a pacing chip (mean shot length vs the 3–5 s
+      target) and a one-tap "post-ready" export (vertical + captions + music
+      sync). The web UI and the client shell stay one asset tree.
+      Measured: the DOM-structure guards the repo already has, plus a browser
+      probe reading the *computed style of the nodes that changed* — a CSS rule
+      that renders on nothing has fooled this project before.
+- [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
+      and the new stages get measured ceilings — analysis fan-out memory, proxy
+      cache bytes, the motion render's cost.
+      Measured: numbers in `docs/PERFORMANCE.md` from real runs, "not measured"
+      where it has not been measured.
+
+Order of attack is B1 → B2 → B3 → B4 (each depends on the one before), with B5
+independent and B6 landing per feature as its surface exists.
+
+Sources behind the numbers above (industry guidance, not measurements of our own
+output — kept visible so nobody mistakes them for evidence):
+[ShortGenius 高互动视频制作最佳实践 (2026-03)](https://shortgenius.com/cn/blog/shipin-zhizuo-zuijia-shijian),
+[Teleprompter — Trending YouTube Shorts 2026: Top 10 Formats](https://www.teleprompter.com/blog/trending-youtube-shorts),
+[Metricool — CapCut Video Editing Tutorial](https://metricool.com/capcut-video-editing/).
+
 ## Phase 4 — Desktop client & polish
 
 The desktop client is designed in docs/CLIENT_DESIGN.md (native WebView2
