@@ -396,7 +396,13 @@ duration, which had skipped every later check — `{"beat_snap": 2}` queued a jo
 preset would have refused; and the click fixture first proved nothing at all,
 because a round 8 s ask on a 0.5 s lattice puts the reel's only end *on* a beat, so
 a rule that never ran looked green — the odd ask and the off-lattice control are
-what make it bite.
+what make it bite. Accepted at `5b8c7d7` (code `6fc0d93`, docs `9b943e4`+`5b8c7d7`):
+local gate 488/8 with `steps not run: none` (`local CI PASS at 14:06:48 for
+5b8c7d79`), win-devops `OVERALL PASS` at that head (`exit=0 duration=1m33.24s`),
+Linux full gate 477/13 with `not run: nothing`, zero `DATA RACE` lines, gosec clean
+on `ad6ae7a445f0` — and there the snap suite really executed rather than skipped
+(`snap_rc=0 ran=6 skipped=0`, logging `1 of 1 ends moved onto the grid`), which is
+the cross-platform half of the proof.
 
 ## Version / HEAD
 

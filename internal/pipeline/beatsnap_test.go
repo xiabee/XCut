@@ -173,9 +173,12 @@ func nearBeat(ts, period, slack float64) bool {
 	return r <= slack || period-r <= slack
 }
 
-// snapReq asks for a 7.7 s rally reel — odd on purpose. A round 8 s ask from a
-// 0.5 s lattice ends exactly on the lattice (max_clip_duration carries it there),
-// and then "did the snap move anything?" could only answer no.
+// snapReq asks for a 7.7 s rally reel — an odd ask on purpose. A round one (8 s)
+// from a 0.5 s lattice ends exactly on the lattice (max_clip_duration carries it
+// there), and then "did the snap move anything?" could only answer no. The reel is
+// one clip because the fixture is one rally; the multi-clip geometry — a pinned
+// end that must not move beside a free one that must — is internal/style's
+// TestBeatSnap* family, which needs no ffmpeg to check it.
 func snapReq(snap float64) TimelineRequest {
 	return TimelineRequest{Style: "badminton_highlight", Duration: 7.7, BeatSnap: snap}
 }
