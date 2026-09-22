@@ -88,6 +88,7 @@ go build -o xcut ./cmd/xcut          # produces xcut.exe on Windows
 # measures into point ends so clips stop exactly on a scored point. --duration is
 # the reel length you want, in seconds.
 ./xcut auto match.mp4 --project match --style badminton_highlight --duration 240 --score-crop 0.43,0.78,0.14,0.10
+./xcut auto talk.mp4 --project talk --style beat_shortform --subs=on   # reel first, then the transcript styled for that canvas, then the render
 
 # output lands in the project directory of your workspace:
 #   ~/.xcut/projects/<project-id>/render.mp4  (or the --out path you passed)

@@ -6,6 +6,23 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
 ## [Unreleased] — 2026-09-22 → 09-23, session #20 (Phase 5: beat grid, captions, one tap)
 
 ### Added
+- **The one-shot learned to caption (`xcut auto --subs=on`, `--subs=<file>`).** The
+  command that goes from a file to a reel stopped one step short of the thing a
+  platform takes: it rendered without captions, and closing that meant running
+  `xcut subtitles` between two halves of the same command. `--subs=on` transcribes
+  this run's first input **after** the timeline is built, so the caption box is styled
+  against the canvas the same run declared; `--subs=some.ass` burns a file the caller
+  already has, which is what `xcut render --subs` takes. A run without the flag is
+  unchanged, and a run whose transcript fails says so on its own line rather than
+  rendering an uncaptioned reel and calling it done.
+  Verified: two cases on generated media with a fake sidecar — the flag's run leaves
+  one `subtitles.ass` in the project, declaring 1920×1080 for `generic_highlight`'s
+  canvas with no karaoke tags (nothing timed a syllable), and rendering the reel; the
+  flagless run writes no caption file at all; a machine with no sidecar on the narrowed
+  `PATH` fails with the command's own report naming the missing piece. Two mutations:
+  the flag never reaching the switch (both cases die), and a swallowed transcript
+  error (the reporting case dies — which it did not at first, because the job logger
+  echoed the cause into the same stream the assertion was reading).
 - **A camera-motion picker for one clip, not one for the whole style (ROADMAP
   Phase 5, B6c).** The inspector's clip panel now offers 运镜 per clip — still,
   punch in, drift, follow the region — and asks the server what each of those

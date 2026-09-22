@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -25,6 +25,7 @@ func cmdAuto(a *App, args []string) error {
 	musicFlag := "" // a track to lay under the reel and cut to
 	projectName := "auto"
 	outPath := ""
+	subsFlag := ""      // "" = no captions; "on" = transcribe this run; a path = burn that file
 	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
 	pos, err := parseCommandArgs(args, map[string]*string{
 		"style":      &styleName,
@@ -33,6 +34,7 @@ func cmdAuto(a *App, args []string) error {
 		"music":      &musicFlag,
 		"project":    &projectName,
 		"out":        &outPath,
+		"subs":       &subsFlag,
 		"score-crop": &scoreCropFlag,
 	})
 	if err != nil {
@@ -48,7 +50,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|path] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 
@@ -154,10 +156,47 @@ func cmdAuto(a *App, args []string) error {
 			fmt.Fprintln(a.Stdout, note)
 		}
 	}
+	// --subs is the step the one-shot never had: a reel a platform takes has
+	// captions on it, and making the user run `xcut subtitles` between two halves of
+	// the same command is how a one-shot stops being one. It runs AFTER the timeline on
+	// purpose — the caption box is styled against the canvas the reel just declared, so
+	// the two agree without anyone ordering them to.
+	subsPath := ""
+	switch subsFlag {
+	case "", "off":
+	case "on":
+		fmt.Fprintf(a.Stdout, "==> subtitles (transcribed from this run's input)\n")
+		db, err := a.OpenDB()
+		if err != nil {
+			return err
+		}
+		p, err := requireProject(db, a.Ctx, projectName)
+		if err != nil {
+			db.Close()
+			return err
+		}
+		d := a.Pipeline(db)
+		if err := d.TranscribeProject(p, assetIDs[0]); err != nil {
+			db.Close()
+			return err
+		}
+		// Resolve rather than assume the extension: whether the sidecar timed the
+		// words decides if the burn gets karaoke, captions or plain SRT.
+		subsPath, err = d.ResolveSubtitlesPath(p.ID)
+		db.Close()
+		if err != nil {
+			return err
+		}
+	default:
+		subsPath = subsFlag // a file the caller already has, burned as it stands
+	}
 	fmt.Fprintf(a.Stdout, "==> render\n")
 	renderArgs := []string{projectName}
 	if outPath != "" {
 		renderArgs = append(renderArgs, "--out", outPath)
+	}
+	if subsPath != "" {
+		renderArgs = append(renderArgs, "--subs", subsPath)
 	}
 	if err := cmdRender(a, renderArgs); err != nil {
 		return err

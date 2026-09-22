@@ -45,6 +45,15 @@ func (d Deps) TranscribeProjectAsync(project *storage.Project, assetID string) (
 		map[string]any{"asset": assetID}, d.subtitlesBody(project, assetID))
 }
 
+// TranscribeProject is the blocking variant, for the one-shot CLI path where the
+// captions are a step of the command and not a job the user watches. It records the
+// same job row, so `xcut jobs` tells the same story either way.
+func (d Deps) TranscribeProject(project *storage.Project, assetID string) error {
+	_, err := d.Queue.RunInline(d.Ctx, job.TypeSubtitles, project.ID, job.ClassCPULight,
+		map[string]any{"asset": assetID}, d.subtitlesBody(project, assetID))
+	return err
+}
+
 // ResolveSubtitlesPath returns the project's subtitle file for burn-in:
 // styled ASS (karaoke or captions) when present, plain SRT otherwise.
 // Not-found when the project has none yet.

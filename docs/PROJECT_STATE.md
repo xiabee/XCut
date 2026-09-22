@@ -831,8 +831,9 @@ request arrived.
 
 Not verified: no browser was opened for this. The readout's markup and keys are pinned
 by the standing DOM/i18n guards and its input by the api's wire assertions, but nobody
-watched ★ write the line on screen. `xcut auto` still has no caption step, so the CLI's
-one shot remains the three-step one.
+watched ★ write the line on screen. At the time of that acceptance `xcut auto` had no
+caption step either — closed the same night by `--subs=on`, which runs the transcript
+after the reel is built (described with B6e below).
 
 Accepted at `c794786`: the control-plane local gate ran `555 passed, 8 skipped` with
 `gate (fast): PASS (steps not run: none; …)` and `LOCAL CI PASS`; win-devops reported

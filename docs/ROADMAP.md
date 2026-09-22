@@ -294,6 +294,12 @@ Every item states how it is measured before it is built, because the eval harnes
       Not done: no browser was opened, so the select's on-screen behaviour rests on
       `node --check` and that text guard, and hand-picked motion still does not survive
       regenerating the reel — which the pane already says.
+      B6e — the one-shot's caption step — is small enough to fold in rather than plan:
+      `xcut auto --subs=on` (or `--subs=<file>`) transcribes between the reel and the
+      render, so the CLI's single command delivers what the tap delivers. Its acceptance
+      is two cases and two mutations: a run with `--subs=on` writes captions styled for
+      the canvas the same run built, and a run without the flag writes none; a swallowed
+      transcript failure must be reported by the command's own line, not merely logged.
       B6d — one tap to a post-ready reel — was specified here before it was built,
       with the numbers it had to hit, and it hit them. A new `export` job type does
       three things in one body and waits for none of them: it builds a timeline if the

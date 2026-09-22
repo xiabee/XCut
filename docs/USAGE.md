@@ -65,7 +65,7 @@ open the desktop editing client (native window over the local server)
 
 ## xcut auto
 ```
-usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--project name] [--out path] [--score-crop x,y,w,h]
+usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|path] [--project name] [--out path] [--score-crop x,y,w,h]
 
 one-shot: import → analyze → timeline → render
 ```

@@ -81,6 +81,7 @@ go build -o xcut ./cmd/xcut          # Windows 下产出 xcut.exe
 # （0..1 归一化坐标，不是像素），analyze 时把比分变化量成得分点，
 # 片段就正好在得分点结束。--duration 想要的成片秒数。
 ./xcut auto match.mp4 --project match --style badminton_highlight --duration 240 --score-crop 0.43,0.78,0.14,0.10
+./xcut auto talk.mp4 --project talk --style beat_shortform --subs=on   # 先补时间线，再转写字幕（按前者的画布排版），最后渲染
 
 # 成片落在工作区的工程目录里：
 #   ~/.xcut/projects/<project-id>/render.mp4  （或你传的 --out 路径）
