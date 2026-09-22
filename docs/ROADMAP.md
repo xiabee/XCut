@@ -271,29 +271,32 @@ Every item states how it is measured before it is built, because the eval harnes
       selector, and a second line stating what the saved document chose — bed + BPM +
       how many cuts followed it, or which of the three "no" cases applied). Remaining:
       beat ticks on the ruler and the per-clip motion picker.
-      B6d — one tap to a post-ready reel — is specified here before it is built, with
-      the numbers it has to hit. A new `export` job type does three things in one body
-      and waits for none of them: build a timeline if the project has none, transcribe
-      if subtitles are asked for and none exist, then queue the ordinary render.
-      Acceptance, each a test rather than an intention:
-      (1) a project with only assets, run with a sidecar present, ends with a timeline
-      file, both subtitle artifacts, and a *separate* render job row — the export must
-      not render inside itself, so a one-tap reel still queues behind
+      B6d — one tap to a post-ready reel — was specified here before it was built,
+      with the numbers it had to hit, and it hit them. A new `export` job type does
+      three things in one body and waits for none of them: it builds a timeline if the
+      project has none, transcribes if subtitles are asked for and none exist, then
+      queues the ordinary render. What was claimed, and what was measured:
+      (1) an empty project with a sidecar ends with a timeline file, both subtitle
+      artifacts and a *separate* render job row — the test counts both kinds of row and
+      wants exactly one of each; the render is not run inside the tap, so it waits for
       `resource.max_render_workers` like any other;
-      (2) the ordering property that makes the sequence worth having: the `.ass`
-      written by the one tap declares the canvas of the timeline built by the same
-      tap, which no tap that generated the timeline afterwards could claim;
-      (3) with no sidecar the export still succeeds and says so on the wire — a
-      `steps` array where the subtitle step reads `skip` with a reason naming the
-      sidecar, never a silent omission;
+      (2) the `.ass` the tap writes declares 1080×1920 for a canvas that did not exist
+      when the request arrived, because the reel is built first;
+      (3) with no sidecar the tap still succeeds and the subtitles step reads `skip`
+      with a reason naming the sidecar, on the wire and in the panel;
       (4) a project that already has both artifacts gets `reuse` for both and their
-      bytes unchanged (byte compare, not mtime);
-      (5) two presses cannot both run: the handler answers 409, and because that check
-      is racy by itself, the partial unique index is extended over the new type and
-      tested by inserting the second active row directly;
-      (6) each of those claims gets a mutation — reuse removed, the reason emptied,
-      `export` dropped from the exclusive set, and the render called inline instead of
-      queued — and a named assertion has to kill every one.
+      bytes unchanged — proved against a hand-written horizontal reel and a sentinel
+      `.ass`, so a stage that ran anyway could not pass;
+      (5) two presses cannot both run: 409 from the queue, and the widened partial
+      unique index from migration v7 tested by inserting the second active row and by
+      upgrading a database that predates v7 with an active job in it;
+      (6) six mutations replayed, each killed by a named assertion (the body always
+      rebuilds, the body always transcribes, the skip stops naming itself, the render
+      runs inside the tap, `export` leaves the exclusive set, v7's type list narrows).
+      Not done: no browser was opened to watch the readout render — its markup, keys
+      and request literal are pinned by tests, its on-screen form is not — and
+      `xcut auto` still has no caption step, so the CLI's one shot stays the
+      three-step one.
 - [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.

@@ -156,6 +156,19 @@ func TestExportTapReachesAFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the tap left no captions: %v", err)
 	}
+	// The plain sidecar too: the panel offers both downloads, and a tap that wrote
+	// only the styled one would leave the other button 404ing.
+	srtPath, err := d.SubtitlesPath(p.ID, "srt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srt, err := os.ReadFile(srtPath)
+	if err != nil {
+		t.Fatalf("the tap left no .srt: %v", err)
+	}
+	if !strings.Contains(string(srt), "第一句台词") {
+		t.Errorf("the .srt the tap wrote has no transcript in it:\n%s", srt)
+	}
 	head := string(ass)
 	if len(head) > 600 {
 		head = head[:600]

@@ -799,6 +799,51 @@ on that machine — the caption layout `ran=4 skipped=0`, the subtitle chain thr
 CLI and the api `ran=5 skipped=0`.
 
 
+**B6d (UI, fourth slice): one tap to a post-ready reel.** `POST
+/api/v1/projects/{id}/export` and the ★ button in the timeline pane run the sequence
+a user would click — reel, captions, render — as one job that builds the timeline if
+the project has none, transcribes if captions were asked for and none exist, and then
+*queues* the render. It waits for no other job, and that is the load-bearing decision:
+the queue is `resource.max_concurrent_jobs` (default 2) slots deep, so a parent that
+blocks on its own child lets two taps deadlock each other, and a render run inside the
+tap would slip past `resource.max_render_workers`. The render is therefore a row of its
+own. The response carries the plan — each stage `reuse`, `create` or `skip` with a
+reason — because the stage a machine cannot perform (no sidecar to transcribe with) is
+the one that must not turn into a silent absence; the timeline pane shows that line
+under the buttons. `export` joined the exclusive job set (a second press is a 409, not
+two reels), which needed migration v7 to widen the partial unique index, and a new
+test compares the queue's map with the index's list because those are one rule written
+in two languages.
+
+Measured on the state the tap leaves rather than on the code: three pipeline cases on
+ffmpeg-made media (a tap that reaches a file on disk, one export row beside one render
+row; a tap with no sidecar on `PATH` that succeeds and says why; a tap over a
+hand-written horizontal reel and a sentinel `.ass`, both left byte for byte), five api
+cases on the plan's wire keys — one of them pinning the literal app.js posts to, so the
+two halves of that agreement are compared — and two storage/queue guards, one of which
+applies v7 to a database that predates it with an active job still in the table, and
+shows the rebuilt index reaching that row. Six mutations, each killed by a named case;
+the one worth reading is `one tap wrote 1 export and 0 render rows`, which is what a
+render swallowed into the tap's own body would cost. The ordering also buys something:
+because the reel is built before the transcript is styled, the captions a one-tap
+produces declare 1080×1920 — the canvas of a document that did not exist when the
+request arrived.
+
+Not verified: no browser was opened for this. The readout's markup and keys are pinned
+by the standing DOM/i18n guards and its input by the api's wire assertions, but nobody
+watched ★ write the line on screen. `xcut auto` still has no caption step, so the CLI's
+one shot remains the three-step one.
+
+Accepted at `c794786`: the control-plane local gate ran `555 passed, 8 skipped` with
+`gate (fast): PASS (steps not run: none; …)` and `LOCAL CI PASS`; win-devops reported
+`OVERALL  PASS` (`exit=0 duration=1m56.265s`) beside its own `local evidence
+(after_local_pass): local CI PASS at 23:42:29 for c794786d`; the Linux full gate closed
+`== done gate_rc=0 layout_rc=0 subschain_rc=0` with `not run: nothing`, 13 skipped and
+`DATA_RACE_lines=0`, and this milestone's suites were then run explicitly on that
+machine — `export_rc=0 ran=11 skipped=0`, including the three real-media taps
+(`TestExportTapReachesAFile 5.22s`, `TestExportReusesArtifactsItDidNotMake 2.26s`)
+against the snapshot's own ffmpeg.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
