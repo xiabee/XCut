@@ -48,7 +48,7 @@ func BurnSubtitles(ctx context.Context, tools media.Tools, inputPath, subsPath, 
 		if ctx.Err() != nil {
 			return xcerr.E(xcerr.CodeCancelled, "subtitle burn cancelled", ctx.Err())
 		}
-		return xcerr.E(xcerr.CodeRenderFailure, "subtitle burn failed", fmt.Errorf("%v: %s", err, tail(errOut, 500)))
+		return xcerr.E(xcerr.CodeRenderFailure, "subtitle burn failed", fmt.Errorf("%v: %s", err, media.Tail(errOut, 500)))
 	}
 
 	// Verify: a burn that silently truncated or dropped streams is not success.

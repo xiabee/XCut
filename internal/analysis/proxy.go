@@ -131,7 +131,7 @@ func (s *ProxyStore) Ensure(ctx context.Context, tools media.Tools, srcPath, fin
 			return "", false, xcerr.E(xcerr.CodeInternal, "proxy generation timed out or was cancelled", cctx.Err())
 		}
 		return "", false, xcerr.E(xcerr.CodeInternal, "proxy generation failed",
-			fmt.Errorf("%v: %s", runErr, tailStr(stderr, 300)))
+			fmt.Errorf("%v: %s", runErr, media.Tail(stderr, 300)))
 	}
 	// RetryableRename, not a bare rename: two projects can reference the
 	// same content (same fingerprint → same proxy path), and on Windows the
@@ -165,11 +165,4 @@ func threadCap(n int) int {
 		return 2
 	}
 	return n
-}
-
-func tailStr(b []byte, n int) string {
-	if len(b) > n {
-		return string(b[len(b)-n:])
-	}
-	return string(b)
 }

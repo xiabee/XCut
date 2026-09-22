@@ -276,6 +276,15 @@ missing-sidecar refusal turns the named refusal into
 gate 461/13 with both new tests run explicitly on the node (`--- PASS` each, not
 skipped) and the pinned scanner reporting clean.
 
+
+Three private copies of "keep the last N bytes of a child's output" (`render.tail`,
+`analysis.tailStr`, `worker.tail`) are now one exported `media.Tail`, next to the
+capture cap whose tail each of them takes. The render failure test is the guard
+for all three call sites — mutating the shared helper to slice from the front
+fails it (`ran=1`, named assertion) — which is the argument for one implementation
+rather than three that have to be fixed in parallel. No behaviour change: the
+render and subtitle excerpts are byte-identical, `worker` keeps its own
+`TrimSpace` at its call site because that is presentation, not the rule.
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -877,10 +886,8 @@ skipped) and the pinned scanner reporting clean.
 ## Next Priorities
 
 1. Live paths still without a test, from the coverage sweep recorded in the
-   session log: `cli.scanScoreMarks` (needs an eval-path test that drives the
-   scoreboard sidecar stub) and the `pipeline` `*Async` wrappers. Deliberately
-   left alone: `analysis.tailStr`, a five-line twin whose behaviour is pinned on
-   the render side.
+   session log: the `pipeline` `*Async` wrappers, which the job runner may reach
+   by another route.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and

@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xiabee/XCut/internal/media"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -269,7 +270,7 @@ func (l *limitedBuffer) String() string { return l.buf.String() }
 
 func stderrTail(w io.Writer) string {
 	if lb, ok := w.(*limitedBuffer); ok {
-		return tail(lb.String(), 300)
+		return strings.TrimSpace(string(media.Tail([]byte(lb.String()), 300)))
 	}
 	return ""
 }
@@ -284,11 +285,4 @@ func parseResponse(out []byte) (*response, error) {
 			fmt.Sprintf("worker protocol %d, want %d", resp.Protocol, Protocol), nil)
 	}
 	return &resp, nil
-}
-
-func tail(s string, n int) string {
-	if len(s) > n {
-		return strings.TrimSpace(s[len(s)-n:])
-	}
-	return strings.TrimSpace(s)
 }

@@ -26,7 +26,7 @@ func avgRGB(t *testing.T, path string, at float64) (r, g, b float64) {
 	}
 	stdout, stderr, err := media.Run(context.Background(), testToolsX().FFmpeg, args...)
 	if err != nil {
-		t.Fatalf("frame grab at %.2fs: %v: %s", at, err, tail(stderr, 200))
+		t.Fatalf("frame grab at %.2fs: %v: %s", at, err, media.Tail(stderr, 200))
 	}
 	if len(stdout) < 16*3 {
 		t.Fatalf("frame grab produced %d bytes", len(stdout))
@@ -138,10 +138,10 @@ func TestRenderSpeedAudioNotSilent(t *testing.T) {
 	_, stderr, err := media.Run(context.Background(), testToolsX().FFmpeg,
 		"-hide_banner", "-nostdin", "-i", out, "-map", "0:a", "-af", "volumedetect", "-f", "null", "-")
 	if err != nil {
-		t.Fatalf("volumedetect: %v: %s", err, tail(stderr, 200))
+		t.Fatalf("volumedetect: %v: %s", err, media.Tail(stderr, 200))
 	}
 	if !strings.Contains(string(stderr), "mean_volume") {
-		t.Fatalf("volumedetect output missing mean_volume: %s", tail(stderr, 300))
+		t.Fatalf("volumedetect output missing mean_volume: %s", media.Tail(stderr, 300))
 	}
 	if strings.Contains(string(stderr), "mean_volume: -inf dB") {
 		t.Fatal("sped clip audio is silent — atempo chain not applied")

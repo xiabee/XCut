@@ -348,7 +348,7 @@ func runFFmpeg(ctx context.Context, bin string, args []string, budget time.Durat
 			return xcerr.E(xcerr.CodeRenderFailure, "render timed out or was cancelled", cctx.Err())
 		}
 		return xcerr.E(xcerr.CodeRenderFailure, ffmpegFailureMessage(out),
-			fmt.Errorf("%v: %s", err, tail(out, 500)))
+			fmt.Errorf("%v: %s", err, media.Tail(out, 500)))
 	}
 	return nil
 }
@@ -409,13 +409,6 @@ func absF(f float64) float64 {
 		return -f
 	}
 	return f
-}
-
-func tail(b []byte, n int) string {
-	if len(b) > n {
-		return string(b[len(b)-n:])
-	}
-	return string(b)
 }
 
 // hasXfade reports whether any clip joins its successor with an xfade.

@@ -93,6 +93,18 @@ func Version(ctx context.Context, bin string) (string, error) {
 // growing host memory for the child's whole runtime.
 const maxCapturedOutput = 1 << 20
 
+// Tail keeps the last n bytes of a child's captured output — the half that
+// carries the diagnosis, because FFmpeg prints its error summary last. It is the
+// one implementation of that rule: render, analysis and worker each kept a
+// private copy, so a fix to where the excerpt is taken from would have applied
+// to one call site and silently not the others.
+func Tail(b []byte, n int) []byte {
+	if len(b) > n {
+		return b[len(b)-n:]
+	}
+	return b
+}
+
 // stdoutCaptureCap is the stdout budget for Run. A caller whose tool writes
 // parseable data to stdout must either stay under it or use StreamStdout —
 // silently keeping only the last N bytes of a data stream once produced
