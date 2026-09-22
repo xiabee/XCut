@@ -217,6 +217,13 @@ Every item states how it is measured before it is built, because the eval harnes
       Measured: the DOM-structure guards the repo already has, plus a browser
       probe reading the *computed style of the nodes that changed* — a CSS rule
       that renders on nothing has fooled this project before.
+      Partially landed as B6a — the pacing chip: `GET …/timeline` returns a derived
+      `pacing` object computed by the same `timeline.Pacing` the CLI line uses, the
+      chip renders it (including the unscored-document branch), its wire keys are
+      pinned in Go, and the browser session confirmed the rendered node — with the
+      note that no browser runs in CI, so that last level is a performed
+      observation, not a gate. Remaining: beat ticks on the ruler, the per-clip
+      motion picker, the music/bed field, and the post-ready export.
 - [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.

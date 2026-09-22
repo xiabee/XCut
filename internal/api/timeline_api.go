@@ -33,7 +33,12 @@ func (s *Server) handleTimelineGet(w http.ResponseWriter, r *http.Request) {
 			hasBackup = true
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"timeline": tl, "has_backup": hasBackup})
+	// The pacing object is derived, not stored: the UI's shape chip and the CLI's
+	// summary line then read one measurement of one document instead of keeping
+	// two arithmetic implementations that can disagree. A client that echoes this
+	// envelope back to PUT is refused (the document is nested), so the derived
+	// field cannot become an input.
+	writeJSON(w, http.StatusOK, map[string]any{"timeline": tl, "has_backup": hasBackup, "pacing": tl.Pacing()})
 }
 
 // handleTimelinePut replaces the project timeline with the posted document.

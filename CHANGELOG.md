@@ -174,6 +174,34 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   promises a 4.0s ceiling`, `clip_order "hooks_first" accepted; a typo would
   silently keep the old order`). The missing input is a multi-cut, moving source.
 
+### Improved
+- **The web UI now shows what a reel is made of, not only what it contains.** The
+  timeline panel carries a pacing chip — `{shots} shots · mean …s · median …s ·
+  longest …s · best shot starts at …s` — beside the existing footage note, and the
+  numbers come from the server: `GET /api/v1/projects/{id}/timeline` gained a
+  derived `pacing` object computed by `timeline.Pacing`, the same function the CLI
+  line uses. One measurement, two readers, so the chip and `xcut timeline` cannot
+  tell different stories about one document. The chip describes the **saved**
+  document, not the unsaved trims in the strip above it, and a document with no
+  scores in it gets its lengths and the sentence "no shot is scored in this
+  document" instead of an invented best shot at 0.0 s.
+  Verified at three levels, because a CSS rule that renders on nothing has fooled
+  this project before: the wire (a Go test asserts the raw JSON keys — `shots`,
+  `mean_seconds`, `hook_seconds`, `scored_shots` — and the values against a document
+  it builds itself), the asset guards this package already runs (the new element id
+  and the two new i18n keys go through `static_dom_test.go` and `static_i18n_test.go`
+  in every gate), and the browser (the
+  chip read back as `display: block` with `8 个镜头 · 平均 7.5 秒 · 中位 8.0 秒 ·
+  最长 8.0 秒 · 评分最高的镜头从第 16.0 秒开始` — the same numbers `xcut timeline`
+  printed for that document, and again after a reload and re-selecting the project).
+  The browser level was performed once, by hand, and CI cannot repeat it — stated
+  here as what was seen, not as something enforced.
+  Five controls prove the guards bite: dropping the envelope field, renaming a JSON
+  tag, typo-ing the element id, drifting one i18n key, and renaming a field on the
+  *script* side (`app.js never reads "p.mean_seconds"`) each failed exactly one named
+  test — the last one is what makes the two ends of the wire a gate rather than an
+  observation. The tree was restored byte-for-byte afterwards.
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 

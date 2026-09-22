@@ -15,22 +15,22 @@ import (
 // in its summary line; a reel whose "clips" and "shots" disagree would be a
 // readout nobody could reconcile.
 type Pacing struct {
-	Shots           int
-	MeanSeconds     float64
-	MedianSeconds   float64
-	LongestSeconds  float64
-	ShortestSeconds float64
+	Shots           int     `json:"shots"`
+	MeanSeconds     float64 `json:"mean_seconds"`
+	MedianSeconds   float64 `json:"median_seconds"`
+	LongestSeconds  float64 `json:"longest_seconds"`
+	ShortestSeconds float64 `json:"shortest_seconds"`
 
 	// ScoredShots counts the clips carrying the style engine's "score". A
 	// hand-edited document has none, and then the hook below is not zero — it is
 	// absent, which is a different answer.
-	ScoredShots int
+	ScoredShots int `json:"scored_shots"`
 	// HookSeconds is where the top-scored shot *begins on the output timeline*.
 	// Source position answers "when was it filmed", which is not the question a
 	// hook is. Equal scores resolve to the earlier output position: the viewer
 	// meets that one first whatever the document's clip order says.
-	HookSeconds float64
-	HookScore   float64
+	HookSeconds float64 `json:"hook_seconds"`
+	HookScore   float64 `json:"hook_score"`
 }
 
 // Pacing measures this document. A nil or empty timeline reports the zero value:

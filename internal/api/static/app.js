@@ -737,17 +737,21 @@ async function refreshTimeline() {
   renderInspector();
   renderTimeline();
   renderFootageNote();
+  renderPacing(null);
   if (!currentProject) return;
   const pid = currentProject.id;
+  let pacing = null;
   try {
-    const { timeline, has_backup } = await api(`/api/v1/projects/${pid}/timeline`);
+    const env = await api(`/api/v1/projects/${pid}/timeline`);
     if (projectChangedSince(pid)) return; // stale: A's document must not become B's editing state
-    timelineDoc = timeline;
-    clipEdits = JSON.parse(JSON.stringify(timeline.tracks[0].clips));
-    $("btn-tl-restore").hidden = !has_backup;
+    timelineDoc = env.timeline;
+    clipEdits = JSON.parse(JSON.stringify(timelineDoc.tracks[0].clips));
+    $("btn-tl-restore").hidden = !env.has_backup;
+    pacing = env.pacing || null;
   } catch (_) { /* no timeline yet — expected before first generation */ }
   renderTimeline();
   renderFootageNote();
+  renderPacing(pacing);
 }
 
 const EPS = 1e-6;
@@ -785,6 +789,40 @@ function renderFootageNote() {
   el.textContent = tf("this footage offered {n} candidate rallies and the cut took {clips} of them — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.", {
     n: md.candidate_events, clips: n, got: got.toFixed(1), asked: Math.round(asked),
   });
+}
+
+// renderPacing shows the shape of the reel — how many shots it is made of and how
+// long they run. Selection accuracy says nothing about that: the same picks read
+// identically whether they land as one long stretch or as many short cuts, and
+// short-form practice lives or dies by the difference. The numbers come from the
+// server's measurement of the stored document (the same function the CLI line
+// uses), so this chip and that line cannot tell two stories about one reel. It
+// describes what is saved, not the unsaved trims in the strip above it.
+function renderPacing(p) {
+  const el = $("tl-pacing");
+  if (!el) return;
+  const shots = Number(p && p.shots) || 0;
+  if (shots < 1) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  const args = {
+    shots,
+    mean: (Number(p.mean_seconds) || 0).toFixed(1),
+    median: (Number(p.median_seconds) || 0).toFixed(1),
+    longest: (Number(p.longest_seconds) || 0).toFixed(1),
+  };
+  if (Number(p.scored_shots) > 0) {
+    args.hook = (Number(p.hook_seconds) || 0).toFixed(1);
+    el.textContent = tf("{shots} shots · mean {mean}s · median {median}s · longest {longest}s · best shot starts at {hook}s", args);
+  } else {
+    // A hand-edited document has no scores in it, so there is no "best shot" to
+    // place — reporting one at 0.0s would be an invention. The sentence says so
+    // rather than quietly going short, which would read as the same claim.
+    el.textContent = tf("{shots} shots · mean {mean}s · median {median}s · longest {longest}s · no shot is scored in this document", args);
+  }
+  el.hidden = false;
 }
 
 // renderTimeline draws the visual strip: a time ruler, one block per clip

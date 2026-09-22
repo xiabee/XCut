@@ -554,6 +554,34 @@ with `not run: nothing`, zero `DATA RACE` lines, and the new suites run explicit
 on the node (`order ran=4`, `presets+embed+pacing ran=15`, `skipped=0` in both) —
 the preset files ship in the embed, so Linux validates them too.
 
+**B6a (first slice of the UI phase): the reel's shape is in the web UI.** The
+timeline panel's pacing chip reads a derived `pacing` object that
+`GET /api/v1/projects/{id}/timeline` now computes with `timeline.Pacing` — the same
+function behind the CLI line — so the two readers cannot disagree about one
+document; the PUT path takes a bare document and refuses the envelope, so a client
+that echoes the response back cannot smuggle the derived field into storage. The
+chip describes the *saved* document (the strip above it holds unsaved trims), hides
+when there are no shots, and says "no shot is scored in this document" rather than
+inventing a best shot at 0.0 s. Wire keys are pinned in Go (`shots`,
+`mean_seconds`, `median_seconds`, `longest_seconds`, `scored_shots`,
+`hook_seconds`) and on the script side (`app.js` must name each field it reads), so
+a rename at either end fails a gate instead of blanking the chip; five controls
+prove it: dropping the envelope field, renaming a JSON tag, typo-ing the element id,
+drifting one i18n key, and renaming a field in the script each failed exactly one
+named test (`app.js reaches for 1 id(s) no markup defines:
+tl-pacing`, `pacing is missing the "hook_seconds" key`). Browser evidence, performed
+by hand and **not repeatable in CI**: on the owner's match project the chip rendered
+`8 个镜头 · 平均 7.5 秒 · 中位 8.0 秒 · 最长 8.0 秒 · 评分最高的镜头从第 16.0 秒开始`
+with `display: block`, matching `pacing: 8 shots, mean 7.5s, median 8.0s, longest
+8.0s, top shot starts at 16.0s` from the same document; it rendered again after a
+reload and re-selecting the project; and after a save that stripped every score it
+switched to the unscored sentence while keeping the lengths. Two traps met on the
+way, both mine: a `xcut timeline` "restore" run silently did nothing because
+`serve` held the workspace lock and the failure line was grep'd away, and a copy in
+an edit changed a neighbouring translated sentence that a Go test pins — the second
+was caught by diffing, the first only by looking at the output instead of the exit
+code.
+
 
 ## Version / HEAD
 

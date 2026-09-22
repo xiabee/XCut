@@ -36,6 +36,12 @@ scoring — is what sets the pace, and the best moment arrives a quarter of the 
 in. A hand-edited document has no scores in it, and then the line reports lengths
 and says nothing about a top shot rather than inventing one.
 
+The web UI carries the same measurement as a chip under the timeline strip, read
+from the `pacing` object `GET /api/v1/projects/{id}/timeline` computes — one
+function behind both readers, so the chip and this line cannot disagree. It
+describes the **saved** document: unsaved trims in the strip above it are not in it
+yet.
+
 ## xcut analyze
 ```
 usage: xcut analyze <project> [assetID...]
