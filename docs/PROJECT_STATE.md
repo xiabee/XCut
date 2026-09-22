@@ -547,6 +547,12 @@ computed per preset config at build time — the same asset yields `onsets=282` 
 `sports_vertical` (rally mode) and none under an activity-mode preset that has no
 use for them. Reading `onsets=0` from an analyze-stage line as "the audio has no
 transients" would have been wrong; the file's own mean level is −27.9 dB.
+Accepted at `cbd4ee7`: control-plane local gate 522 passed / 8 skipped with
+`steps not run: none` (`local CI PASS at 18:07:21 for cbd4ee78`), win-devops
+`OVERALL PASS` at that head (`exit=0 duration=1m51.686s`), Linux full gate 511/13
+with `not run: nothing`, zero `DATA RACE` lines, and the new suites run explicitly
+on the node (`order ran=4`, `presets+embed+pacing ran=15`, `skipped=0` in both) —
+the preset files ship in the embed, so Linux validates them too.
 
 
 ## Version / HEAD
