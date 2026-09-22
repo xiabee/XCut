@@ -900,6 +900,44 @@ PASS` (`exit=0 duration=2m9.486s`), and no Linux leg — that commit changed doc
 and a struct comment, and the code those words describe was Linux-verified at `69a52d3`
 and `d154b72`.
 
+**B6e (CLI, the one-shot's caption step).** `xcut auto --subs=on` transcribes between
+building the reel and rendering it; `--subs=some.ass` burns a file the caller already
+has, which is the shape `xcut render --subs` takes. Without the flag the command is
+byte-for-byte what it was. The step runs after the timeline on purpose — the caption
+box is styled against the canvas the same run wrote — which is the same ordering
+property the tap has, now on a machine with no browser open. It goes through a new sync
+entry point, `TranscribeProject`, that records the same `subtitles` job row the HTTP
+path does; it does not wait for another job, because a job blocking on a child inside a
+two-slot queue is how two runs deadlock.
+
+Measured: two cases on generated media with a fake sidecar — the flag's run leaves one
+`subtitles.ass` declaring 1920×1080 (the canvas `generic_highlight` had just written,
+not the writer's shipped reference) with no karaoke tags, and renders the reel; the
+flagless run writes no caption file. The refusal case narrows `PATH` to the directory
+the media tools actually live in, so ffmpeg stays runnable while no sidecar can be
+found: taking `PATH` away wholesale made the run die at the import instead, which is a
+different failure with a different cause and would have proved nothing. Two mutations:
+the flag never reaching the switch kills both cases; a swallowed transcript error
+kills the reporting case — **and it did not at first**, because the assertion read
+`stderr` for the word "sidecar" and the job logger echoes the cause into the same
+stream. Reading the command's own `xcut auto:` line is what gave the assertion its
+teeth; the same lesson in prose is in the commit message.
+
+**Declared cost, for the operator to keep or reject.** `pipeline.AssetMotionROI` was
+unexported until B6c needed the same `storage`→`style` region mapping in an HTTP
+handler. Calling the existing function beat writing a second one that could drift, but
+widening a package's exported surface to serve a new caller is a trade, not a freebie,
+so it is named here instead of left as a silent fact. Nothing else in the arc changed
+visibility for testability's sake.
+
+Accepted at `58c628b`: local `568 passed, 8 skipped` with `steps not run: none` and
+`no leaks found`; win-devops `OVERALL  PASS` (`exit=0 duration=1m49.266s`, its own line
+recording `local CI PASS at 01:52:28 for 58c628b6`); Linux `gate (full): PASS … not run:
+nothing`, 13 skipped, `DATA_RACE_lines=0`, `FAIL_lines=0`, `== done gate_rc=0
+oneshot_rc=0 chain_rc=0`, with the one-shot leg `ran=6 skipped=0` and the
+caption-and-tap chain leg `ran=10 skipped=0` run explicitly on that machine.
+
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
