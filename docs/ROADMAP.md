@@ -326,11 +326,18 @@ Every item states how it is measured before it is built, because the eval harnes
       and request literal are pinned by tests, its on-screen form is not — and
       `xcut auto` still has no caption step, so the CLI's one shot stays the
       three-step one.
-- [ ] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
+- [x] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.
       Measured: numbers in `docs/PERFORMANCE.md` from real runs, "not measured"
       where it has not been measured.
+      Closed 2026-09-23 as B7a + B7b: every axis this item names now carries a row
+      measured on this machine (idle 18.1/17.7 MB with a 0.000 s CPU delta, fan-out
+      traced to `max_ffmpeg_processes` at ~54 MB per 720p child, the xfade child at
+      566 MB, the framing plan at +0.5 s and +11.5% size per minute of output, the
+      sample cache at ~11.5 KB and the proxy at ~2.5 MiB per source-minute, and the
+      proxy ceiling observed draining). What it could not settle is recorded below as
+      two owner decisions, not as unmeasured ground.
       Partially landed as B7a (2026-09-23, four rows added to `docs/PERFORMANCE.md`):
       serve idle re-measured after the whole Phase 5 arc — 18.1 and 17.7 MB on two
       runs, CPU delta 0.000 s each, no media child alive at any sample; the analysis
@@ -345,8 +352,19 @@ Every item states how it is measured before it is built, because the eval harnes
       `resource.ffmpeg_max_memory_mb` should ship with a default instead of 0 =
       uncapped. The number any default has to clear is 566 MB, and the surface that
       tells the user today is `xcut doctor`'s `Process sandbox: OPTIONAL … memory
-      uncapped`. Proxy/cache bytes are enforced and tested at unit level
-      (`internal/analysis/cache_test.go`) but have no measured row yet.
+      uncapped`.
+      Proxy/cache bytes landed as B7b (2026-09-23, four rows in `docs/PERFORMANCE.md`):
+      ~11.5 KB of sample cache per source-minute against ~2.5 MiB of proxy per
+      source-minute, a geometry change costing a second full copy (72% of the first at
+      480 px, not the 56% the pixel area suggests), and a ceiling that holds absolutely —
+      `xcut cleanup` drained all three proxies once the budget fell under the newest
+      file's own size, and the asset that lost its file paid a 15.3 s re-encode rather
+      than breaking. Its dry run was asserted to touch nothing, byte for byte.
+      That row surfaced the other half of the decision B7 leaves open:
+      `proxy_enabled` defaults to **false**, so the 2 GiB `max_proxy_gb` governs an empty
+      directory in the shipped posture — either the default turns the proxy on (session
+      #3 measured repeated analysis 10–20× cheaper with it) or the budget should be
+      documented as dormant instead of listed as a standing control.
 
 Order of attack is B1 → B2 → B3 → B4 (each depends on the one before), with B5
 independent and B6 landing per feature as its surface exists.

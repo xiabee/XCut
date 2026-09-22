@@ -488,6 +488,27 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   as a second opinion; and the 1 200-onset budget is a cost bound with no test that can
   observe it, so it is carried by the timings above instead of by an assertion.
 
+### Measured
+- **B7b — what the analysis caches actually cost, and whether the proxy ceiling holds.**
+  Four rows in `docs/PERFORMANCE.md`, on the 603 s broadcast and a 300 s 1080p synthetic,
+  on this machine (i7-10875H, 16 threads, FFmpeg 9.0.2, xcut `0aed2e6`): the sample cache
+  at **115,752 B** for 10 minutes of real footage and **36,387 B** for 5 minutes of a tone
+  (~11.5 KB per source-minute, and an entry's size tracks its samples, not the pixels);
+  the proxy at **2.5 MiB per source-minute** at the default 640 px / 2 fps geometry, which
+  makes the default 2 GiB budget worth about **13 hours** of footage like this; a geometry
+  change costing a **second full copy** (19,167,798 B at 480 px, 72% of the 640 one, plus
+  116,267 B of new cache entry and a 28.8 s re-encode), because the geometry is in the
+  filename on purpose; and the ceiling itself, where `xcut cleanup --dry-run` was asserted
+  to plan without touching a byte and `xcut cleanup` then drained all three proxies in
+  208 ms — every file went because the newest one was itself bigger than the 11.9 MB
+  budget. The asset left without a proxy re-analyzed clean and paid **15.3 s** against the
+  283 ms cached path, landing back under the ceiling.
+  Two facts this put on the table rather than in a claim: `xcut analyze` prints no
+  per-analyzer breakdown, so the byte split by track is not observable from the CLI; and
+  `proxy_enabled` defaults to **false**, so in the shipped posture the 2 GiB proxy budget
+  governs an empty directory — a standing control that is currently dormant, now written
+  down as an owner decision instead of left reading as coverage.
+
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
