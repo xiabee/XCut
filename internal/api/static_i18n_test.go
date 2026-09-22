@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -118,5 +120,49 @@ func TestI18nDictKeysAreReferenced(t *testing.T) {
 	if len(orphans) > 0 {
 		t.Fatalf("zh entries never referenced from index.html/app.js:\n  %s",
 			strings.Join(orphans, "\n  "))
+	}
+}
+
+// TestI18nPlaceholdersMatch: every {name} an English source string declares must
+// appear in its zh value, and the value may not carry one the source dropped. A
+// translation that keeps {clips} after the English sentence stopped offering it
+// prints the brace-word on screen — which is exactly what happened to the singular
+// half of the footage note while this guard was being written, by hand, minutes
+// before it existed.
+func TestI18nPlaceholdersMatch(t *testing.T) {
+	_, _, dictJS := i18nAssets(t)
+	zh := i18nDict(t, dictJS)
+	holders := regexp.MustCompile(`\{(\w+)\}`)
+	set := func(s string) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range holders.FindAllStringSubmatch(s, -1) {
+			out[m[1]] = true
+		}
+		return out
+	}
+	differ := func(a, b map[string]bool) []string {
+		var out []string
+		for k := range a {
+			if !b[k] {
+				out = append(out, "{"+k+"}")
+			}
+		}
+		for k := range b {
+			if !a[k] {
+				out = append(out, "extra {"+k+"}")
+			}
+		}
+		return out
+	}
+	var bad []string
+	for key, value := range zh {
+		if got := differ(set(key), set(value)); len(got) > 0 {
+			bad = append(bad, fmt.Sprintf("%s → %s", key, strings.Join(got, ", ")))
+		}
+	}
+	if len(bad) > 0 {
+		sort.Strings(bad)
+		t.Fatalf("placeholder sets disagree between the source strings and their zh values:\n  %s",
+			strings.Join(bad, "\n  "))
 	}
 }

@@ -364,6 +364,36 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **Three things a walk through the real product found, at 02:16.** The walk drove the
+  HTTP surface the way the page does — real 603 s match, a synthetic 120 BPM click bed,
+  the vertical style, a transcript with word timings and two hostile lines (`{}`, a
+  backslash, a newline) — and reported what a user would have seen:
+  - **`pacing` came out over HTTP as `7.50000000000001` and `6.0200000000039`.** The
+    numbers are sums over float durations, and the browser hides it with `toFixed(1)`
+    while any other consumer sees the whole tail. `Pacing()` now rounds to
+    milliseconds — a millisecond is the finest claim a shot list can make. The case
+    that proves it needed the *third* of a second to be written first: the fixture with
+    human durations (7.1/7.3/8.1) let the mutation that deleted the rounding walk
+    through, because those numbers divide cleanly enough to look like the bug was gone.
+  - **"this footage offered 1 candidate rallies and the cut took 1 of them."** The
+    vertical style on sports footage finds one candidate, which is exactly the case
+    where the sentence matters most (the reel is 2.8 s of the 30 s asked for), and the
+    plural template said something false twice over — the grammar, and "has worked
+    through every candidate it found" about a search that never happened. CLI and
+    client now have a singular sentence: *"this footage offered one candidate rally
+    and the cut took it … the selector found nothing else to cut."*
+  - **`TestI18nPlaceholdersMatch`** compares each source string's `{placeholders}` with
+    its zh value's, both directions. It was written immediately after hand-translating
+    the singular note left `{clips}` in the Chinese string that no longer declares one
+    — which would have printed `{clips}` on screen, silently, in the only language the
+    guard was missing for.
+  Left alone on purpose, and named so it is not mistaken for unseen: the terse data
+  lines (`timeline: 1 clips`, `pacing: 1 shots`) read as labels rather than prose, and
+  Chinese has no plural to get wrong there. The walk itself is kept out of the repo at
+  `D:\tmp\xcub1\walk.py`; its output for the record says the tap took 41 s import to
+  file, the reel it wrote was 2.833 s / 657 KB from one candidate, and the caption file
+  it produced declared `PlayResX 1080 / PlayResY 1920` with the hostile characters
+  escaped (`{花括号}`, `/`, `\N`) rather than live in the stream.
 - **`docs/USAGE.md` was behind the binary, and now a test says so.** Adding `--subs`
   to `xcut auto` left the page stating the old syntax in the same commit that landed
   the flag — the third such drift a grep turned up on the spot: `xcut timeline`'s own

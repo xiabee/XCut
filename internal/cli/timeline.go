@@ -208,6 +208,15 @@ func footageLimitNote(tl *timeline.Timeline, asked float64) string {
 	if short < 1.0 {
 		return ""
 	}
-	return fmt.Sprintf("  note: this footage offered %s candidate rallies and the cut took %d of them — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.",
-		tl.Metadata["candidate_events"], countTimelineClips(tl), tl.Duration(), asked)
+	clips := countTimelineClips(tl)
+	// One candidate and eighteen need different English, and both need the same
+	// explanation: "why is my reel 2.8 seconds when I asked for 30" is one question,
+	// not a special case of it.
+	note := fmt.Sprintf("this footage offered %s candidate rallies and the cut took %d of them — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.",
+		tl.Metadata["candidate_events"], clips, tl.Duration(), asked)
+	if tl.Metadata["candidate_events"] == "1" {
+		note = fmt.Sprintf("this footage offered one candidate rally and the cut took it — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector found nothing else to cut.",
+			tl.Duration(), asked)
+	}
+	return "  note: " + note
 }

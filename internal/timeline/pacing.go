@@ -1,6 +1,7 @@
 package timeline
 
 import (
+	"math"
 	"sort"
 	"strconv"
 )
@@ -81,5 +82,17 @@ func (t *Timeline) Pacing() Pacing {
 	} else {
 		p.MedianSeconds = (lengths[mid-1] + lengths[mid]) / 2
 	}
+	// A millisecond is all a readout can claim. These numbers come out of sums over
+	// float durations, and shipping 7.50000000000001 in an API response asks the
+	// reader to wonder what the extra digits mean. They do not.
+	p.MeanSeconds = roundMillis(p.MeanSeconds)
+	p.MedianSeconds = roundMillis(p.MedianSeconds)
+	p.LongestSeconds = roundMillis(p.LongestSeconds)
+	p.ShortestSeconds = roundMillis(p.ShortestSeconds)
+	p.HookSeconds = roundMillis(p.HookSeconds)
 	return p
+}
+
+func roundMillis(v float64) float64 {
+	return math.Round(v*1000) / 1000
 }

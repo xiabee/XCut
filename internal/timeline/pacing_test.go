@@ -1,6 +1,10 @@
 package timeline
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 // reel builds the document a style run would write: one video track, clips laid
 // back to back. TimelineStart is set separately from SourceStart on purpose —
@@ -131,5 +135,37 @@ func TestPacingIgnoresUnreadableScores(t *testing.T) {
 	}
 	if p.HookSeconds != 100 || p.HookScore != 0.5 {
 		t.Fatalf("hook = %v/%v, want the one readable score at 100", p.HookSeconds, p.HookScore)
+	}
+}
+
+// TestPacingNumbersFitOnTheWire: these numbers go out over HTTP and into a browser.
+// Durations sum in float64, so three shots of 7.1, 7.3 and 8.1 seconds average to
+// 7.500000000000001 — a figure that invites a reader to wonder what the trailing
+// digits mean. They don't: a millisecond is the finest claim a shot list can make,
+// and the walk over a real match is what put the long form in front of a person.
+func TestPacingNumbersFitOnTheWire(t *testing.T) {
+	// One second played at 3× is 1/3, which has no finite decimal form: the first
+	// version of this case used durations a human would write (7.1, 7.3, 8.1) and
+	// the mutation that deleted the rounding sailed through it, because those
+	// thirds of a second are what actually fail to fit on the wire.
+	tl := reel(shot(0, 1, 3, "0.5"), shot(10, 11, 3, "0.9"), shot(20, 21, 3, "0.4"))
+	raw, err := json.Marshal(tl.Pacing())
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"mean_seconds", "median_seconds", "longest_seconds", "shortest_seconds", "hook_seconds"} {
+		v := string(doc[key])
+		if i := strings.Index(v, "."); i >= 0 && len(v)-i-1 > 3 {
+			t.Errorf("%s = %s on the wire, want at most millisecond digits", key, v)
+		}
+	}
+	for key, want := range map[string]string{"mean_seconds": "0.333", "shortest_seconds": "0.333", "longest_seconds": "0.333"} {
+		if got := string(doc[key]); got != want {
+			t.Errorf("%s = %s, want %s (1/3 of a second rounded to the millisecond)", key, got, want)
+		}
 	}
 }

@@ -52,3 +52,26 @@ func TestFootageLimitNote(t *testing.T) {
 		}
 	}
 }
+
+// TestFootageLimitNoteIsSingularForOneRally: the walk over a real match with the
+// vertical style produced exactly one candidate, and the note read "offered 1
+// candidate rallies" at the user. Singular is not vanity — with one candidate the
+// second half of the plural sentence ("worked through every candidate") says
+// something different from the truth, which is that there was nothing else to cut.
+func TestFootageLimitNoteIsSingularForOneRally(t *testing.T) {
+	tl := &timeline.Timeline{
+		Tracks: []timeline.Track{{Clips: []timeline.Clip{
+			{SourceStart: 0, SourceEnd: 2.8, TimelineStart: 0, Speed: 1},
+		}}},
+		Metadata: map[string]string{"candidate_limit": "true", "candidate_events": "1"},
+	}
+	got := footageLimitNote(tl, 30)
+	for _, needle := range []string{"one candidate rally", "the cut took it", "2.8s of the 30s", "nothing else to cut"} {
+		if !strings.Contains(got, needle) {
+			t.Errorf("the note for a single candidate lacks %q:\n%s", needle, got)
+		}
+	}
+	if strings.Contains(got, "1 candidate rallies") || strings.Contains(got, "took 1 of them") {
+		t.Errorf("the singular case still reads as the plural one:\n%s", got)
+	}
+}

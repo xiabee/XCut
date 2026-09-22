@@ -109,6 +109,7 @@ window.XCUT_I18N = {
     "why": "入选原因",
     "ends at point": "结束于得分点",
     "this footage offered {n} candidate rallies and the cut took {clips} of them — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.": "这段素材提供 {n} 个候选回合，成片取了其中 {clips} 段——要 {asked} 秒只做到 {got} 秒。要再长就得加素材：分析找到的候选已经被全部过了一遍。",
+    "this footage offered one candidate rally and the cut took it — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector found nothing else to cut.": "这段素材只提供 1 个候选回合，成片用的就是它——要 {asked} 秒只做到 {got} 秒。要再长就得加素材：分析没找到别的可剪内容。",
     "{shots} shots · mean {mean}s · median {median}s · longest {longest}s · best shot starts at {hook}s": "{shots} 个镜头 · 平均 {mean} 秒 · 中位 {median} 秒 · 最长 {longest} 秒 · 评分最高的镜头从第 {hook} 秒开始",
     "{shots} shots · mean {mean}s · median {median}s · longest {longest}s · no shot is scored in this document": "{shots} 个镜头 · 平均 {mean} 秒 · 中位 {median} 秒 · 最长 {longest} 秒 · 这份文档里没有镜头打分",
     "music bed (path)": "背景音乐（路径）",

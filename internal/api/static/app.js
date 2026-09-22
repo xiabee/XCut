@@ -788,9 +788,16 @@ function renderFootageNote() {
     return;
   }
   el.hidden = false;
-  el.textContent = tf("this footage offered {n} candidate rallies and the cut took {clips} of them — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.", {
-    n: md.candidate_events, clips: n, got: got.toFixed(1), asked: Math.round(asked),
-  });
+  // One candidate and eighteen need different sentences, not just different numbers:
+  // with one, "worked through every candidate it found" describes a search that never
+  // happened, and the truth — there was nothing else to cut — is the useful half.
+  el.textContent = String(md.candidate_events) === "1"
+    ? tf("this footage offered one candidate rally and the cut took it — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector found nothing else to cut.", {
+      got: got.toFixed(1), asked: Math.round(asked),
+    })
+    : tf("this footage offered {n} candidate rallies and the cut took {clips} of them — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.", {
+      n: md.candidate_events, clips: n, got: got.toFixed(1), asked: Math.round(asked),
+    });
 }
 
 // renderPacing shows the shape of the reel — how many shots it is made of and how
