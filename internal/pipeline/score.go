@@ -47,13 +47,8 @@ func (d *Deps) scanScoreMarks(ctx context.Context, assets []storage.Asset) error
 		if err := ctx.Err(); err != nil {
 			return xcerr.E(xcerr.CodeCancelled, "cancelled", err)
 		}
-		times, err := worker.ScoreChanges(ctx, bin, a.Path, a.ScoreCrop, ScoreScanTimeout)
+		times, err := ScoreScan(ctx, d.DB, bin, a.ID, a.Path, a.ScoreCrop)
 		if err != nil {
-			return err
-		}
-		if err := d.DB.SetAssetScoreMarks(ctx, a.ID, &storage.ScoreMarks{
-			Crop: a.ScoreCrop, Times: times, At: time.Now().Unix(),
-		}); err != nil {
 			return err
 		}
 		summary := worker.SummarizeScoreMarks(times)
@@ -61,6 +56,26 @@ func (d *Deps) scanScoreMarks(ctx context.Context, assets []storage.Asset) error
 			"crop", a.ScoreCrop, "spacing", summary.String())
 	}
 	return nil
+}
+
+// ScoreScan measures the point ends of one source and writes them to its asset
+// row, returning the marks it stored.
+//
+// This is *the* implementation of that write: the analyze fan-out above and
+// `xcut eval`'s score_roi cases both go through it, so an evaluation can only
+// measure the feature the product actually uses — and the two cannot drift into
+// a harness stand-in.
+func ScoreScan(ctx context.Context, db *storage.DB, bin, assetID, srcPath string, crop []float64) ([]float64, error) {
+	times, err := worker.ScoreChanges(ctx, bin, srcPath, crop, ScoreScanTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.SetAssetScoreMarks(ctx, assetID, &storage.ScoreMarks{
+		Crop: crop, Times: times, At: time.Now().Unix(),
+	}); err != nil {
+		return nil, err
+	}
+	return times, nil
 }
 
 // needsScoreScan is the whole staleness rule: a region with no measurement, or

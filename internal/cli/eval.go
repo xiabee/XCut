@@ -44,10 +44,12 @@ type evalCaseResult struct {
 }
 
 // scanScoreMarks measures point ends off the burned-in scoreboard and stores
-// them on the case's asset — the same production write `xcut boundaries` does,
-// so the A/B measures the feature rather than a harness stand-in. It returns
-// the count it stored. Refusing loudly when no sidecar exists is the point:
-// score_roi is a request for a measurement, not a hint.
+// them on the case's asset through the production write (`pipeline.ScoreScan`,
+// the same one the analyze fan-out uses), so the A/B measures the feature
+// rather than a harness stand-in. It returns the count it stored. Refusing
+// loudly when no sidecar exists is the point: score_roi is a request for a
+// measurement, not a hint — and the refusal names the case, because a manifest
+// can hold several.
 func scanScoreMarks(ea *App, db *storage.DB, c eval.Case, assetID string) (int, error) {
 	crop := []float64{c.ScoreROI.X, c.ScoreROI.Y, c.ScoreROI.W, c.ScoreROI.H}
 	bin := worker.ResolveAIBin(ea.Cfg.Workers.AIBin)
@@ -55,13 +57,8 @@ func scanScoreMarks(ea *App, db *storage.DB, c eval.Case, assetID string) (int, 
 		return 0, xcerr.E(xcerr.CodeNotFound,
 			fmt.Sprintf("case %q asks for score_roi, which needs a scoreboard-capable AI sidecar (set workers.ai_bin)", c.Name), nil)
 	}
-	times, err := worker.ScoreChanges(ea.Ctx, bin, c.Media, crop, pipeline.ScoreScanTimeout)
+	times, err := pipeline.ScoreScan(ea.Ctx, db, bin, assetID, c.Media, crop)
 	if err != nil {
-		return 0, err
-	}
-	if err := db.SetAssetScoreMarks(ea.Ctx, assetID, &storage.ScoreMarks{
-		Crop: crop, Times: times, At: time.Now().Unix(),
-	}); err != nil {
 		return 0, err
 	}
 	return len(times), nil
@@ -351,7 +348,11 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 	}
 	tl, err := d.BuildTimeline(p, pipeline.TimelineRequest{Style: styleName, Duration: duration})
 	if err != nil {
-		return nil, 0, err
+		// The marks survive the failure: they were measured and stored before
+		// the reel was attempted, and a results document that reports 0 for a
+		// case that scanned two is the exact confusion this field exists to
+		// avoid.
+		return nil, marks, err
 	}
 	var clips []timeline.Clip
 	for _, tr := range tl.Tracks {
