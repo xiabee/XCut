@@ -502,6 +502,52 @@ refused the push during this milestone; it went over `ssh.github.com:443` after
 comparing the three host keys against the `github.com` entries already in
 `known_hosts` (byte-identical, same fingerprint set).
 
+**Same session, later still:** B4c cut two presets on the ruler B4b built, and one
+new IR knob to make the second one meaningful: `clip_order`
+(`chronological` — the unset value, so no existing preset changes — or
+`hook_first`, which moves the style's own top-scored shot to the front and leaves
+the rest in match order; an unrecognised name is refused at load because a typo
+would otherwise keep playing the old order while promising a hook).
+`sports_vertical` (9:16, `max_clip_duration` 4.0, `roi` framing) and
+`beat_shortform` (1080×1920, 1.0–2.8 s shots, ±0.12 s snap, hook first) are
+embedded, so `GET /api/v1/styles` and the UI picker list them without a hand-kept
+registry.
+
+Measured on the owner's match, both styles at the *same* 60 s budget as the
+incumbent (`docs/EVAL.md` has the table): 15 clips against 8, recall 0.100 against
+0.108, precision 0.785 against 0.850, and the **longest run of untouched annotated
+rallies 4 instead of 10** — the axis that moved in the new preset's favour. Its
+`ranges_hit` fell (4 vs 6) and that is the yardstick, not the edit: a hit needs IoU
+≥ 0.3 against a rally, and a shot inside one scores `len(shot)/len(rally)` — 4 s in
+15 s is 0.267, under the bar, where 8 s is 0.533. Per the rule written before this
+was built, **a preset that does not beat the incumbent on the annotated case does
+not become the default**, and it did not: `badminton_highlight` stays the shipped
+sports style, `sports_vertical` is an opt-in shape.
+
+Two claims were *not* made, and why. The pacing line for the vertical preset on the
+workspace at hand reads `14 shots, mean 4.0s, median 4.0s, longest 4.0s, top shot
+starts at 12.0s` — half the incumbent's 8.0 s, which B4b identified as the only
+thing setting pace — but **the saturation pattern persisted**: mean = median =
+longest = the new ceiling. Halving the ceiling halves the reel's shots; it does not
+diversify them. And `beat_shortform` cannot be shown on any footage in this
+repository's possession: its activity-mode config sees one continuous span on a
+fixed broadcast camera (`chunks_considered=0 … segments=1`; the shipped
+`generic_highlight` does the same here, so this is the content, not the preset), and
+its eval row is 0.000 with one clip for exactly that reason. Its shape is
+demonstrated on constructed segments, with 7 mutations — hook never moves, tail
+re-sorted by score, `clip_order` accepting anything, ceiling 4→9, motion mode
+dropped, hook order removed, a preset vanishing from the embedded list — each killed
+by the named assertion (`hook_first started at 2, want … [2 14 26]`, `longest shot
+is 9.000s; the preset promises a 4.0s ceiling`). The missing input is a multi-cut,
+moving source, which is the same gap as the standing question about a second match.
+
+One investigation closed as *not* a defect, recorded because the log line reads like
+one: `xcut analyze` on a 105 s rendered reel reported `onsets=0`. Onsets are
+computed per preset config at build time — the same asset yields `onsets=282` under
+`sports_vertical` (rally mode) and none under an activity-mode preset that has no
+use for them. Reading `onsets=0` from an analyze-stage line as "the audio has no
+transients" would have been wrong; the file's own mean level is −27.9 dB.
+
 
 ## Version / HEAD
 

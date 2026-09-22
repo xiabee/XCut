@@ -1,0 +1,21 @@
+{
+	"name": "beat_shortform",
+	"title": "Beat-Driven Short Form",
+	"version": 1,
+	"canvas": { "width": 1080, "height": 1920, "fps": 30 },
+	"target_duration": 30,
+	"min_clip_duration": 1.0,
+	"max_clip_duration": 2.8,
+	"beat_snap_tolerance": 0.12,
+	"clip_order": "hook_first",
+	"scoring": { "motion": 0.45, "audio": 0.35, "duration": 0.20 },
+	"event_config": {
+		"cut_threshold": 0.28,
+		"motion_floor": 0.06,
+		"silence_db": -42,
+		"merge_gap": 0.8,
+		"min_duration": 1.0
+	},
+	"transition": { "type": "cut", "duration": 0 },
+	"audio": { "gain": 1.0 }
+}

@@ -181,16 +181,30 @@ Every item states how it is measured before it is built, because the eval harnes
       `14 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 24.0s`:
       every shot sits on the preset's `max_clip_duration`, so the ceiling — not the
       scoring — sets its pace, and the best moment lands a quarter of the reel in.
-- [ ] B4c — New presets on top of B1–B3, and they have to move the line B4b
-      prints: `beat_shortform` (2–3 s shots, the top-scored moment first, which
-      needs an ordering rule the readout can measure — chronological stays the
-      default) and `sports_vertical` (9:16, point-ending clips, punch-in on the
-      hit), plus the pacing readout on the existing styles so the owner can
-      compare. B4a supplies the bed these presets cut to.
-      Measured: each preset has an eval case (synthetic where truth is
-      constructed, the owner's match where it is annotated), the harness's
-      `--check` gate carries it, and a preset that does not beat the shipped one
-      on its own case does not become a default.
+- [x] B4c — Two presets cut on that ruler, plus the IR knob one of them needed:
+      `clip_order` (`chronological` — the unset value, so nothing existing changes
+      — or `hook_first`: the style's top-scored shot leads, the rest stay in match
+      order; an unknown name is refused at load). `sports_vertical` (9:16, 4.0 s
+      ceiling, `roi` framing that yields **no plan** when the project has no
+      analyzed region) and `beat_shortform` (1080×1920, 1.0–2.8 s, ±0.12 s snap,
+      hook first) are embedded, so the style list and UI picker see them without a
+      hand-kept registry.
+      Measured, at the incumbent's 60 s budget on the owner's match: 15 clips vs 8,
+      recall 0.100 vs 0.108, precision 0.785 vs 0.850, **longest untouched rally run
+      4 vs 10** — and its `ranges_hit` *lower* (4 vs 6) because a hit needs IoU
+      ≥ 0.3 and a shot inside a rally scores `len(shot)/len(rally)`: 4 s in 15 s is
+      0.267. The pacing line reads `mean 4.0s, median 4.0s, longest 4.0s` where the
+      incumbent reads 8.0/8.0/8.0: halving the ceiling halves the shots, and the
+      saturation at the ceiling **persisted** — recorded, not argued away. Per the
+      rule stated before building it, the incumbent stays the default: the new
+      preset does not beat it on the annotated case.
+      Not claimed: `beat_shortform` has been demonstrated on no footage this project
+      owns. Activity-mode segmentation finds one continuous span on a fixed
+      broadcast camera (`chunks_considered=0`), so its eval row is 0.000/1 clip —
+      the shipped `generic_highlight` behaves identically here, which is the content
+      talking, not the preset. Its shape is carried by constructed segments plus 7
+      mutations, each killed by the named assertion. A multi-cut moving source is
+      the missing input (same gap as the second-match question).
 - [ ] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
       subtitle burn and the KTV lyric path.

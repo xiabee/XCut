@@ -30,13 +30,30 @@ func testPreset() *Preset {
 }
 
 func TestParseEmbeddedPresets(t *testing.T) {
-	for _, name := range []string{"generic_highlight", "generic_xfade", "badminton_highlight", "ktv_mv"} {
+	// Shipped := the set this test names, validated := every file the embed
+	// actually carries. Reading the list from `embedded` is the point: presets are
+	// embedded by wildcard, so a hand-copied name list here would keep passing
+	// green while a newly added preset went unvalidated.
+	shipped := map[string]bool{
+		"generic_highlight": true, "generic_xfade": true, "badminton_highlight": true,
+		"ktv_mv": true, "beat_shortform": true, "sports_vertical": true,
+	}
+	for name := range shipped {
+		if _, ok := embedded[name]; !ok {
+			t.Errorf("preset %q is no longer embedded — a style disappeared", name)
+		}
+	}
+	for name := range embedded {
+		if !shipped[name] {
+			t.Errorf("embedded preset %q is not in this test's list; add it deliberately, not silently", name)
+			continue
+		}
 		p, err := Load(name)
 		if err != nil {
 			t.Fatalf("load %s: %v", name, err)
 		}
 		if p.Name != name {
-			t.Fatalf("name mismatch: %s", p.Name)
+			t.Fatalf("name mismatch: %s (embedded as %s)", p.Name, name)
 		}
 	}
 	if _, err := Load("nope"); err == nil {

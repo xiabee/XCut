@@ -103,6 +103,20 @@ const (
 	FramingROI     = "roi"
 )
 
+// Clip orders (Preset.ClipOrder): how the selected shots are arranged in the
+// reel. The name exists because a short-form cut and a match recap want
+// different answers to the same set of picks.
+const (
+	// ClipOrderChronological plays the picks in the order they happened. It is
+	// also the empty value, because that is what every preset written before
+	// this knob exists says, and it must keep meaning the same thing.
+	ClipOrderChronological = "chronological"
+	// ClipOrderHookFirst leads with the shot the style itself scored highest and
+	// keeps the rest in match order. One clip moves — sorting the whole reel by
+	// score would scatter the rally chronology, which is a different claim.
+	ClipOrderHookFirst = "hook_first"
+)
+
 // CameraMotion assigns a framing plan to every clip the style selects.
 //
 // The default is no motion, and not for lack of a use case: cropping a broadcast
@@ -155,7 +169,10 @@ type Preset struct {
 	Audio             Audio        `json:"audio"`
 	Diversity         Diversity    `json:"diversity,omitempty"`
 	CameraMotion      CameraMotion `json:"camera_motion,omitempty"`
-	MotionROI         *MotionROI   `json:"motion_roi,omitempty"`
+	// ClipOrder arranges the shots the selector chose. Unset means
+	// chronological, which is what every existing preset means today.
+	ClipOrder string     `json:"clip_order,omitempty"`
+	MotionROI *MotionROI `json:"motion_roi,omitempty"`
 
 	// Source records where the preset was loaded from (not serialized).
 	Source string `json:"-"`
@@ -267,6 +284,15 @@ func (p *Preset) Validate() error {
 	case "", FramingNone, FramingPunchIn, FramingDrift, FramingROI:
 	default:
 		add("camera_motion.mode %q is not one of none/punch_in/drift/roi", p.CameraMotion.Mode)
+	}
+	switch p.ClipOrder {
+	case "", ClipOrderChronological, ClipOrderHookFirst:
+	default:
+		// Refused rather than read as the default: a preset that misspells its
+		// order would keep playing the clips in match order while promising a
+		// hook, and the pacing readout would then be describing a rule nobody
+		// wrote.
+		add("clip_order %q is not one of chronological/hook_first", p.ClipOrder)
 	}
 	if p.CameraMotion.Mode != "" && p.CameraMotion.Mode != FramingNone &&
 		(p.CameraMotion.Zoom <= 0 || p.CameraMotion.Zoom > 1) {

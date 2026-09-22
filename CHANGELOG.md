@@ -143,6 +143,36 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   preset's ceiling is what sets its pace — not its scoring — and the best moment
   arrives a quarter of the reel in. Those are B4c's targets, written down before
   anyone picks a number for them.
+- **Two new styles, and the ordering knob one of them needed.** `clip_order` says
+  how the shots a style chose are arranged: unset/`chronological` plays them in
+  match order (what every preset written before this means today), `hook_first`
+  leads with the reel's own top-scored shot and leaves the rest in match order. A
+  name that is neither is refused when the preset loads — a typo would otherwise
+  keep the old order while the style file promised a hook, and the pacing line
+  would be reporting a rule nobody wrote. Two presets use what B1–B4a built:
+  `sports_vertical` (9:16 canvas, a 4.0 s ceiling, `roi` framing that produces **no
+  plan at all** on a project with no analyzed region rather than guessing a centre
+  crop over broadcast footage) and `beat_shortform` (1080×1920, 1.0–2.8 s shots,
+  ±0.12 s snap, hook first). Both are embedded, so the API style list and the UI
+  picker carry them without a hand-kept registry.
+  Measured against the incumbent at the *same* 60 s budget on the owner's match:
+  15 clips vs 8, recall 0.100 vs 0.108, precision 0.785 vs 0.850, and the longest
+  run of annotated rallies the reel never touches **4 instead of 10**. Its
+  `ranges_hit` is lower (4 vs 6) and that is the yardstick rather than the edit: a
+  hit needs IoU ≥ 0.3, and a shot inside a rally scores `len(shot)/len(rally)` —
+  4 s inside 15 s is 0.267, under the bar, where 8 s clears it. Per the rule written
+  before this shipped, **the incumbent stays the default**: the new preset does not
+  beat it on the annotated case and is an opt-in shape. The pacing readout says why:
+  `mean 4.0s, median 4.0s, longest 4.0s` against the incumbent's 8.0/8.0/8.0 —
+  halving the ceiling halves the shots, and the pile-up *at* the ceiling persisted.
+  Not demonstrated: `beat_shortform` on real footage. Activity-mode segmentation
+  finds one continuous span on a fixed broadcast camera (`chunks_considered=0`,
+  1 segment — the shipped `generic_highlight` does the same on this match), so its
+  eval row is one clip and F1 0.000. Its pacing and hook are carried by constructed
+  segments, replayed against 7 mutations each killed by the assertion it targets
+  (`hook_first started at 2, want … [2 14 26]`, `longest shot is 9.000s; the preset
+  promises a 4.0s ceiling`, `clip_order "hooks_first" accepted; a typo would
+  silently keep the old order`). The missing input is a multi-cut, moving source.
 
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)

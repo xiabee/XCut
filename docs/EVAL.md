@@ -168,9 +168,47 @@ invent one.
 
 So the number that matters for the product is not a metric here but a consequence:
 **a reel cuts to the music laid under it, not to its own location audio.** The
-snap, the grid and the per-clip proof are ready; what is missing is a beat-bearing
-input, which is where `docs/ROADMAP.md` Phase 5 B4 now starts — an imported music
-bed, the grid estimated from that file, and a mux that carries it.
+snap, the grid and the per-clip proof are ready; what was missing was a
+beat-bearing input, and B4a shipped it (`--music`, `"music"` on the API).
+
+## Comparing styles: what a shorter ceiling buys (B4c)
+
+`sports_vertical` halves the incumbent's `max_clip_duration` (8 s → 4 s) and puts
+the reel in a 9:16 canvas, so the comparison has to be run **at the same reel
+length** — the two presets' own targets differ (120 s vs 60 s), and the harness
+warns about exactly this. Both runs are on the owner's match, 43 annotated rallies:
+
+| case | budget | P | R | F1 | ranges | clips | longest missed run |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `badminton_highlight` | its own 120 s | 0.817 | 0.207 | 0.330 | 12/43 | 15 | 4 |
+| `badminton_highlight` | 60 s | 0.850 | 0.108 | 0.191 | 6/43 | 8 | 10 |
+| `sports_vertical` | 60 s | 0.785 | 0.100 | 0.177 | 4/43 | 15 | **4** |
+| `sports_vertical` | its own 60 s | 0.785 | 0.100 | 0.177 | 4/43 | 15 | 4 |
+| `beat_shortform` | 60 s | 0.000 | 0.000 | 0.000 | 0/43 | 1 | 43 |
+
+Read the equal-budget rows (last two of the first three): for the same 60 s the
+vertical preset nearly **doubles the shot count** (15 vs 8), uses about the same
+annotated time (R 0.100 vs 0.108), gives up a little precision (0.785 vs 0.850),
+and cuts the **longest stretch of the match it never touches from 10 rallies to 4**.
+That last column is the one that moved in its favour, and it is the metric that
+exists because P/R/F1 are blind to where the picks fall.
+
+One reading has to be subtracted before it becomes a conclusion: `ranges_hit` went
+*down* (6 → 4) while recall did not. That is the yardstick, not the algorithm — a
+hit needs temporal IoU ≥ 0.3 against the annotated rally, and a shot fully inside a
+rally scores `len(shot) / len(rally)`: 4 s inside a 15 s rally is 0.267, under the
+bar, while an 8 s shot on the same rally is 0.533 and counts. **A shorter ceiling is
+structurally punished by `ranges_hit`**; on this footage the axis that survives the
+change is recall and spread, which is what the table records.
+
+`beat_shortform` scores 0 here, and the reason is content, not selection: its event
+config is activity mode, and a single fixed broadcast camera produces no activity
+chunks at all (`config=beat_shortform … chunks_considered=0 … segments=1`, the whole
+file as one span — the shipped `generic_highlight` does the same thing on this
+footage: 1 shot). So its 2–3 s pacing and hook-first order are demonstrated on
+constructed segments in `internal/style` (with the mutations to show the assertions
+bite) and **not yet on any footage this project owns**. A multi-cut, moving source
+is the missing input — the same gap as the standing question about a second match.
 
 ## Workflow for algorithm changes
 

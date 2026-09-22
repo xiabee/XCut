@@ -314,6 +314,9 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 		}
 		return clips[i].SourceStart < clips[j].SourceStart
 	})
+	if preset.ClipOrder == ClipOrderHookFirst {
+		moveTopShotFirst(clips)
+	}
 
 	// Back-to-back placement; an xfade makes clips share the transition
 	// window (timeline duration = Σ durations − Σ transitions).
@@ -589,6 +592,31 @@ func reachableBoundary(boundaries []float64, seg event.Segment, minClip float64)
 		return 0, false
 	}
 	return best, true
+}
+
+// moveTopShotFirst brings the shot the style itself scored highest to the front
+// of the reel and leaves the rest exactly where match order put them. A hook is
+// one clip moved — re-sorting the whole reel by score would scatter the rally
+// chronology the tail exists to show. A clip whose score does not parse is not a
+// candidate, so a document with nothing scored keeps the order it had.
+func moveTopShotFirst(clips []timeline.Clip) {
+	best := -1
+	var bestScore float64
+	for i := range clips {
+		v, err := strconv.ParseFloat(clips[i].Metadata["score"], 64)
+		if err != nil {
+			continue
+		}
+		if best < 0 || v > bestScore {
+			best, bestScore = i, v
+		}
+	}
+	if best <= 0 {
+		return
+	}
+	top := clips[best]
+	copy(clips[1:best+1], clips[:best])
+	clips[0] = top
 }
 
 // framingPlan turns the style's camera-motion policy into one clip's plan (运镜).

@@ -176,18 +176,30 @@ source's own audio (0.12 = ±120 ms; `off` forces the style's rule off for this
 run; absent = whatever the preset says). It is bounded to (0, 0.5] seconds, and it
 never overrides a measured point end. Expect it to do nothing on sports footage —
 the hall's audio carries no pulse a grid can be believed in, and on a scored reel
-every end is already pinned; it is there for material that has one, and for the
-music bed coming in `docs/ROADMAP.md` Phase 5 B4 (docs/EVAL.md, Cutting on the
-beat).
+every end is already pinned; it is there for material that has one, and for a music
+bed (`--music` above), whose grid outranks the source's (docs/EVAL.md, Cutting on
+the beat).
 
 `camera_motion` is the preset's own knob for 运镜: `{"mode":
 "punch_in"|"drift"|"roi", "zoom": 0.8}` frames every clip in the window it
 describes, which the renderer crops to and magnifies into the canvas (`drift`
 alternates the pan direction per clip; `roi` centers the window on the project's
-analysis region). No shipped style asks for it, and it is set in a style file
-rather than per run — a workspace copy under `<workspace>/styles/` is what the
-style editor writes. The measured cost is 8.6 s against 8.1 s per minute of
-output, at +11.5% file size (docs/PERFORMANCE.md).
+analysis region). It is set in a style file rather than per run — a workspace copy
+under `<workspace>/styles/` is what the style editor writes. One preset asks for it
+today: `sports_vertical`, at `roi`, because a 9:16 canvas over a 16:9 source has to
+choose a horizontal window and the analyzed region is the one place the project
+already says where the action is. A project analyzed full-frame gets **no plan at
+all** from that preset (asserted): the alternative is a guessed centre crop over
+broadcast footage, which can cut the scoreboard out of the shot. The measured cost
+is 8.6 s against 8.1 s per minute of output, at +11.5% file size
+(docs/PERFORMANCE.md).
+
+`clip_order` is how the shots a style chose are arranged: absent or
+`"chronological"` plays them in the order they happened, `"hook_first"` leads with
+the one the style's own scoring rated best and leaves the rest in match order. Only
+`beat_shortform` asks for a hook; an unrecognised name is refused when the preset
+loads rather than read as the default, and the pacing line above is what shows
+whether the promise was kept (`top shot starts at 0.0s`).
 
 Asking for more than the material holds is safe and does not hang: the selection
 is bounded by the usable segments, not by the number. Measured on the same
