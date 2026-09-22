@@ -3,9 +3,9 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-22 (early morning). This section is a session log, read oldest
-first: the state that holds now is the last paragraph before
-`## Version / HEAD`.
+Updated: 2026-09-22 10:38 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+This section is a session log, read oldest first: the state that holds now is the
+last paragraph before `## Version / HEAD`.
 
 Session #18: the rally-end gap closed with imported data instead of a new
 heuristic. The sidecar can now read a burned-in
