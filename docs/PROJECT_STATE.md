@@ -258,6 +258,24 @@ against `authMaxPeers - len(g.failures)` *inside* the condition, so the target
 shrank as the map grew and the fill stopped at exactly half the cap — visible
 only because the assertion named the number.
 
+
+`xcut eval` was reporting a number it had thrown away. The scoreboard-mark count
+(`score_marks`, the field introduced so "scanned nothing" cannot read like
+"scanned everything") was measured and stored, then discarded on the reel-failure
+path — `evalRunCase` returned `nil, 0, err` — so a case that had found two marks
+published `score_marks: 0` next to its error. Found while collapsing the two
+copies of that write (`cli` had its own duplicate of the analyze fan-out's
+scan-and-store, now `pipeline.ScoreScan`) and giving the eval copy its first
+test; the instrumented run printed `times=[4 12] err=<nil>` while the document
+said 0. Fixed and pinned by both directions: restoring `return nil, 0, err` fails
+`TestEvalScoreROIMeasuresThroughTheProductionWrite`, and disabling the
+missing-sidecar refusal turns the named refusal into
+`analyzer_failure: cannot start worker : exec: no command`, which is
+`TestEvalScoreROIRefusesWithoutSidecar`'s reason for existing. Accepted at
+`c254ac0`: local 472/8, win-devops job `20260922-095335-2f8e21` 473/7, Linux full
+gate 461/13 with both new tests run explicitly on the node (`--- PASS` each, not
+skipped) and the pinned scanner reporting clean.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -863,12 +881,8 @@ only because the assertion named the number.
    scoreboard sidecar stub) and the `pipeline` `*Async` wrappers. Deliberately
    left alone: `analysis.tailStr`, a five-line twin whose behaviour is pinned on
    the render side.
-2. Remote-access hardening: **(a) and (b) are both done** — the runbook with
-   the SSH-tunnel recipe in `docs/OPERATIONS.md`, and the sign-in panel's
-   visual pass with the budget defect it caught (session #16). What remains of
-   this thread is the owner-level TLS question: D12's bearer token crosses the
-   wire in plaintext, so remote binds stay trusted-network/tunnel-only.
-3. Real-footage evaluation — **one match is done, and that is the limit of what
+
+2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
    the provisional constants swept against them (docs/EVAL.md carries the
    negatives). What remains is not more tuning on this footage: every
@@ -877,7 +891,8 @@ only because the assertion named the number.
    allows. The next useful measurement needs a *different* input — ideally a
    single-court recording, so "our strokes" and "the hall's strokes" stop being
    the same signal. Owner-supplied footage, or the vision sidecar.
-4. Two decisions that are the owner's, not mine, and both block work:
+
+3. Two decisions that are the owner's, not mine, and both block work:
    **(a) arm64 in CI** — Kylin's distro FFmpeg cannot run the suite (ffprobe JSON
    corruption + no `xfade`), so arm64 is compile-verified and artifact-smoke-
    tested only. Fixing it means pinning a stock arm64 build the way the Windows
@@ -887,18 +902,22 @@ only because the assertion named the number.
    that becomes v0.1.9-alpha now or rides along with the next batch is a
    packaging call (and packaging is laptop load the control plane asked to keep
    down).
-5. Subtitles with a real Whisper: install faster-whisper locally and run
+
+4. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
-6. (done, session #8) Per-source court ROI — per-asset override shipped
-   (assets.motion_roi, v4) with the UI picker saving per asset; measured
-   4x signal vs full-frame dilution (NIGHTLY_PROGRESS M100).
-7. Re-enable push/PR + tag CI when the GitHub account billing issue is
+
+5. Re-enable push/PR + tag CI when the GitHub account billing issue is
    resolved (Actions jobs are refused at start; restore notes in
    ci.yml/release.yml unchanged — the files are fine).
-8. Phase 4 leftovers: tray/auto-update and model registry — need
+
+6. Phase 4 leftovers: tray/auto-update and model registry — need
    maintainer decisions; desktop packaging itself (zip, icons) shipped
    in session #8 and the true installer in session #13.
-9. TLS for the API (or a documented tunnel recipe in an OPERATIONS doc):
-   D12's bearer token crosses the wire in plaintext, which is why remote
-   binds are documented as trusted-network/tunnel-only today.
+
+7. TLS for the API, or an explicit statement that the tunnel recipe in
+   `docs/OPERATIONS.md` is the answer: D12's bearer token crosses the wire in
+   plaintext, which is why remote binds are documented as trusted-network or
+   tunnel-only today. Owner-level call, and the only survivor of the old
+   remote-access thread.
+

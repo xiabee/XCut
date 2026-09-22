@@ -201,6 +201,17 @@ tailnet recipe, reel cost, rally slicing, the Windows 500)
   runaway encoders are bounded on the machine they are about to trust.
 
 ### Fixed
+- **`xcut eval` no longer reports zero scoreboard marks for a case that measured
+  some.** The count was written to the asset row and then dropped when the case's
+  reel failed (`evalRunCase` returned `nil, 0, err`), so the results document
+  showed `score_marks: 0` beside the error — the exact ambiguity the field was
+  added to remove. The manifest path now returns what it measured, and
+  `internal/cli/eval_score_test.go` pins both halves (the refusal without a
+  sidecar names the case and `workers.ai_bin`; the scan itself reports the
+  fixture's two corner changes). `cli`'s duplicate of the scan-and-store write is
+  gone: `pipeline.ScoreScan` is now the only implementation the product and the
+  harness share, so an evaluation cannot measure a stand-in.
+
 - **A timeline read could answer 500 while Windows was mid-swap, and the test
   that caught it blamed the wrong verb.** Two related fixes:
   - `timeline.LoadFile` now waits out a transient open failure. While another
