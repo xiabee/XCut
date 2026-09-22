@@ -30,6 +30,33 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   refinement (`beats = 12, want one per second across 13 s`), and trusting the
   horizon (`grid extrapolates past the last onset: last beat 12.000, last onset
   11.500`).
+- **`diversity.min_per_window` — the other half of the spread rule.** The ceiling
+  caps a window; it never asks an empty one to be filled, so a reel may put two
+  clips in each of two windows and leave the other three untouched. The floor
+  takes each window's first clip before any window takes a second, and the fill
+  pass that follows is the ordinary greedy loop unchanged (unset knob = today's
+  ranking, byte for byte — two pre-existing window tests failed the moment that
+  was not true). `TestPhaseFloorTakesAnEmptyWindowBeforeDoublingUp` carries both
+  halves: a positive control that asserts the floorless reel *does* cluster, and
+  the floored reel covering every window at the same clip count. Disabled by
+  mutation (`if false && !withinFloor(...)`) it fails naming the empty window.
+
+### Changed
+- **The badminton preset's default reel is 120 s, not 60 s** (owner decision:
+  defaults may be raised). Measured on the owner's match, both with and without
+  the new floor, four points on the ladder: F1 0.225 → 0.389 → 0.455 → 0.562 and
+  longest missed run 10 → 4 → 2 → 2 rallies across 60/120/180/240 s, with
+  precision flat (0.97–0.99) the whole way and 16/16 clips ending on a measured
+  point at the new default. What the match's own rally arithmetic allows is
+  120/473 = 0.254 recall; the reel delivers 0.243, against 88% of its bound at
+  60 s. Render cost at exactly this length was already measured (17.8 s wall for
+  105.7 s of output, 0.17x). Generic presets stay at 45 s: nothing annotated in
+  generic content has been measured.
+- **`docs/EVAL.md` loses a wrong attribution.** The ten-rally missed run was
+  blamed on the missing floor. Adding the floor moved it by zero and the 60 s reel
+  by one rally (7/43 → 8/43 at unchanged precision), so the ceiling had already
+  spread those picks and the gap sits inside windows that do have a clip — the
+  budget is what binds, which is why the default moved and not the quota.
 
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)

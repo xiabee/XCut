@@ -3,7 +3,7 @@
 	"title": "Badminton Rally Highlight",
 	"version": 1,
 	"canvas": { "width": 1280, "height": 720, "fps": 30 },
-	"target_duration": 60,
+	"target_duration": 120,
 	"min_clip_duration": 1.5,
 	"max_clip_duration": 8.0,
 	"scoring": {
@@ -28,5 +28,5 @@
 	},
 	"transition": { "type": "cut", "duration": 0 },
 	"audio": { "gain": 1.0 },
-	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4, "max_per_window": 2, "phases": 5 }
+	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4, "max_per_window": 2, "min_per_window": 1, "phases": 5 }
 }

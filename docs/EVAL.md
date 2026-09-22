@@ -22,22 +22,42 @@ Measured metrics (per case, deterministic):
   WhatPRTakesAsEqual` is written against exactly such a pair.
 
 Measured on the owner's match (43 annotated rallies over 0.2..602.5 s, scoreboard
-marks in place, the shipped slice rule):
+marks in place, the shipped slice rule; replayed at `fbe5ab4` with the reference
+sidecar, `xcut eval … --duration`):
 
-| asked | clips | F1 | longest missed run | on a point |
-| --- | --- | --- | --- | --- |
-| 60 s (default) | 8 | 0.225 | **10 rallies** | 8/8 |
-| 120 s | 16 | 0.389 | 4 | 16/16 |
-| 240 s | 27 | 0.562 | 2 | 26/27 |
+| asked | clips | P | F1 | ranges | longest missed run | on a point |
+| --- | --- | --- | --- | --- | --- | --- |
+| 60 s (old default) | 8 | 0.998 | 0.225 | 7/43 | **10 rallies** | 8/8 |
+| 120 s (**default now**) | 16 | 0.972 | 0.389 | 16/43 | 4 | 16/16 |
+| 180 s | 23 | 0.979 | 0.455 | 20/43 | 2 | 22/23 |
+| 240 s | 27 | 0.987 | 0.562 | 24/43 | 2 | 26/27 |
 
 The default reel leaves ten consecutive rallies unrepresented — a third of the
 match's scoring events gone from one stretch while its eight clips sit elsewhere.
-The mechanism is visible in the preset: `diversity.phases` 5 with
-`max_per_window` 2 divides a 603 s match into five 120 s windows and caps each at
-two clips, but nothing *floors* it, so one window may receive none. Whether that
-is a defect or the intended "take the eight best moments wherever they fall" is a
-judgement about the product, not about the code, so it is recorded as an open
-question for the owner rather than silently tuned.
+The preset looked like the mechanism: `diversity.phases` 5 with `max_per_window` 2
+divides a 603 s match into five 120 s windows and caps each at two clips, but
+nothing *floors* it, so one window may receive none.
+
+**That attribution was wrong, and writing the floor is what found out.** With the
+missing rule added (`diversity.min_per_window`: each window's first clip before
+any window takes a second), the 120, 180 and 240 s reels come out the same
+selection byte for byte, and the 60 s reel keeps its eight rallies with two
+different trims — the budget reaches them in another order, so `344.0..352.0`
+becomes `345.8..352.0` and `573.5..577.5` becomes `571.7..577.5`, total still
+60.00 s, and the longer head on the last clip reaches a rally that reel had missed
+by ~1.8 s (7/43 → 8/43, P 0.998 unchanged). The ten-rally gap is not an empty
+window: the ceiling had already spread the picks, and the missing rallies sit
+*inside* windows that do have a clip in them. The number that moves this metric is
+the budget — 10 → 4 → 2 as the reel is allowed to be longer, with precision flat
+across the whole ladder.
+
+So the floor ships because the pathology is real where the ceiling cannot reach it
+(`TestPhaseFloorTakesAnEmptyWindowBeforeDoublingUp` builds exactly such a source,
+and the reel is unchanged with the knob off), and because on this match it costs
+nothing. The coverage problem is answered where the measurement says it lives: the
+default `target_duration` went 60 → 120 s on the owner's decision that defaults
+may be raised, at a cost already measured for that exact length — 14 clips /
+105.7 s out in 17.8 s wall, 0.17x (docs/PERFORMANCE.md, session #18).
 
 **This metric replaced a seconds-based one, and the first version misled me.**
 `longest_skip` reported 164 s at the 60 s default, which looked like a damning

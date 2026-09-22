@@ -328,7 +328,45 @@ shortest-instead-of-longest → `period = 0.2500, want 0.5000 within 5%` (and th
 real chain reporting 0.2499 for a 0.5 s click track); dropping the refinement →
 `beats = 12, want one per second across 13 s`; trusting the horizon instead of
 the last onset → `grid extrapolates past the last onset: last beat 12.000, last
-onset 11.500`.
+onset 11.500`. Accepted at `fbe5ab4`: control-plane local gate 480/8 with
+`steps not run: none` (recorded as `local CI PASS at 12:42:25 for fbe5ab48`),
+win-devops `OVERALL PASS` for that same head (`policy: after_local_pass`,
+`exit=0 duration=1m39.38s` — the node reports exit and duration, not counts, so
+no count is claimed for it), and the Linux full gate 469/13 with
+`not run: nothing`, zero `DATA RACE` lines, gosec clean on scanner `ad6ae7a445f0`
+and the six beat-grid tests run explicitly on the node (`ran=6 skipped=0`, the
+real-chain line reproduced there as `period=0.4999 … onsets=23`).
+
+**Same session, later:** the owner answered the two open product questions
+(defaults may be raised; the floor follows best practice), and answering them
+corrected a third thing I had written down. `diversity.min_per_window` now exists
+— each window's first clip before any window takes a second — because the ceiling
+alone genuinely permits one: `TestPhaseFloorTakesAnEmptyWindowBeforeDoublingUp`
+builds a source where a five-clip reel puts two in each of two windows and nothing
+in the other three, and the same reel with the floor covers all five. Inventing
+that fixture first was the right call, because **on the real match the floor is
+almost nothing**: the 120/180/240 s reels come out the same selection byte for
+byte, and the 60 s reel keeps its eight rallies with two different trims (the
+budget reaches them in another order: `344.0..352.0` → `345.8..352.0`,
+`573.5..577.5` → `571.7..577.5`, total still 60.00 s), whose longer last head
+touches one more rally — 7/43 → 8/43 at unchanged precision.
+So the sentence in `docs/EVAL.md` that blamed the ten-rally missed run on "nothing
+floors it" was wrong — the ceiling had already spread those picks, and the missing
+rallies sit *inside* windows that do have a clip. The full ladder was re-measured
+at this commit (60/120/180/240 s → F1 0.225/0.389/0.455/0.562, missed run
+10/4/2/2, precision flat at 0.97–0.99 the whole way), which is also what the
+default raise rests on: **`badminton_highlight` now asks for 120 s**, where the
+match's own rally arithmetic allows 0.254 recall and the reel delivers 0.243
+(96% of the budget, against 88% at 60 s), and the render cost of exactly that
+length was measured in session #18 (17.8 s wall for 105.7 s out, 0.17x). The knob
+is inert by default — `min_per_window` unset means today's ranking byte-for-byte,
+which two pre-existing tests (`TestPhaseQuotaScalesWithReelBudget`,
+`TestBuildWindowCapSpreadsPicks`) found out immediately when I first wired the
+filter into the single-pass path: my condition had also gated it on
+`pass == 0`, and the one-pass case *is* pass 0, so the floorless reel rejected
+every event. Generic presets keep their 45 s ask: nothing annotated
+in generic content has been measured, and "the sports ladder says longer" is not
+evidence about a drill montage.
 
 ## Version / HEAD
 
@@ -800,9 +838,12 @@ onset 11.500`.
   request from 10 clips / 8 rallies to 21 clips / 18 rallies), so the old
   "split long segments into scored windows" idea (which needed a per-window
   activity profile `event.Segment` does not carry) is no longer the lever —
-  length is; **the arithmetic for the shipped 60 s default**: 473 s of rally
-  time in the match bounds recall at 0.127, and the committed state measures
-  0.112, i.e. 88% of what that budget allows. Decomposing the reel (inside a rally / adjacent to
+  length is; **the arithmetic for the 60 s default as it shipped then**: 473 s of
+  rally time in the match bounds recall at 60/473 = 0.127, and the committed state
+  measures 0.112, i.e. 88% of what that budget allows — which is why the budget,
+  not the scoring, is what session #20 raised: at 120 s the same arithmetic allows
+  0.254 and the reel measures 0.243 (96% of it).
+  Decomposing the reel (inside a rally / adjacent to
   its own rally / far from any) gives 53.2 s / 6.8 s / **0.0 s** — no clip is a
   wrong pick, so what remains is boundary coarseness, which is a
   segmentation-resolution problem (vision), not a scoring one; (c) the PROVISIONAL constants were
@@ -828,7 +869,7 @@ onset 11.500`.
   10 clips / 80 s as 120 s. Windows now scale with the budget instead of the
   per-window discipline loosening, and on the same match a 240 s reel becomes
   21 clips covering 18 of 43 rallies (R 0.140 → **0.289**, F1 0.239 → **0.426**,
-  P 0.886 → 0.813) while the shipped 60 s default is bit-identical. Precision
+  P 0.886 → 0.813) while the 60 s default of that day is bit-identical. Precision
   falling with length is the trade, not an accident to tune away.
 - **End-to-end reel acceptance (session #14, real match)**: `import → roi →
   analyze (29.0 s) → timeline (8 clips, 60.0 s) → render (14.2 MB in 9.3 s)`,
@@ -949,8 +990,10 @@ onset 11.500`.
    the provisional constants swept against them (docs/EVAL.md carries the
    negatives). What remains is not more tuning on this footage: every
    audio-driven idea dies on the same wall (shared six-court hall), and the
-   ceiling arithmetic says the 60 s default is already at 88% of what its budget
-   allows. The next useful measurement needs a *different* input — ideally a
+   ceiling arithmetic says the budget is what limits coverage — the 60 s default
+   reached 88% of its bound, and the 120 s default that replaced it reaches 96% of
+   its own, so the remaining error is placement inside rallies, not length.
+   The next useful measurement needs a *different* input — ideally a
    single-court recording, so "our strokes" and "the hall's strokes" stop being
    the same signal. Owner-supplied footage, or the vision sidecar.
 
