@@ -21,6 +21,21 @@ refuses to render silently *without* the track if the file has since moved.
 Measured cost of the mix on a 60 s reel: 11.3 s against 10.2 s of render wall,
 +3.3% bytes, duration unchanged to the millisecond (docs/PERFORMANCE.md).
 
+A built cut is also reported as a *shape*, not only as a list of picks:
+`xcut timeline` and `xcut auto` print
+`pacing: N shots, mean …s, median …s, longest …s, top shot starts at …s`.
+Selection scores cannot tell one 15 s stretch from five 3 s cuts; short-form
+practice can (a visual change every 3–5 s, 2–3 s at high tempo, the viewer
+deciding in the first seconds), and every number on this line is measured off the
+built document — mean and median over the played shot lengths, and where the
+reel's highest-scored shot *begins in the output* (not where it was filmed). On
+the owner's match the shipped `badminton_highlight` reports
+`14 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 24.0s`: each
+shot sits exactly on the preset's `max_clip_duration`, so that ceiling — not the
+scoring — is what sets the pace, and the best moment arrives a quarter of the reel
+in. A hand-edited document has no scores in it, and then the line reports lengths
+and says nothing about a top shot rather than inventing one.
+
 ## xcut analyze
 ```
 usage: xcut analyze <project> [assetID...]

@@ -144,6 +144,9 @@ func cmdAuto(a *App, args []string) error {
 		}
 		fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 			countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+		if line := pacingLine(tl); line != "" {
+			fmt.Fprintln(a.Stdout, line)
+		}
 		// The one-shot is where an ambitious --duration is most likely to be
 		// answered by a shorter reel, so it has to carry the same explanation
 		// `xcut timeline` gives — silence here reads as "it chose not to fill".

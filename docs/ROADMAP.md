@@ -166,10 +166,27 @@ Every item states how it is measured before it is built, because the eval harnes
       metadata key (`the mix command lost "volume=0.9000"`, `a missing bed must fail
       the render`). Cost: 11.3 s against 10.2 s render wall per 60 s of output,
       +3.3% bytes (docs/PERFORMANCE.md).
-- [ ] B4 — New presets on top of B1–B3: `beat_shortform` (music-driven pacing,
-      2–3 s shots, hook first), `sports_vertical` (9:16, point-ending clips,
-      punch-in on the hit), plus a pacing readout on the existing styles so the
-      owner can compare. B4a supplies the bed these presets cut to.
+- [x] B4b — The ruler before the cut: a pacing readout measured off the built
+      document (`timeline.Pacing`, printed by `xcut timeline` and `xcut auto`) —
+      shot count, mean/median/longest played shot, and the output position of the
+      reel's top-scored shot. It exists because every metric the harness has is
+      set-based: one 15 s stretch and five 3 s cuts score identically, which is how
+      "new style, same F1" kept being allowed to mean "new untested heuristic".
+      Measured: 7 tests over real documents (an equal-length control, a half-speed
+      clip so source span ≠ played span, an out-of-order score tie, an unparsable
+      score, and the unscored/empty cases that must say nothing), and 7 mutations
+      each killed by the assertion it targets (`median = 6, want 3.5`,
+      `HookSeconds = 900, want 200`, `ScoredShots = 3, want 1`). On the owner's
+      match the shipped preset reads
+      `14 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 24.0s`:
+      every shot sits on the preset's `max_clip_duration`, so the ceiling — not the
+      scoring — sets its pace, and the best moment lands a quarter of the reel in.
+- [ ] B4c — New presets on top of B1–B3, and they have to move the line B4b
+      prints: `beat_shortform` (2–3 s shots, the top-scored moment first, which
+      needs an ordering rule the readout can measure — chronological stays the
+      default) and `sports_vertical` (9:16, point-ending clips, punch-in on the
+      hit), plus the pacing readout on the existing styles so the owner can
+      compare. B4a supplies the bed these presets cut to.
       Measured: each preset has an eval case (synthetic where truth is
       constructed, the owner's match where it is annotated), the harness's
       `--check` gate carries it, and a preset that does not beat the shipped one

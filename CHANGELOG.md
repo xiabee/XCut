@@ -124,6 +124,25 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   an unchanged duration. Cost: 11.3 s against 10.2 s of render wall per minute of
   output, +3.3% bytes. A bed with audio but no believable grid is not an error: the
   music plays, the cuts stay put.
+- **A pacing readout: the reel's shape is now measured, not eyeballed.**
+  `xcut timeline` and `xcut auto` print `pacing: N shots, mean …s, median …s,
+  longest …s, top shot starts at …s`, computed by `timeline.Pacing` from the
+  document that was just built. Every metric the harness has is set-based — one
+  15 s stretch and five 3 s cuts score identically — so until this line existed,
+  "new style, same F1" was indistinguishable from "new style, different edit".
+  The hook number is the shot's **output** position rather than its source time
+  (a reel that reports when a rally was filmed answers a different question), an
+  unparsable score is not read as 0, and a hand-edited document gets its lengths
+  and no claim about a top shot. Verified: 7 tests over real documents — an
+  equal-length control, a half-speed clip so source span ≠ played span, an
+  out-of-order score tie, the unscored and empty cases — and 7 mutations, each
+  killed by the assertion it targets (`median = 6, want 3.5`, `HookSeconds = 900,
+  want 200`, `ScoredShots = 3, want 1`). What it says about the shipped preset on
+  the owner's match: `14 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot
+  starts at 24.0s`. Every shot sits exactly on `max_clip_duration`, so the
+  preset's ceiling is what sets its pace — not its scoring — and the best moment
+  arrives a quarter of the reel in. Those are B4c's targets, written down before
+  anyone picks a number for them.
 
 ## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)

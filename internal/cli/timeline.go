@@ -95,6 +95,9 @@ func cmdTimeline(a *App, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
 		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+	if line := pacingLine(tl); line != "" {
+		fmt.Fprintln(a.Stdout, line)
+	}
 	if snapped := snappedClipCount(tl); snapped > 0 {
 		fmt.Fprintf(a.Stdout, "cuts on the beat: %d of %d clips\n", snapped, countTimelineClips(tl))
 	}
@@ -167,6 +170,27 @@ func snappedClipCount(tl *timeline.Timeline) int {
 		}
 	}
 	return n
+}
+
+// pacingLine renders the shape of the reel the style actually produced: selection
+// metrics score a 15 s stretch and five 3 s cuts identically, so without this line
+// "the new style has the same F1" would read as "the new style is the same edit".
+// The shortest shot is left out on purpose — a preset's floor guarantees it, so
+// printing it would measure the constraint rather than the cut.
+func pacingLine(tl *timeline.Timeline) string {
+	p := tl.Pacing()
+	if p.Shots == 0 {
+		return ""
+	}
+	line := fmt.Sprintf("pacing: %d shots, mean %.1fs, median %.1fs, longest %.1fs",
+		p.Shots, p.MeanSeconds, p.MedianSeconds, p.LongestSeconds)
+	if p.ScoredShots > 0 {
+		// Where the style's own best moment lands in the reel. Short-form practice
+		// puts the decision point inside the first seconds; this says what this cut
+		// did about it, in either direction.
+		line += fmt.Sprintf(", top shot starts at %.1fs", p.HookSeconds)
+	}
+	return line
 }
 
 // footageLimitNote explains a reel that came out shorter than asked when the

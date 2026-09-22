@@ -470,6 +470,30 @@ as the range they are: **8** bed-unique transients against 0 (not 9), mixed −3
 against bare −33.0 dB (not −34.3/−32.9). The assertion is "more than none", so both
 builds satisfy it; the exact count belongs to whichever ffmpeg measured it.
 
+**Same session, later still:** B4b built the measuring stick before the next cut —
+a **pacing readout** (`timeline.Pacing`, printed by `xcut timeline` and `xcut auto`)
+that reports shot count, mean/median/longest played shot, and where the reel's
+top-scored shot begins. The reason it exists is that every metric in the harness is
+set-based, so a 15 s stretch and five 3 s cuts score identically; without this line,
+"new style, same F1" cannot be told apart from "new style, different edit". Two
+choices are load-bearing and each is pinned by a test: the hook is the shot's
+**output** position, because "when was it filmed" is a different question, and a
+score that does not parse is not read as zero, because a typo must not outrank a
+real 0.4 — nor may an unscored, hand-edited document be handed a top shot it never
+claimed. Verified on 7 tests over real documents (equal-length control; a half-speed
+clip so source span ≠ played span; an out-of-order score tie; the empty and unscored
+cases) and 7 mutations, every one killed by the assertion it targets
+(`median = 6, want 3.5`, `HookSeconds = 900, want 200`, `ScoredShots = 3, want 1`,
+and the CLI's `pacing line … claims a top shot the document never scored`).
+What the readout says about the shipped preset, measured on the owner's match:
+`14 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 24.0s` at the
+120 s default, and `8 shots, mean 7.5s, median 8.0s, longest 8.0s, top shot starts
+at 16.0s` when asked for 60 s. Mean equals median equals longest equals the preset's
+`max_clip_duration`: **every shot sits on the ceiling**, so the ceiling — not the
+scoring — is what sets the pace, and the best moment arrives a quarter of the reel
+in. Those two numbers are B4c's acceptance targets, recorded before anyone chose a
+preset value to hit them.
+
 
 ## Version / HEAD
 
