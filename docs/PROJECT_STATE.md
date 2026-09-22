@@ -284,7 +284,16 @@ for all three call sites — mutating the shared helper to slice from the front
 fails it (`ran=1`, named assertion) — which is the argument for one implementation
 rather than three that have to be fixed in parallel. No behaviour change: the
 render and subtitle excerpts are byte-identical, `worker` keeps its own
-`TrimSpace` at its call site because that is presentation, not the rule.
+`TrimSpace` at its call site because that is presentation, not the rule. Accepted
+at `763b70d`: local fast gate 472/8, win-devops job `20260922-102857-a74b0f`
+473/7, Linux full gate 461/13 with `not run: nothing`, zero `DATA RACE` lines and
+the tail guard plus both eval score_roi tests run explicitly (`ran=1`, each
+`--- PASS`). Cross-compiled here for darwin/arm64 and linux/amd64 first, because
+the change adds a `worker` → `media` import that only the build can rule on.
+The Linux leg had to be dispatched twice: the first attempt's script was empty,
+because cleaning this session's scratch had deleted the template the dispatch
+reads — a `ssh_rc=0` with no output at all, which is what a self-inflicted
+no-op looks like from the client side.
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
