@@ -425,7 +425,14 @@ away: the first `go test ./internal/...` after the render tests landed failed
 `api/TestSubtitlesFlow` at its 30 s cold-sidecar bound, while the same test passes
 in 0.45 s alone and a four-package concurrent rerun is green — new concurrent ffmpeg
 load met a known slow path. If it recurs it is the test's shape to fix, not the
-deadline to raise.
+deadline to raise. Accepted at `ed0b0c9` (IR+renderer in `948cc2e`, policy in
+`ed0b0c9`): local gate 497/8 with `steps not run: none` (`local CI PASS at
+15:17:24 for ed0b0c93`), win-devops `OVERALL PASS` at that head
+(`exit=0 duration=1m48.015s`), Linux full gate 486/13 with `not run: nothing`,
+zero `DATA RACE` lines, gosec clean on `ad6ae7a445f0` — and the three framing
+suites run explicitly on the node, so the pixel proof is not a Windows-only one
+(`2 clips framed on the drawn region's center`, `drift YAVG 94.17 → 19.24 (20%);
+still 39.25 → 39.36`).
 
 ## Version / HEAD
 
