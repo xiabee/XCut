@@ -53,11 +53,17 @@ func TestTimelineGetPut(t *testing.T) {
 	tl.Tracks[0].Clips[0].AssetID = assets[0].ID
 	tl.Tracks[0].Clips[0].SourceEnd = 5 // within the asset duration
 	body = marshalTimeline(t, tl)
-	if rec, _ := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", body); rec.Code != http.StatusOK {
-		t.Fatalf("valid timeline rejected: %d", rec.Code)
+	rec, out := do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid timeline rejected: %d %v", rec.Code, out)
+	}
+	// The saved response carries the clip count the UI prints next to the
+	// button; a zero here reads as "your edit deleted everything".
+	if n, _ := out["clips"].(float64); n != 1 {
+		t.Fatalf("save reported clips=%v, want 1: %v", out["clips"], out)
 	}
 
-	rec, out := do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
+	rec, out = do(t, s, "GET", "/api/v1/projects/"+p.ID+"/timeline", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get: %d", rec.Code)
 	}

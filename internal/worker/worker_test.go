@@ -123,6 +123,19 @@ func TestHelperWorkerStub(t *testing.T) {
 		// running — the shape of a sidecar stuck in a non-daemon thread.
 		os.Stdout.Close()
 		time.Sleep(10 * time.Minute)
+	case "fail-with-diagnostics":
+		// A structured envelope with no error detail, exit 1, and 600 bytes of
+		// stderr: what a real sidecar crash looks like, and the only shape that
+		// reaches the worker-failure message's stderr tail.
+		var flood strings.Builder
+		flood.WriteString("HEAD-MARKER ")
+		for flood.Len() < 600 {
+			flood.WriteString("diagnostic noise ")
+		}
+		flood.WriteString(" END-MARKER")
+		os.Stderr.WriteString(flood.String())
+		os.Stdout.WriteString(`{"protocol":1,"ok":false}`)
+		os.Exit(1)
 	case "garbage":
 		os.Stdout.WriteString("this is not a json envelope")
 	case "never-answer":
@@ -222,5 +235,27 @@ func TestUnparseableAnswerNamesTheWorker(t *testing.T) {
 	}
 	if !strings.Contains(msg, bin) {
 		t.Fatalf("error does not say which worker was run: %s", msg)
+	}
+}
+
+// TestFailedWorkerCarriesTheEndOfItsStderr covers the branch where a worker
+// exits non-zero with a structured-but-useless envelope: what an operator needs
+// is the last thing the sidecar printed, not its first line, and not all 600
+// bytes of it either.
+func TestFailedWorkerCarriesTheEndOfItsStderr(t *testing.T) {
+	bin := stubWorkerCmd(t, "fail-with-diagnostics")
+	_, err := CallWithTimeout(context.Background(), bin, Request{Protocol: Protocol, Op: "x"}, 60*time.Second)
+	if err == nil {
+		t.Fatal("a worker that exits 1 was accepted")
+	}
+	if !xcerr.IsCode(err, xcerr.CodeAnalyzerFailure) {
+		t.Fatalf("code = %s, want analyzer_failure (%v)", xcerr.CodeOf(err), err)
+	}
+	chain := err.Error()
+	if !strings.Contains(chain, "END-MARKER") {
+		t.Fatalf("worker failure lost the tail of its stderr: %.200s", chain)
+	}
+	if strings.Contains(chain, "HEAD-MARKER") {
+		t.Fatalf("worker failure carried the whole stderr, not the tail (%d bytes)", len(chain))
 	}
 }

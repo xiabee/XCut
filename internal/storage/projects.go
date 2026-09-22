@@ -99,15 +99,6 @@ func (d *DB) ListProjects(ctx context.Context) ([]Project, error) {
 	return out, rows.Err()
 }
 
-// TouchProject bumps updated_at.
-func (d *DB) TouchProject(ctx context.Context, id string) error {
-	_, err := d.ExecContext(ctx, `UPDATE projects SET updated_at = ? WHERE id = ?`, time.Now().Unix(), id)
-	if err != nil {
-		return xcerr.E(xcerr.CodeStorageFailure, "cannot update project", err)
-	}
-	return nil
-}
-
 // DeleteProject removes the project row (assets/jobs cascade) only when no
 // queued or running job references it. The gate and the delete are ONE
 // statement: a check-then-act pair here would let a trigger enqueue a job

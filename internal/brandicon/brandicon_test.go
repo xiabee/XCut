@@ -132,3 +132,40 @@ func rgbaAt(img image.Image, x, y int) (c struct{ R, G, B, A uint8 }) {
 	r, g, b, a := img.At(x, y).RGBA()
 	return struct{ R, G, B, A uint8 }{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
 }
+
+// TestBrandICOShipsTheThreeSizes: the icon baked into the Windows binary and the
+// one scripts/genicon writes are both this function's output, and nothing else
+// builds them — a size list that drifts past what the container can express, or
+// an entry whose offset no longer matches its payload, is invisible until the
+// desktop shell shows a blank icon.
+func TestBrandICOShipsTheThreeSizes(t *testing.T) {
+	ico, err := BrandICO()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ico[0:4]) != "\x00\x00\x01\x00" {
+		t.Fatalf("bad ICONDIR magic: % x", ico[0:4])
+	}
+	if n := binaryLE16(ico[4:6]); n != 3 {
+		t.Fatalf("entry count = %d, want 3", n)
+	}
+	offset := 6 + 16*3
+	for i, want := range []int{16, 32, 48} {
+		entry := ico[6+16*i : 6+16*(i+1)]
+		if int(entry[0]) != want || int(entry[1]) != want {
+			t.Fatalf("entry %d is %dx%d, want %dx%d", i, entry[0], entry[1], want, want)
+		}
+		size := uint32(entry[8]) | uint32(entry[9])<<8 | uint32(entry[10])<<16 | uint32(entry[11])<<24
+		start := uint32(entry[12]) | uint32(entry[13])<<8 | uint32(entry[14])<<16 | uint32(entry[15])<<24
+		if int(start) != offset {
+			t.Fatalf("entry %d offset = %d, want %d", i, start, offset)
+		}
+		if string(ico[start:start+4]) != "\x89PNG" {
+			t.Fatalf("entry %d payload is not a PNG: % x", i, ico[start:start+4])
+		}
+		offset += int(size)
+	}
+	if offset != len(ico) {
+		t.Fatalf("ico is %d bytes but the entries cover %d", len(ico), offset)
+	}
+}

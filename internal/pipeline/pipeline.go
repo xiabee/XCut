@@ -794,14 +794,6 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 	}
 }
 
-func countClips(tl *timeline.Timeline) int {
-	n := 0
-	for _, tr := range tl.Tracks {
-		n += len(tr.Clips)
-	}
-	return n
-}
-
 func fileSize(fi os.FileInfo) int64 {
 	if fi == nil {
 		return 0
