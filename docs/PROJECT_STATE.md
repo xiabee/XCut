@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 16:09 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 16:53 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1390,11 +1390,22 @@ Three things worth recording:
 - `gh release create` with seven assets did **not** finish inside 580 s on this link,
   and what it left behind was not "nothing" — it was a *draft release holding four of
   the seven files*. The command's exit status was 124 (the timeout's, not gh's), so the
-  only verdict that means anything is the asset list read back from the API:
-  `gh release view --json assets`. Recovery was `gh release upload --clobber` for the
-  three stragglers and then clearing the draft. Recorded because "the create failed" and
-  "the create failed leaving a half-finished public artefact" are different incidents,
-  and only the second one is what actually happens.
+  only verdict that means anything is the asset list read back: `gh release view
+  --json assets`. Recovery was `gh release upload --clobber` for the three stragglers
+  and then clearing the draft. Recorded because "the create failed" and "the create
+  failed leaving a half-finished public artefact" are different incidents, and only the
+  second one is what actually happens.
+- **`gh` reads the tag through a cached endpoint, and it lied.** Right after
+  publishing, `gh release view --json isDraft,assets` reported `assets=0`, and
+  `gh release download` said "no assets to download" — while
+  `GET /repos/…/releases/394440623` and `/releases/394440623/assets` both listed all
+  seven. Believing the first reading nearly put the release back into draft ("a public
+  release with no files!" is what the stale cache said). What settled it was the thing a
+  user actually does: `curl` the browser download URL. `SHA256SUMS-v0.1.9-alpha.txt`
+  came back 200 / 607 bytes / md5-identical to the local file, and
+  `xcut-v0.1.9-alpha-linux-arm64` came back 200 / 11,731,106 bytes with a SHA256 that
+  `sha256sum -c` accepted from that downloaded sums file — so published bytes equal
+  built bytes, verified through the public path rather than through a client's cache.
 
 Accepted at `48d0fe8`: local fast gate PASS (race subset wall 76 s, `steps not run:
 none`, 5 skips named), and the tag push started no Actions run — checked against
@@ -2086,7 +2097,9 @@ none`, 5 skips named), and the tag push started no Actions run — checked again
    worker cases (no cargo on the Kylin host). Wiring arm64 into the control plane is
    now a build-infrastructure task, not a decision.
    **(b) release cadence** — decided: cut v0.1.9-alpha now rather than bundling it with
-   the next batch. In flight.
+   the next batch. Done: `v0.1.9-alpha` tagged at `48d0fe8`, seven assets published,
+   both Linux artifacts executed on their target platforms, digests verified through the
+   public download path.
 
 4. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the
