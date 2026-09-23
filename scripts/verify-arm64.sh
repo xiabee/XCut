@@ -10,7 +10,10 @@
 # unreachable here: the injection goes through PATH, and TOOL_CHECK asks PATH which
 # binary the tests are about to get.
 #
-# Usage: sh scripts/verify-arm64.sh [--skip-race]
+# Usage: sh scripts/verify-arm64.sh [--skip-race] [--tools DIR]
+#   --tools DIR   where the pinned FFmpeg lives / should be fetched to (default:
+#                 <repo>/.tools, gitignored). Point it at a directory a previous run
+#                 already filled to skip a 121 MB download.
 # Prints counts on stdout; the verbose suite log path is printed too, and kept.
 # Exit 0 = suite green against the pin. The race leg never changes the exit status:
 # Kylin V10 SP1's kernel refuses ThreadSanitizer, which is reported, not hidden.
@@ -18,11 +21,15 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKIP_RACE=0
-for a in "$@"; do
-    case "$a" in
+TOOLS=".tools"
+while [ $# -gt 0 ]; do
+    case "$1" in
         --skip-race) SKIP_RACE=1 ;;
-        *) echo "verify-arm64: unknown argument '$a' (only --skip-race)" >&2; exit 2 ;;
+        --tools) shift; [ $# -gt 0 ] || { echo "verify-arm64: --tools needs a directory" >&2; exit 2; }
+                 TOOLS="$1" ;;
+        *) echo "verify-arm64: unknown argument '$1' (only --skip-race, --tools DIR)" >&2; exit 2 ;;
     esac
+    shift
 done
 
 fail() { echo "verify-arm64: $1" >&2; exit 1; }
@@ -35,7 +42,7 @@ command -v go >/dev/null 2>&1 || fail "no go toolchain on PATH"
 
 # The fetch script's own status, not the pipeline's: `| tail -1` would report tail's 0
 # even when the download refused, which is how a pin stops being a pin.
-FETCHED=$(sh scripts/fetch-arm64-ffmpeg.sh .tools) || fail "the pinned FFmpeg refused to fetch"
+FETCHED=$(sh scripts/fetch-arm64-ffmpeg.sh "$TOOLS") || fail "the pinned FFmpeg refused to fetch"
 BIN=$(printf '%s\n' "$FETCHED" | tail -1)
 [ -x "$BIN/ffmpeg" ] && [ -x "$BIN/ffprobe" ] || fail "no ffmpeg/ffprobe at $BIN"
 

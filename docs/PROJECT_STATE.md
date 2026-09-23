@@ -1444,6 +1444,14 @@ printed `== sh -n` / `10 scripts parse` at line 3 of its gate log; `619 passed,
 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`,
 `release_rc=0 checks=5`); and the ARM64 leg above.
 
+The step's other arm was proven by accident of hardware, which is worth recording: the
+win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
+`== sh -n` / `no sh on PATH — the step did not run`, and the verdict line carries
+`steps not run: sh-n, race-subset`. That is the evidence the skip accounting is wired to
+the thing it claims — the reason `$NotRun +=` sits at script scope in `check.ps1` rather
+than inside an `Invoke-Step` scriptblock, where it would append to a local copy and the
+line would go on printing `steps not run: none` on a host that skipped two steps.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
