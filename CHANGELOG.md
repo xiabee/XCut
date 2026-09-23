@@ -3,7 +3,7 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [Unreleased] — 2026-09-22 → 09-23, session #20 (Phase 5: beat grid, captions, one tap)
+## [v0.1.9-alpha] — tagged 2026-09-23, 190 commits / 172 files since v0.1.8-alpha. Session #20 (Phase 5: beat grid, captions, one tap)
 
 ### Added
 - **The one-shot learned to caption (`xcut auto --subs=on`, `--subs=<file>`).** The
@@ -643,7 +643,7 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   governs an empty directory — a standing control that is currently dormant, now written
   down as an owner decision instead of left reading as coverage.
 
-## [Unreleased] — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
+## [v0.1.9-alpha] (cont.) — 2026-09-21 → 09-22, sessions #17–#19 (secret-scan honesty,
 tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 ### Security
@@ -1009,7 +1009,7 @@ tailnet recipe, reel cost, rally slicing, the Windows 500)
 
 
 
-## [Unreleased] — 2026-09-20 night session #16 (sign-in visual pass, budget fix)
+## [v0.1.9-alpha] (cont.) — 2026-09-20 night session #16 (sign-in visual pass, budget fix)
 
 ### Fixed
 - **The sign-in page could lock its own address out.** The remote UI's
@@ -1036,7 +1036,7 @@ tailnet recipe, reel cost, rally slicing, the Windows 500)
   succeeds to the full three-pane UI, and the narrow viewport wraps without
   horizontal scroll. The browser drive itself found the budget defect above —
   which is what the pass was for.
-## [Unreleased] — 2026-09-20 night session #15 (reel length, ops runbook)
+## [v0.1.9-alpha] (cont.) — 2026-09-20 night session #15 (reel length, ops runbook)
 
 ### Added
 - **Reel length is a per-run choice, not a preset edit**: `--duration` on
