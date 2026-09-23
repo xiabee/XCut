@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 13:27 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 13:50 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1257,6 +1257,25 @@ leg covers it)` and `gate (fast): PASS (steps not run: race-subset; tests skippe
 That node has no C toolchain, so the -race subset runs on this laptop and on the Linux
 node and nowhere between; the accounting line is the reason that is visible in the
 verdict instead of inferred from a duration that did not move.
+
+**One laptop's download was carrying a layout check.** `TestRealZipLayoutExtracts`
+opened `../../.gotmp/ffmpeg-9.0.1-essentials_build.zip` if that file happened to exist
+and skipped otherwise — the CI node's own log says it skipped, and a pin bump would
+have left it skipping the layout of a version nobody downloads. `TestPinnedArchiveLayoutExtracts`
+now derives its archive root from `FFmpegPin.URL`, the same constant that decides what
+gets fetched, so the fixture moves with the pin; it asserts the returned paths, the
+bytes that landed, and the install directory's full listing.
+`TestDuplicateToolEntriesKeepTheFirstOne` pins which of two `ffmpeg.exe` entries wins.
+The genuine-artifact case stays, globbing now and naming what it found rather than
+passing a stale cache off as the pinned one. Accepted at `f49da9a` — local fast gate
+PASS (`623 passed, 5 skipped`, race subset 59 s) and win-devops `OVERALL PASS`
+(`exit=0 duration=1m43.877s`, `steps not run: race-subset` as before on that node),
+whose job log is the evidence that matters here: the two new cases are **not** in its
+skip list, so the layout assumption is now tested on a machine that never had the
+110 MB file. Two mutations were needed to believe the test, and the first came back
+green: adding `ffplay.exe` to the selection map cannot be observed, because the same
+duplicate guard skips it once its slot is filled — which is why the assertion is about
+the directory listing and not about a name being absent.
 
 ## Version / HEAD
 
