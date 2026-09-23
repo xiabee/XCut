@@ -32,6 +32,18 @@ sections are tagged; anything above the newest one is unreleased.
   (`ran=560 failed=0 skipped=19`, `TOOL_CHECK=OK`). Filesystem/syscall isolation (seccomp, containers) remains the open
   rung of the same roadmap item.
 
+### Fixed
+- **A refused worker response keeps the reason it was refused.** The response budget is a
+  refusal, not a buffer — but the error built at that point discarded the typed cause it had
+  just detected, so a caller could only string-match the resource-limit code to learn
+  whether a sidecar overflowed the cap or hit some other limit, and the log chain lost the
+  reason too. The cause is attached now, and the case that holds it needs no python (the
+  existing sidecar case skips without it): it drives a flooding worker stub, asserts the
+  byte count is in the message, and proves the stub was *killed* by dialing the port it
+  published — a refused connection, not merely "an error", because a timeout would say
+  nothing about the process. `TestCallBoundedRejectsOversized` asserted only that something
+  failed; it names the code and the message now.
+
 ### Improved
 - **A refused systemd query now says what systemd said.** The degraded arms of the
   memory cap (scope refused, no `systemctl` to ask, a query that errors) had never run
