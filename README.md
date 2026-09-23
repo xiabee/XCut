@@ -297,7 +297,7 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 | `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
 | `resource.max_analysis_workers` | 2 | 一次分析同时推进多少个素材（子进程数仍受 `max_ffmpeg_processes` 限制） |
 | `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |
-| `resource.ffmpeg_max_memory_mb` | 1536 | 单 ffmpeg 进程内存上限（Windows job object 强制；超限=编码器因分配失败退出，渲染响亮报错）。实测最贵的正常子进程是 xfade 渲染 566 MB，默认值据此定；0 = 不限，高分辨率渲染可再调高 |
+| `resource.ffmpeg_max_memory_mb` | 1536 | 单 ffmpeg 进程内存上限（Windows 由 job object 强制；Linux 由 systemd scope 的 `MemoryMax` 强制，混合 cgroup 的机器上可能不生效，见 docs/OPERATIONS.md；超限 = 编码器因分配失败退出，渲染响亮报错）。实测最贵的正常子进程是 xfade 渲染 566 MB，默认值据此定；0 = 不限，高分辨率渲染可再调高 |
 | `resource.frame_sample_fps` | 2 | 分析采样率 |
 | `resource.analysis_width` | 640 | 分析降采样宽度 |
 | `resource.proxy_enabled` | `true` | 生成低分辨率分析代理（重复分析实测快 10–20×；磁盘由 `max_proxy_gb` 兜住，`false` 可显式关掉） |

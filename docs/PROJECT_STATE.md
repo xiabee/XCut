@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 17:53 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 18:20 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1453,6 +1453,24 @@ PASS, Linux full PASS on the node (`== sh -n / 10 scripts parse`, `619 passed,
 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`,
 `release_rc=0 checks=5`, `worker ran=21`, `analysis ran=5`, `captions ran=20`).
 
+**The memory cap stopped being a one-platform knob (D18).** `ffmpeg_max_memory_mb` had
+an answer on Windows and a polite sentence everywhere else, on a project whose server and
+ARM64 target are both Linux. Each FFmpeg child now starts in its own transient systemd
+scope (`MemoryMax`, `MemorySwapMax=0`) through one `wrapChild` shared by `Run`,
+`RunCombined`, `StreamStdout` and `Version`, probed once so a host that will not start a
+scope runs unwrapped children instead of failing renders with somebody else's error
+message. The measurements that shaped it, in order: the wrapper keeps stdout pure and
+propagates exit codes (measured by hand before writing code — a wrapper that wrote one
+line there would have rebuilt D13 inside our own toolchain); a 512 MB allocation under a
+128 MB cap dies with SIGKILL on cgroup v2; and on Kylin V10 SP1 — hybrid cgroup —
+`systemd-run` exits 0, the same allocation **survives**, and `systemctl show` says why
+(`MemoryMax=infinity`, `ControlGroup=` empty: the scope was never attached). That last one
+is why the posture string and the doctor row claim less than the mechanism can sound like
+they claim, and why the remaining work is named rather than implied: ask `systemctl`, not
+just `systemd-run`. Measured on the node (`8251b98` + this working tree): `ran=5 skipped=0
+failed=0`, then the mutation — wrap disabled — `ran=0 failed=2` with
+`a 512 MB allocation survived a 128 MB cap (stdout "536870912")`.
+
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
 `== sh -n` / `no sh on PATH — the step did not run`, and the verdict line carries
@@ -1729,6 +1747,15 @@ line would go on printing `steps not run: none` on a host that skipped two steps
 
 - `go test ./...` all packages green (full suite re-run after each
   milestone; integration tests run against `.tools` ffmpeg 9.0.1)
+- Per-child memory cap (D18): five Linux cases in `internal/media` — no cap means no
+  wrap; a missing `systemd-run` degrades to unwrapped children with the refusal named in
+  the posture; a wrapped child's stdout is *byte-compared* (the wrapper must not write
+  there) and its exit status propagates; the argv shape around the `--` is pinned; and
+  `TestCapKillsAChildThatOverrunsIt` measures the claim itself — 512 MB under a 128 MB
+  cap, killed by the cgroup. It has teeth: against a mutant that stops wrapping it fails
+  with `a 512 MB allocation survived a 128 MB cap`. All five pass on the Linux node
+  (cgroup v2, systemd 255, user manager running) and skip loudly — posture in the skip
+  message — where no scope can start.
 - Secret scanning: gitleaks (repo-local .tools/bin) runs in every gate —
   full git history + working tree (uncommitted edits included); the scan
   fails the gate on any finding (verified with a planted secret)
@@ -2078,6 +2105,17 @@ line would go on printing `steps not run: none` on a host that skipped two steps
 - This machine's WDAC policy intermittently blocks freshly built test
   binaries in %TEMP% (`go test -c -o <path>` + direct run works around it;
   go run may fail) — environmental, not a product issue.
+- **Armed is not enforced on a hybrid-cgroup host** (measured 2026-09-23, D18). On
+  Kylin V10 SP1 (systemd 245; `/sys/fs/cgroup` is a tmpfs of v1 controllers plus
+  `unified` at `/sys/fs/cgroup/unified`) `systemd-run --scope -p MemoryMax=100M` exits 0
+  and the child allocates 400 MB and **lives**, because the manager never attached the
+  scope: `systemctl show <unit> -p MemoryMax --value` reads `infinity` and
+  `ControlGroup` is empty. On the cgroup v2 hosts the same property binds — 512 MB under
+  a 128 MB cap dies with SIGKILL and the wrapper propagates 137. What the product claims
+  is therefore deliberately weaker than what a user would like: `doctor` says the scope
+  *started* (the half it can see), OPERATIONS.md carries the two commands that measure
+  the other half, and the open piece is to make doctor ask `systemctl` rather than only
+  trusting `systemd-run`'s exit code.
 
 ## Performance (measured — docs/PERFORMANCE.md)
 

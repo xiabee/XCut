@@ -5,6 +5,26 @@ sections are tagged; anything above the newest one is unreleased.
 
 ## [Unreleased] — after v0.1.9-alpha
 
+### Added
+- **`resource.ffmpeg_max_memory_mb` now means something on Linux** (D18). The knob was
+  built for the Windows job object, and every other platform — including the two where
+  the server and the ARM64 target actually run — reported its absence as a single polite
+  line. Each FFmpeg child now starts in its own transient systemd scope with
+  `MemoryMax=<n>M MemorySwapMax=0`, applied at the one place all four exec paths share
+  (`media.Run`, `RunCombined`, `StreamStdout`, `Version`), with the wrapper probed once
+  and children running unwrapped when the host will not start a scope. Measured before
+  writing: stdout stays pure (the wrapper's own line is stderr, and `-q` removes it), and
+  the child's exit status propagates (137 when the cgroup killer acts). Measured after:
+  512 MB allocated under a 128 MB cap dies with SIGKILL
+  (`TestCapKillsAChildThatOverrunsIt`, cgroup v2), and it goes red — with
+  `a 512 MB allocation survived a 128 MB cap` — under the mutation that stops wrapping.
+  What this does **not** claim: on Kylin V10 SP1 (hybrid cgroup) `systemd-run` accepts the
+  property, `systemctl show` answers `MemoryMax=infinity` with an empty `ControlGroup`,
+  and a 400 MB allocation survives — so the posture `doctor` prints says the scope
+  *started*, which is all it can know, and OPERATIONS.md carries the two commands that
+  measure the rest. Filesystem/syscall isolation (seccomp, containers) remains the open
+  rung of the same roadmap item.
+
 ### Improved
 - **The ARM64 verification is a script in the repository now.** `sh
   scripts/verify-arm64.sh` fetches the pinned stock FFmpeg, puts it on `PATH`, proves

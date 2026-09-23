@@ -209,6 +209,42 @@ as a green step; `--skip-race` omits the attempt. The digest in the script is no
 publisher-signed (GitHub exposes no digest for the asset); it is what two independent
 fetches of that tag agreed on, recorded where it can be read.
 
+## What bounds a runaway FFmpeg child **measured 2026-09-23**
+
+`resource.ffmpeg_max_memory_mb` (default 1536, `0` = uncapped) is enforced by whatever
+the platform has:
+
+| Platform | Mechanism | What it takes to trust it |
+|---|---|---|
+| Windows | every child joins a kill-on-close **job object** with the memory limit attached | measured kernel-side: a child reports membership after `attachJob` |
+| Linux, cgroup v2 | each child starts in its own **systemd scope** with `MemoryMax=<n>M` and `MemorySwapMax=0` | measured: 512 MB allocated under a 128 MB cap died with SIGKILL (`TestCapKillsAChildThatOverrunsIt`, and by hand on life-vm and the CI node) |
+| Linux, hybrid cgroup (Kylin V10 SP1) | the scope is *accepted* and the limit is **not applied** | see below — this is the case the wording has to survive |
+| macOS / other | nothing | `doctor` says so |
+
+Ask the running binary which of these you have: `xcut doctor` prints a `Process sandbox`
+row naming the mechanism and the number, or the refusal that left it unset.
+
+The hybrid case is worth stating plainly because it looks like success. On Kylin V10 SP1
+(systemd 245, `/sys/fs/cgroup` a tmpfs of v1 controllers plus `unified` v2 at
+`/sys/fs/cgroup/unified`), `systemd-run --scope -p MemoryMax=100M -p MemorySwapMax=0`
+exits 0 and prints a unit name, and the child then **allocates 400 MB without dying**.
+Asking systemd about the unit it just started answers why: `systemctl show <unit>
+-p MemoryMax --value` reads `infinity` and `-p ControlGroup --value` comes back empty —
+the manager never attached the scope to a cgroup, so the property went nowhere. A cap
+that is armed and inert is worse than no cap, because it is believed; that is why the
+posture this package reports says the scope *started*, and why the enforcement claim in
+this repository rests on the cgroup-v2 test above rather than on an exit code.
+
+Re-measure on any host in two commands (the product runs the same shape inside
+`internal/media`):
+
+```sh
+systemd-run -q --user --scope -p MemoryMax=128M -p MemorySwapMax=0 \
+  python3 -c 'x=bytearray(512*1024*1024); print("survived", len(x))'; echo "rc=$?"
+# rc=137 and no "survived" line  -> the cap binds here
+# rc=0  and  "survived 536870912" -> it does not, whatever doctor says
+```
+
 ## Troubleshooting
 
 | Symptom | What it means |
@@ -221,6 +257,7 @@ fetches of that tag agreed on, recorded where it can be read.
 | Import fails on Kylin V10 with "cannot parse probe output" | The vendor FFmpeg writes decoder-plugin logs into ffprobe's stdout. Point `XCUT_FFPROBE`/`XCUT_FFMPEG` at a stock build. The product refuses rather than repairing, because a heuristic filter recovers a *parseable but wrong* document (D13). |
 | Render fails with "this FFmpeg build does not include the 'xfade' filter" | A trimmed distro build, not a broken project: Kylin V10 SP1's FFmpeg 4.2.2 has no `xfade` (measured in session #15's ARM64 run). Use `generic_highlight` (no transitions) or install a full build. |
 | `doctor` says FFmpeg missing but the app finds it | Different shells, different PATH. `xcut doctor` exits 1 and names the remedy; check the environment the app actually runs in. |
+| FFmpeg dies with an allocation error on a machine that has RAM free | The memory cap is doing its job and is too tight for this render — `xcut doctor`'s `Process sandbox` row names the number. Raise `resource.ffmpeg_max_memory_mb` (measured worst normal child: 566 MB for an xfade render) or set it to `0` for uncapped. On Linux the same symptom can mean the scope never attached: see *What bounds a runaway FFmpeg child*. |
 
 ## Health and limits
 

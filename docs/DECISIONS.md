@@ -357,6 +357,11 @@ line flips to the capped posture on Windows out of the box. On non-Windows the
 memory knob is still a no-op stub — it is a job-object feature, and the row says
 so rather than implying a bound that is not there.
 
+> **Amended 2026-09-23 by D18**: that last sentence stopped being true the same week.
+> Linux grew a second rung (a transient systemd scope per child), so the knob is a
+> no-op only on macOS and other platforms; the row now reports the mechanism and the
+> refusal, not a blanket "Windows-only". The rest of this entry stands as written.
+
 ## D17: ARM64 verification runs against a pinned stock FFmpeg, without the race detector
 
 **Context**: D13 and the Kylin rows in OPERATIONS.md established that the distro
@@ -389,3 +394,46 @@ pin is injected through `PATH`, and a run that reaches for `XCUT_FFMPEG` instead
 first measured, and why the runner asserts `TOOL_CHECK` from `command -v` before it runs
 anything. Fourth: nothing in a gate runs the script yet, so arm64 remains a documented
 verification step rather than an automated leg.
+
+## D18: the memory cap gets a Linux rung through systemd scopes, and says less than it could
+
+**Context**: `resource.ffmpeg_max_memory_mb` was built for the Windows job object and
+shipped armed at 1536 MB (D16), which left the documented posture on every other platform
+as what `doctor` politely called "job-object sandbox is Windows-only; cleanup relies on
+the context-kill path". That sentence was true and useless: the server runs on Linux, the
+ARM64 target is Linux, and on those machines an FFmpeg child that decides to allocate
+without limit can take the host with it while the config claims a ceiling exists. AGENTS.md
+rule 4 says nothing may be unbounded, and a knob that only works on one of the three
+platforms the project ships is a knob that lies on two of them.
+
+**Decision (2026-09-23)**: cap the children on Linux too, through what is already there —
+each FFmpeg child starts in its own transient systemd scope with `MemoryMax=<n>M` and
+`MemorySwapMax=0`. No new dependency, no bundled binary, no shell: `systemd-run` is
+argv-first and on the three hosts checked (Ubuntu 24.04 ×2 with systemd 255 on cgroup v2,
+Kylin V10 SP1 with systemd 245) it is installed and `prlimit` beside it. `media.Run`,
+`RunCombined`, `StreamStdout` and `Version` go through one `wrapChild`, so no exec path is
+capped by accident rather than by construction.
+
+**Consequences**: three of them, and the last is the reason the wording matters.
+1. *stdout purity is a hard requirement, and it holds* — measured before writing the code:
+   `systemd-run` writes its `Running as unit:` line to stderr and `-q` removes even that,
+   and the child's exit status propagates verbatim (1 for a failure, 137 when the cgroup
+   killer acts). A wrapper that wrote to stdout would have recreated D13 inside our own
+   toolchain, so `TestWrappedChildKeepsPureStdoutAndItsOwnExitStatus` compares bytes rather
+   than parsing them.
+2. *An unprivileged caller cannot ask the system manager for a scope* (measured:
+   "Interactive authentication required"), so the wrap goes through `--user` off root, and
+   the whole mechanism is probed once: a host without a session bus, or an old systemd that
+   rejects the property, resolves to "children run unwrapped" with the refusal in the
+   posture string. A render that died with `Failed to start transient scope unit` would read
+   as FFmpeg breaking.
+3. *Armed is not enforced.* On Kylin V10 SP1 — hybrid cgroup: v1 controllers under a tmpfs
+   plus `unified` at `/sys/fs/cgroup/unified` — `systemd-run --scope -p MemoryMax=100M`
+   exits 0, and the child allocates 400 MB and lives. `systemctl show` on that unit answers
+   why: `MemoryMax=infinity`, `ControlGroup=` empty. The manager never attached the scope, so
+   the property went nowhere, and nothing in the exit code says so. That is why the posture
+   this package reports says the scope *started* — and why the enforcement claim in this
+   repository is attached to a cgroup-v2 measurement (`TestCapKillsAChildThatOverrunsIt`:
+   512 MB under a 128 MB cap, killed with SIGKILL, and red under the mutation that stops
+   wrapping) rather than to "we asked systemd politely". The container/seccomp rung in
+   ROADMAP Phase 4 stays open: this closes a resource boundary, not a filesystem one.

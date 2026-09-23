@@ -19,18 +19,21 @@ var (
 	limiterMu sync.Mutex
 	limiter   chan struct{}
 
-	// ffmpegMemoryLimitMB is the per-process memory cap handed to the Windows
-	// job object (0 = uncapped). Stored before any child can start: the CLI
-	// wires it from config before the first exec, and ensureJob reads it once
-	// when the job object is created.
+	// ffmpegMemoryLimitMB is the per-process memory cap applied to every child:
+	// through the Windows job object (jobobject_windows.go) or, on Linux, through a
+	// transient systemd scope (sandbox_linux.go). 0 = uncapped. Stored before any
+	// child can start: the CLI wires it from config before the first exec, and both
+	// mechanisms read it when they resolve their posture.
 	ffmpegMemoryLimitMB atomic.Int64
 )
 
-// SetProcessMemoryLimitMB configures the per-ffmpeg memory cap applied by the
-// Windows job object (see jobobject_windows.go). 0 or less means uncapped,
-// which is the default: a cap that is too tight fails real renders with
-// allocation errors, so capping is opt-in. On other platforms this is a
-// no-op — the cap surfaces only where the OS backstop exists.
+// SetProcessMemoryLimitMB configures the per-ffmpeg memory cap applied to each
+// child (0 or less means uncapped, which is what an explicit `0` asks for; the
+// shipped default is 1536 — see DECISIONS D16). A cap that is too tight fails real
+// renders with allocation errors, which is why the number is a ceiling over the
+// largest legitimate child rather than a comfortable margin, and why the Linux
+// wrapper probes once and falls back to running children unwrapped rather than
+// letting a refused scope look like an FFmpeg failure.
 func SetProcessMemoryLimitMB(mb int) {
 	if mb < 0 {
 		mb = 0
@@ -79,7 +82,8 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 		return nil, err
 	}
 	defer release()
-	cmd := exec.CommandContext(ctx, bin, args...)
+	wbin, wargs := wrapChild(bin, args...)
+	cmd := exec.CommandContext(ctx, wbin, wargs...)
 	buf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = buf
 	cmd.Stderr = buf

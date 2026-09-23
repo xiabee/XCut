@@ -68,7 +68,8 @@ func Version(ctx context.Context, bin string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, bin, "-version")
+	wbin, wargs := wrapChild(bin, "-version")
+	cmd := exec.CommandContext(ctx, wbin, wargs...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -152,7 +153,10 @@ func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte
 		return nil, nil, err
 	}
 	defer release()
-	cmd := exec.CommandContext(ctx, bin, args...)
+	// The user-facing name stays the tool's, never the sandbox wrapper's, so every
+	// message below reads "cannot execute ffprobe" and not "cannot execute systemd-run".
+	wbin, wargs := wrapChild(bin, args...)
+	cmd := exec.CommandContext(ctx, wbin, wargs...)
 	outBuf := &cappedBuffer{max: stdoutCaptureCap}
 	errBuf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = outBuf

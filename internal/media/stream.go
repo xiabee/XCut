@@ -34,7 +34,8 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 	}
 	defer release()
 
-	cmd := exec.CommandContext(ctx, bin, args...)
+	wbin, wargs := wrapChild(bin, args...)
+	cmd := exec.CommandContext(ctx, wbin, wargs...)
 	// stderr is diagnostics: last-64KB wins (bounded intake — a corrupt file
 	// can emit decode errors per frame for the whole pass).
 	errBuf := &cappedBuffer{max: 64 << 10}

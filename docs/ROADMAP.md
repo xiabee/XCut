@@ -435,8 +435,15 @@ web UI stays the same asset tree served to browsers).
       a kill-on-close job object (session #8), and
       `resource.ffmpeg_max_memory_mb` caps each child's memory through that
       job (session #16, opt-in, uncapped default; doctor reports the posture).
+      The default was armed at 1536 MB and the knob got a second rung on Linux
+      (D18, 2026-09-23): each child starts in its own systemd scope with
+      `MemoryMax`/`MemorySwapMax=0`, measured to kill a 512 MB allocation under a
+      128 MB cap on cgroup v2 — and measured *inert* on a hybrid-cgroup Kylin, where
+      `doctor` says only what it can see (the scope started). See OPERATIONS.md.
 - [ ] Sandbox options for FFmpeg, container rung (Linux): sandbox the child
-      pipeline under a container/cgroup boundary.
+      pipeline under a container/cgroup boundary. The *resource* half landed with
+      D18; this is the filesystem/syscall/network half — an FFmpeg that reaches for
+      files or sockets still sees everything `xcut` itself can.
 
 ## Notched, with the reason
 

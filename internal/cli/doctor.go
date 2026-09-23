@@ -252,16 +252,29 @@ func cmdDoctor(a *App, args []string) error {
 	}
 
 	// Process sandbox posture: what bounds a runaway ffmpeg child. The
-	// kill-on-close job is Windows-only; the memory cap is opt-in, so its
-	// absence is the configured default, reported as OPTIONAL.
+	// kill-on-close job object is Windows; the memory cap has a second rung on
+	// Linux through a per-child systemd scope (D18), and media.SandboxPosture
+	// reports which of the two — or which refusal — is in play here.
 	if runtime.GOOS == "windows" {
 		if mb := a.Cfg.Resource.FFmpegMaxMemoryMB; mb > 0 {
 			add("Process sandbox", "OK", fmt.Sprintf("ffmpeg children join a kill-on-close job with a %d MB per-process memory cap (resource.ffmpeg_max_memory_mb)", mb))
 		} else {
 			add("Process sandbox", "OPTIONAL", "ffmpeg children join a kill-on-close job; memory uncapped — set resource.ffmpeg_max_memory_mb to bound runaway encoders")
 		}
+	} else if posture := media.SandboxPosture(); posture != "" {
+		// Linux reports what it measured at the first child, not what the config
+		// asked for: a scope systemd refused is a WARN with the refusal in it,
+		// because the caller set a cap that is not happening.
+		switch {
+		case media.SandboxArmed():
+			add("Process sandbox", "OK", posture)
+		case a.Cfg.Resource.FFmpegMaxMemoryMB > 0:
+			add("Process sandbox", "WARN", posture)
+		default:
+			add("Process sandbox", "OPTIONAL", posture)
+		}
 	} else {
-		add("Process sandbox", "OPTIONAL", "job-object sandbox is Windows-only; cleanup relies on the context-kill path")
+		add("Process sandbox", "OPTIONAL", "no per-child memory cap on this platform; cleanup relies on the context-kill path")
 	}
 
 	// Cache usage: informational (OPTIONAL) — eviction is enforced elsewhere.
