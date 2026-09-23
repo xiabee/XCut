@@ -1149,11 +1149,14 @@ fails earlier because the crate has no wav demuxer. Both lines now say what was 
 and `TestAutoModeCoversTheWorkerCodecGap` provokes the MP4 case with its premise
 assertified, so the fallback cannot start passing on nothing.
 
-Accepted at `983596f` on the local fast gate (`617 passed, 5 skipped` — the three worker
-cases moved from skip to run on this machine, which is the arithmetic: 609+8 = 617,
-8−3 = 5) and on win-devops (`OVERALL PASS`, `exit=0 duration=1m39.746s`). The Linux full
-leg for this sha is the first to carry the new build step; its numbers are recorded when
-it reports.
+Accepted at `983596f` on all three channels. Local fast gate: `617 passed, 5 skipped` —
+the arithmetic of this change in one line, 609+8 = 617 and 8−3 = 5, three cases that used
+to skip now running. win-devops: `OVERALL PASS` (`exit=0 duration=1m39.746s`). Linux full
+gate: PASS with `606 passed, 10 skipped` (was 598/13), `DATA_RACE_lines=0`,
+`FAIL_lines=0`, `not run: nothing`, its own new step printing `worker binary present —
+internal/worker's protocol tests will run` and no `skip worker/` line left in the log —
+then the explicit runs: `analysis_rc=0 ran=5 skipped=0`, `worker_rc=0 ran=21 skipped=0`
+(the package's first zero-skip pass anywhere), `regress_rc=0 ran=20 skipped=0`.
 
 ## Version / HEAD
 
