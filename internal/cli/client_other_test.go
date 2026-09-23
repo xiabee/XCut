@@ -48,6 +48,10 @@ func (w *clientSignalWriter) String() string {
 // fallback lived in a file no test compiled.
 func TestClientCommandOnThisPlatformServesThenStops(t *testing.T) {
 	a, _, _ := serveTestApp(t)
+	// Port 0, so a busy machine cannot make this fail for reasons that belong to
+	// whichever process got 8619 first — and the URL the command prints is read
+	// back from the listener, not assumed.
+	a.Cfg.Server.Listen = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(a.Ctx)
 	defer cancel()
 	a.Ctx = ctx
@@ -64,9 +68,22 @@ func TestClientCommandOnThisPlatformServesThenStops(t *testing.T) {
 	case <-time.After(60 * time.Second):
 		t.Fatalf("the client command never reported a server; output:\n%s", out.String())
 	}
-	url := strings.TrimSpace(line[strings.Index(line, "http://"):])
-	if url == "" || !strings.HasPrefix(url, "http://") {
-		t.Fatalf("no URL in the line the command printed: %q", line)
+	// The URL is the tail of the line that says "serving the same UI at …", and
+	// only that line: the buffer also holds the serve pipeline's own
+	// "xcut serving http://… (loopback only)", so the first http:// in the text is
+	// not the one this command printed.
+	const marker = "serving the same UI at "
+	at := strings.Index(line, marker)
+	if at < 0 {
+		t.Fatalf("the line the command printed names no URL: %q", line)
+	}
+	fields := strings.Fields(line[at+len(marker):])
+	if len(fields) == 0 {
+		t.Fatalf("the client printed %q with nothing after the marker", line)
+	}
+	url := fields[0]
+	if !strings.HasPrefix(url, "http://") {
+		t.Fatalf("the printed URL is %q", url)
 	}
 	// The address has to be the one that answers, not one the string claims.
 	resp, err := http.Get(url + "/api/v1/health")
