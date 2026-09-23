@@ -31,7 +31,10 @@ type runningServe struct {
 	ln         net.Listener
 	// errCh receives a fatal serve error (anything but http.ErrServerClosed).
 	errCh chan error
-	close func() // releases the DB handle
+	// close releases everything startServeCore acquired: the DB handle and,
+	// last, the serve log file — so the lines written while serve ran (and the
+	// drain that follows) are in it.
+	close func()
 }
 
 // serveAddr validates and resolves the listen address for serve/client.
@@ -66,7 +69,7 @@ func serveAddr(a *App, args []string) (string, error) {
 // startServeCore is the serve pipeline shared by `xcut serve` and the
 // `xcut client` shell: open the DB, take over logging, sweep orphans and
 // temp debris, bind loopback and start serving. The caller owns shutdown:
-// shutdownServe for the drain, then r.close for the DB handle.
+// shutdownServe for the drain, then r.close for the DB handle and the log file.
 func startServeCore(a *App, addr string) (*runningServe, error) {
 	db, err := a.OpenDB()
 	if err != nil {
@@ -75,8 +78,12 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 
 	// Serve mode logs to stderr AND a rotated file in the workspace so a
 	// long-running instance stays diagnosable without unbounded log growth.
+	// The file belongs to serve's lifetime, not this function's: closing it on
+	// return made every line written while the server was up — request
+	// failures, job warnings, the drain — go to a closed handle, so the log
+	// OPERATIONS.md points an operator at stopped at startup. Ownership passes
+	// to the runningServe; the paths that do not return one close it here.
 	slogSvc, closeLog := newServeLogger(a, a.Cfg.Workspace)
-	defer closeLog()
 	a.Log = slogSvc
 
 	srv := &api.Server{DB: db, Pipe: a.Pipeline(db), Log: a.Log, AuthToken: a.Cfg.Server.AuthToken}
@@ -131,6 +138,7 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		db.Close()
+		closeLog()
 		return nil, xcerr.E(xcerr.CodeInternal, "cannot bind "+addr, err)
 	}
 	posture := "loopback only"
@@ -155,7 +163,10 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 		httpServer: httpServer,
 		ln:         ln,
 		errCh:      errCh,
-		close:      func() { db.Close() },
+		close: func() {
+			db.Close()
+			closeLog()
+		},
 	}, nil
 }
 
