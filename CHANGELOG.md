@@ -23,7 +23,7 @@ sections are tagged; anything above the newest one is unreleased.
   and a 400 MB allocation survives — so `xcut doctor` no longer infers: it starts a named
   probe scope, asks `systemctl show -p MemoryMax --value` about the live unit, and prints
   the manager's own answer (`infinity` is reported as a WARN, not as a cap). The values it
-  has to distinguish are pinned by ten table cases in an untagged test file, so the
+  has to distinguish are pinned by eight table cases plus a four-value negative arm in an untagged test file, so the
   decision is checked on every leg rather than only on hosts with a session bus. Filesystem/syscall isolation (seccomp, containers) remains the open
   rung of the same roadmap item.
 

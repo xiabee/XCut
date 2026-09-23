@@ -1765,7 +1765,8 @@ line would go on printing `steps not run: none` on a host that skipped two steps
 - What systemd *attached* is a separate measurement (`memoryMaxAnswer`, D18): the byte
   count we asked for is applied, `infinity` and an empty answer are not, a clamped number
   is named back. It is a pure function in an untagged file on purpose — the decision is
-  not platform code, so the ten table cases run on every leg (the fast gate included)
+  not platform code, so the eight table cases and the four-value negative arm run on
+every leg (the fast gate included)
   rather than only where a session bus exists. Mutating the `infinity` arm to "assume the
   exit code meant it" goes red twice, locally, in one command.
 - Secret scanning: gitleaks (repo-local .tools/bin) runs in every gate —

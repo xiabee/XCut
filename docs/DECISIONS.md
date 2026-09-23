@@ -439,6 +439,7 @@ capped by accident rather than by construction.
    itself now — a named probe scope, `systemctl show -p MemoryMax --value` read off the
    live unit — so an operator sees the WARN on the host where the limit goes nowhere;
    and because the deciding half of that is a pure function over the answer string, its
-   ten table cases run on every leg instead of only where a session bus exists. The
+   eight table cases (plus a four-value negative arm) run on every leg instead of
+   only where a session bus exists. The
    container/seccomp rung in ROADMAP Phase 4 stays open: this closes a resource boundary,
    not a filesystem one.
