@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 14:16 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 14:56 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1305,6 +1305,39 @@ Accepted at `f2b819c` on all three channels: local fast gate PASS (`627 passed,
 explicitly on that node — `precedence=0 ran=3`, `loadcontract=0 ran=2`, plus the
 earlier rounds still running: `client=0 ran=1`, `flush=0 ran=1`, `worker=0 ran=21`,
 `analysis=0 ran=5`, `release_rc=0 checks=5`.
+
+**The two bounds that were built and left behind a default are now shipped** (owner
+decision, recorded as D16): `resource.ffmpeg_max_memory_mb` defaults to 1536 MB —
+2.7× the 566 MB xfade child measured here, with `0` still the explicit uncapped
+answer and a negative value repaired to the shipped cap rather than to no cap — and
+`resource.proxy_enabled` defaults to true, which is what makes `max_proxy_gb` a
+ceiling over something real. The second decision forced the first's type: a bool
+cannot tell "the file said false" from "the file said nothing", and `MergeLayer`'s
+one-way rule — harmless while the default was off — became a knob you could opt into
+and never out of. `ProxyEnabled` is a `*bool` now (carried when non-nil, normalised
+by `Resolve`, read through `Config.ProxyOn()`), which only means anything because
+`config.Load` went sparse earlier in this session.
+
+Verified on the shipped path, not just in a unit: `xcut auto` over a 1280×720 clip in
+a clean workspace wrote `cache/proxy/<fp>.w640.f2.mp4` (576 KB for 20 s) and analysed
+from it — 4.2 s wall for import → analyse → timeline → a 5.6 MB reel.
+
+The battery found a hole in what I had just written: flipping `ProxyOn()`'s nil arm to
+"off" **passed the entire suite**, because `Resolve` fills the pointer and every test
+reaches a resolved config — so the branch I had justified in a comment ("a hand-built
+Config must not flip behavior") had no test reaching it. `TestProxyOnDefaultsInAnUnresolvedConfig`
+now builds exactly that config, and the same mutation is caught by two named assertions.
+The merge-completeness gate also had to learn the pointer kind rather than skip it, and
+two comments that promised "Config holds no reference types" were corrected: `Redacted()`
+is still safe, but the reason is now the real one.
+
+Accepted at `6b6f73e`: local fast gate PASS (`629 passed, 5 skipped`, race subset 121 s —
+the widest it has measured, proxies now built under the detector); win-devops `OVERALL
+PASS` (`exit=0 duration=1m55.491s`); Linux full gate PASS with `619 passed, 10 skipped`,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, and the config cases run
+explicitly — `defaults=0 ran=10 skipped=0`, `precedence=0 ran=3`, plus the standing
+regressions (`worker ran=21`, `analysis ran=5`, `captions ran=20`, `client`, `flush`,
+`release_rc=0 checks=5`).
 
 ## Version / HEAD
 
