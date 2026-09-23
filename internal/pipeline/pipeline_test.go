@@ -133,7 +133,8 @@ func TestWriteAtomicRoundTrip(t *testing.T) {
 // into its own cache dir (fingerprint-keyed), leaving the original untouched.
 func TestAnalyzeWithProxy(t *testing.T) {
 	d, p := analyzeSetup(t, 1)
-	d.Cfg.Resource.ProxyEnabled = true
+	proxyOn := true
+	d.Cfg.Resource.ProxyEnabled = &proxyOn
 	d.Cfg.Resource.AnalysisWidth = 160 // fixture is 320-wide → proxy decision fires
 
 	asset, err := d.DB.ListAssets(context.Background(), p.ID)
@@ -495,7 +496,8 @@ func TestRestoreTimelineBackupRollsBackFailedSwap(t *testing.T) {
 // of re-decoding full originals at a never-hit key.
 func TestTimelineWithProxySharesAnalyzeCache(t *testing.T) {
 	d, p := analyzeSetup(t, 1)
-	d.Cfg.Resource.ProxyEnabled = true
+	proxyOn := true
+	d.Cfg.Resource.ProxyEnabled = &proxyOn
 	d.Cfg.Resource.AnalysisWidth = 160 // fixture is 320-wide → proxy decision fires
 
 	if err := d.AnalyzeProject(p, func(AnalyzedAsset) {}); err != nil {

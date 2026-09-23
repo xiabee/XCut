@@ -366,11 +366,10 @@ Every item states how it is measured before it is built, because the eval harnes
       tap measured against the same stages run separately (9.2 s / 343 MB against
       10.1 s / 339 MB, so the orchestration is free); and the xfade render's child
       weighed (566 MB, single process, 1.75× the concat path).
-      Remaining: the decision B7a surfaced but did not take — whether
-      `resource.ffmpeg_max_memory_mb` should ship with a default instead of 0 =
-      uncapped. The number any default has to clear is 566 MB, and the surface that
-      tells the user today is `xcut doctor`'s `Process sandbox: OPTIONAL … memory
-      uncapped`.
+      The decision B7a surfaced is taken (owner, 2026-09-23, D16): the default is
+      1536 MB, which clears the 566 MB xfade child by a wide margin, `xcut doctor`
+      reports the capped posture out of the box, and 0 remains the explicit way to
+      ask for uncapped.
       Proxy/cache bytes landed as B7b (2026-09-23, four rows in `docs/PERFORMANCE.md`):
       ~11.5 KB of sample cache per source-minute against ~2.5 MiB of proxy per
       source-minute, a geometry change costing a second full copy (72% of the first at
@@ -378,11 +377,13 @@ Every item states how it is measured before it is built, because the eval harnes
       `xcut cleanup` drained all three proxies once the budget fell under the newest
       file's own size, and the asset that lost its file paid a 15.3 s re-encode rather
       than breaking. Its dry run was asserted to touch nothing, byte for byte.
-      That row surfaced the other half of the decision B7 leaves open:
-      `proxy_enabled` defaults to **false**, so the 2 GiB `max_proxy_gb` governs an empty
-      directory in the shipped posture — either the default turns the proxy on (session
-      #3 measured repeated analysis 10–20× cheaper with it) or the budget should be
-      documented as dormant instead of listed as a standing control.
+      The other half of B7's open decision is taken the same way (D16): the proxy is
+      on by default, so `max_proxy_gb` is a live ceiling rather than a control over an
+      empty directory. It cost a type change — a `bool` cannot distinguish "the file
+      said false" from "the file said nothing", and with the default on, the one-way
+      merge that was harmless while it was off became a way to opt in but never out.
+      `resource.proxy_enabled` is a `*bool` now, and turning it off from a workspace
+      config is tested.
 
 Order of attack is B1 → B2 → B3 → B4 (each depends on the one before), with B5
 independent and B6 landing per feature as its surface exists.

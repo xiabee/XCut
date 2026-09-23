@@ -73,14 +73,19 @@ func TestResolveRepairsBadResource(t *testing.T) {
 	}
 }
 
-// The memory cap is opt-in: 0 stays off, a real cap passes through untouched
-// (the media layer owns the byte math), and a negative value is a typo —
-// repaired to off rather than misread as "unlimited" by a later bound check.
+// The shipped memory cap is 1536 MB per ffmpeg child (owner decision 2026-09-23):
+// the largest legitimate child measured on this machine is the xfade render at
+// 566 MB, and the analysis fan-out costs ~54 MB per 720p child, so a default cap
+// sits well above any real workload while a runaway encoder is now bounded out of
+// the box. 0 still means "uncapped" for anyone who asks for that; a negative value
+// is a typo and is repaired to the shipped cap rather than to uncapped, because
+// silently restoring the old posture is the worse mistake of the two.
 func TestResolveFFmpegMemoryCap(t *testing.T) {
-	cfg := Default()
-	if cfg.Resource.FFmpegMaxMemoryMB != 0 {
-		t.Fatalf("default FFmpegMaxMemoryMB = %d, want 0 (uncapped)", cfg.Resource.FFmpegMaxMemoryMB)
+	ship := Default().Resource.FFmpegMaxMemoryMB
+	if ship != 1536 {
+		t.Fatalf("default FFmpegMaxMemoryMB = %d, want the shipped cap 1536", ship)
 	}
+	cfg := Default()
 	cfg.Resource.FFmpegMaxMemoryMB = 4096
 	if err := Resolve(cfg); err != nil {
 		t.Fatal(err)
@@ -88,12 +93,20 @@ func TestResolveFFmpegMemoryCap(t *testing.T) {
 	if cfg.Resource.FFmpegMaxMemoryMB != 4096 {
 		t.Fatalf("FFmpegMaxMemoryMB = %d, want 4096 preserved", cfg.Resource.FFmpegMaxMemoryMB)
 	}
-	cfg.Resource.FFmpegMaxMemoryMB = -1
+	cfg.Resource.FFmpegMaxMemoryMB = 0
 	if err := Resolve(cfg); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Resource.FFmpegMaxMemoryMB != 0 {
-		t.Fatalf("negative cap = %d, want repaired to 0", cfg.Resource.FFmpegMaxMemoryMB)
+		t.Fatalf("an explicit 0 (uncapped) = %d, want it honoured", cfg.Resource.FFmpegMaxMemoryMB)
+	}
+	cfg.Resource.FFmpegMaxMemoryMB = -1
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.FFmpegMaxMemoryMB != ship {
+		t.Fatalf("negative cap = %d, want the shipped cap %d (a typo must not disable the bound)",
+			cfg.Resource.FFmpegMaxMemoryMB, ship)
 	}
 }
 
@@ -147,10 +160,16 @@ func TestLoadPresentFileLeavesUnmentionedFieldsZero(t *testing.T) {
 	}
 }
 
+// Proxies are on by default as of the owner decision on 2026-09-23: repeated
+// analysis measured 10-20x cheaper with them (docs/PERFORMANCE.md) and
+// resource.max_proxy_gb was a ceiling over an empty directory. It has to be
+// switchable off by name, which is why the field is a pointer — a bool cannot
+// tell "the file said false" from "the file said nothing", and the old one-way
+// merge let a workspace opt in but never out.
 func TestProxyKnobs(t *testing.T) {
 	cfg := Default()
-	if cfg.Resource.ProxyEnabled {
-		t.Error("proxy_enabled must default to false (no silent behavior change)")
+	if !cfg.ProxyOn() {
+		t.Error("proxy_enabled must default to true (the 2 GiB budget governs something real now)")
 	}
 	if cfg.Resource.MaxProxyGB != 2 {
 		t.Errorf("max_proxy_gb default %v, want 2", cfg.Resource.MaxProxyGB)
@@ -165,16 +184,70 @@ func TestProxyKnobs(t *testing.T) {
 
 	t.Setenv("XCUT_PROXY_ENABLED", "1")
 	cfg2 := Default()
+	cfg2.Resource.ProxyEnabled = nil // pretend nothing else said anything
 	Env(cfg2)
-	if !cfg2.Resource.ProxyEnabled {
+	if cfg2.ProxyOn() != true {
 		t.Error("XCUT_PROXY_ENABLED=1 must enable proxies")
 	}
 	t.Setenv("XCUT_PROXY_ENABLED", "off")
 	cfg3 := Default()
-	cfg3.Resource.ProxyEnabled = true
 	Env(cfg3)
-	if cfg3.Resource.ProxyEnabled {
+	if cfg3.ProxyOn() {
 		t.Error("XCUT_PROXY_ENABLED=off must disable proxies")
+	}
+}
+
+// An unresolved Config is the case ProxyOn's nil branch exists for: Resolve
+// normalises the pointer, so the only way to reach a nil is a hand-built one (a
+// test, a tool, a future seam) — and such a config must read as the shipped
+// posture, not as "off", because turning proxies silently off would be the exact
+// surprise the default flip was decided against.
+func TestProxyOnDefaultsInAnUnresolvedConfig(t *testing.T) {
+	if !(&Config{}).ProxyOn() {
+		t.Error("an all-zero Config read as proxies off; the nil arm must mean the shipped default")
+	}
+	var none *Config
+	if !none.ProxyOn() {
+		t.Error("a nil Config read as off where the accessor promises the default")
+	}
+	off := false
+	if (&Config{Resource: Resource{ProxyEnabled: &off}}).ProxyOn() {
+		t.Error("an explicit false must read as false")
+	}
+}
+
+// TestProxyOffIsExpressibleThroughAFile is the capability the pointer bought: an
+// operator with a small disk says no once, and the layering carries it.
+func TestProxyOffIsExpressibleThroughAFile(t *testing.T) {
+	off := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(off, []byte(`{"resource":{"proxy_enabled":false}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(off)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.ProxyEnabled == nil {
+		t.Fatal("an explicit false loaded as nothing said — the merge cannot tell it from an absent key")
+	}
+	merged := MergeLayer(Default(), cfg)
+	if merged.ProxyOn() {
+		t.Error("proxy_enabled: false in a file must survive the merge over the default")
+	}
+	// And a file that never mentions it must not turn the shipped default off.
+	quiet := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(quiet, []byte(`{"resource":{"analysis_width":320}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	said, err := Load(quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if said.Resource.ProxyEnabled != nil {
+		t.Error("an unmentioned proxy_enabled must load as nil, not as a choice")
+	}
+	if !MergeLayer(Default(), said).ProxyOn() {
+		t.Error("the shipped default was silenced by a file that never mentioned it")
 	}
 }
 

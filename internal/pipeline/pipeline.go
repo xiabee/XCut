@@ -79,7 +79,7 @@ func (d Deps) proxyStore() *analysis.ProxyStore {
 // analysis canvas, the original otherwise. The returned Options copy pins
 // UseProxy so the cache key distinguishes proxy-based results forever.
 func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options) (analysis.Options, string) {
-	if !d.Cfg.Resource.ProxyEnabled {
+	if !d.Cfg.ProxyOn() {
 		return baseOpts, asset.Path
 	}
 	opts := baseOpts

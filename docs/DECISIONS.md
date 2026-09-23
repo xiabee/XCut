@@ -322,3 +322,37 @@ nothing". The column is capped (`storage.MaxScoreMarks`) because the threshold
 that produces marks is user-chosen. What it does not buy: which rally is worth
 cutting — that ranking problem is unchanged and still the sidecar's to solve.
 
+
+## D16: the two resource defaults that were left as opt-in are now shipped on
+
+**Context**: two controls were built, measured, and then parked behind a
+conservative default. `resource.ffmpeg_max_memory_mb` shipped at 0 (uncapped)
+while the thing it bounds was measured at 566 MB for an xfade render and ~54 MB
+per 720p analysis child; `xcut doctor` had to say "memory uncapped" in its
+sandbox row, and ROADMAP recorded the number any default would have to clear but
+not the decision. `resource.proxy_enabled` shipped false, which made its own
+2 GiB budget `max_proxy_gb` a ceiling over an empty directory in the shipped
+posture — while repeated analysis had measured 10–20× cheaper with the proxy, and
+the measured cost of turning it on was ~2.5 MiB per source-minute with the budget
+observed to drain correctly under pressure. Both were recorded as owner
+decisions, not engineering ones.
+
+**Decision (owner, 2026-09-23)**: ship the bounds. `ffmpeg_max_memory_mb`
+defaults to 1536 (roughly 2.7× the largest legitimate child measured here, so a
+normal render is never the thing that trips it) and `proxy_enabled` defaults to
+true. `0` remains the documented way to ask for uncapped, and a negative value —
+a typo — is repaired to the shipped cap rather than to uncapped, because silently
+restoring the posture the default replaced is the worse of the two mistakes.
+
+**Consequences**: `proxy_enabled` had to stop being a `bool`. With the default on,
+"a file said false" and "the file said nothing" had to be distinguishable or a
+workspace config could opt proxies in but never out — the one-way merge was fine
+while the default was off and became a usability trap the moment it was not. The
+field is now `*bool`, carried by `MergeLayer` only when non-nil, normalised by
+`Resolve`, and read through `Config.ProxyOn()`; `config.Load` loading sparse
+(the precedence fix in the same session) is what makes that layering mean
+anything, and `TestMergeLayerCarriesEveryLeafField` had to learn the pointer kind
+before the completeness gate would keep its promise about new fields. The doctor
+line flips to the capped posture on Windows out of the box. On non-Windows the
+memory knob is still a no-op stub — it is a job-object feature, and the row says
+so rather than implying a bound that is not there.

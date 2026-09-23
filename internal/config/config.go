@@ -25,8 +25,11 @@ const MinAuthTokenLen = 24
 // Redacted returns a copy with secret-valued fields replaced by a marker, for
 // any path that prints or persists configuration the operator did not write by
 // hand into a file (`xcut config show`, the config.json written by `xcut init`).
-// A shallow copy is sufficient only while Config holds no reference types —
-// merge.go's "no slices or maps today" note is the same invariant.
+// A shallow copy is enough for what Config holds: the only reference-typed field
+// is Resource.ProxyEnabled (*bool), and Redacted replaces values, never writes
+// through a shared pointer. A second secret-bearing field would need either a deep
+// copy here or a value type — the redaction is the point of the function, so a
+// leaked alias is a security bug, not a style one.
 func (c *Config) Redacted() *Config {
 	out := *c
 	if out.Server.AuthToken != "" {
@@ -59,18 +62,22 @@ type Resource struct {
 	// not the ceiling on processes: every ffmpeg/ffprobe child still asks
 	// MaxFFmpegProcesses, so raising this past that changes nothing measurable
 	// (docs/PERFORMANCE.md, 2026-09-23).
-	MaxAnalysisWorkers  int      `json:"max_analysis_workers"`
-	MaxRenderWorkers    int      `json:"max_render_workers"`
-	FFmpegThreads       int      `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
-	FFmpegMaxMemoryMB   int      `json:"ffmpeg_max_memory_mb"` // per-process memory cap via the Windows job object; 0 = uncapped
-	ProxyThreads        int      `json:"proxy_threads"`        // one-shot proxy encode; 0 = inherit ffmpeg_threads
-	MaxCacheGB          float64  `json:"max_cache_gb"`
-	MaxTempGB           float64  `json:"max_temp_gb"`
-	MaxProxyGB          float64  `json:"max_proxy_gb"`          // analysis-proxy disk budget
-	ProxyEnabled        bool     `json:"proxy_enabled"`         // generate low-res analysis proxies
-	FrameSampleFPS      float64  `json:"frame_sample_fps"`      // sampling fps for analysis
-	AnalysisWidth       int      `json:"analysis_width"`        // proxy width for analysis
-	AnalyzerCallTimeout Duration `json:"analyzer_call_timeout"` // per-analyzer ffmpeg budget; 0 = default (30m)
+	MaxAnalysisWorkers int     `json:"max_analysis_workers"`
+	MaxRenderWorkers   int     `json:"max_render_workers"`
+	FFmpegThreads      int     `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
+	FFmpegMaxMemoryMB  int     `json:"ffmpeg_max_memory_mb"` // per-process cap via the Windows job object; 0 = uncapped, default 1536
+	ProxyThreads       int     `json:"proxy_threads"`        // one-shot proxy encode; 0 = inherit ffmpeg_threads
+	MaxCacheGB         float64 `json:"max_cache_gb"`
+	MaxTempGB          float64 `json:"max_temp_gb"`
+	MaxProxyGB         float64 `json:"max_proxy_gb"` // analysis-proxy disk budget
+	// ProxyEnabled is a pointer because a bool cannot tell "the file said false"
+	// from "the file said nothing", and with the shipped default on (owner decision
+	// 2026-09-23) the second reading has to mean "keep the default" while the first
+	// has to win. Resolve leaves it non-nil; read it through Config.ProxyOn.
+	ProxyEnabled        *bool    `json:"proxy_enabled,omitempty"` // generate low-res analysis proxies
+	FrameSampleFPS      float64  `json:"frame_sample_fps"`        // sampling fps for analysis
+	AnalysisWidth       int      `json:"analysis_width"`          // proxy width for analysis
+	AnalyzerCallTimeout Duration `json:"analyzer_call_timeout"`   // per-analyzer ffmpeg budget; 0 = default (30m)
 }
 
 // FFmpeg locates external binaries. Empty means "resolve from PATH".
@@ -161,9 +168,11 @@ func Default() *Config {
 			MaxAnalysisWorkers:  2,
 			MaxRenderWorkers:    1,
 			FFmpegThreads:       2,
+			FFmpegMaxMemoryMB:   defaultFFmpegMemoryMB,
 			MaxCacheGB:          10,
 			MaxTempGB:           20,
 			MaxProxyGB:          2,
+			ProxyEnabled:        boolPtr(true),
 			FrameSampleFPS:      2.0,
 			AnalyzerCallTimeout: Duration{30 * time.Minute},
 			AnalysisWidth:       640,
@@ -177,6 +186,24 @@ func Default() *Config {
 // maxConfigBytes caps config file size (cheap DoS guard: a config is a few
 // KB by design).
 const maxConfigBytes = 1 << 20 // 1 MiB
+
+func boolPtr(b bool) *bool { return &b }
+
+// defaultFFmpegMemoryMB is the shipped per-child memory bound, named so Default()
+// and Resolve()'s repair of a negative value agree by construction: the measured
+// worst legitimate child on this machine is the xfade render at 566 MB, and a
+// typo'd negative must not silently restore the uncapped posture the default
+// replaced.
+const defaultFFmpegMemoryMB = 1536
+
+// ProxyOn is the only way to ask whether analysis should build proxies: the field
+// is a pointer so a config layer can distinguish "false" from "unsaid", and every
+// reader wants the answer after that question is resolved. A nil pointer reads as
+// the shipped default rather than as off — Resolve normalises it, but a hand-built
+// Config (a test, a tool) must not flip behavior by forgetting to.
+func (c *Config) ProxyOn() bool {
+	return c == nil || c.Resource.ProxyEnabled == nil || *c.Resource.ProxyEnabled
+}
 
 // Load reads one config file and returns it **sparse**: only the fields the file
 // mentions come back set, everything else is the zero value. That is what
@@ -236,9 +263,9 @@ func Env(cfg *Config) {
 	if v := os.Getenv("XCUT_PROXY_ENABLED"); v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes", "on":
-			cfg.Resource.ProxyEnabled = true
+			cfg.Resource.ProxyEnabled = boolPtr(true)
 		case "0", "false", "no", "off":
-			cfg.Resource.ProxyEnabled = false
+			cfg.Resource.ProxyEnabled = boolPtr(false)
 		}
 	}
 }
@@ -285,10 +312,16 @@ func Resolve(cfg *Config) error {
 	if r.FFmpegThreads < 0 {
 		r.FFmpegThreads = 2
 	}
-	// A negative memory cap is a typo (the user meant "uncapped" or meant a
-	// real number), not a wish for one — 0 is the documented off switch.
+	// A negative memory cap is a typo, not a wish: 0 remains the documented way to
+	// ask for uncapped, so a value below zero is repaired to the shipped default
+	// rather than to the posture the default replaced.
 	if r.FFmpegMaxMemoryMB < 0 {
-		r.FFmpegMaxMemoryMB = 0
+		r.FFmpegMaxMemoryMB = defaultFFmpegMemoryMB
+	}
+	// Normalise the pointer so every consumer (and `xcut config show`) sees a
+	// decided bool; the "unsaid" reading only exists between layers.
+	if r.ProxyEnabled == nil {
+		r.ProxyEnabled = boolPtr(true)
 	}
 	if r.ProxyThreads < 0 {
 		r.ProxyThreads = 0 // 0 = inherit ffmpeg_threads

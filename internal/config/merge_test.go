@@ -59,7 +59,7 @@ func TestMergeLayerCarriesNewerResourceKnobs(t *testing.T) {
 			ProxyThreads:        3,
 			MaxProxyGB:          4,
 			AnalyzerCallTimeout: d,
-			ProxyEnabled:        true,
+			ProxyEnabled:        boolPtr(true),
 		},
 	}
 	got := MergeLayer(base, layer)
@@ -72,16 +72,18 @@ func TestMergeLayerCarriesNewerResourceKnobs(t *testing.T) {
 	if got.Resource.AnalyzerCallTimeout.Duration != 5*time.Minute {
 		t.Fatalf("layered analyzer_call_timeout = %v", got.Resource.AnalyzerCallTimeout.Duration)
 	}
-	if !got.Resource.ProxyEnabled {
+	if got.ProxyOn() != true {
 		t.Fatal("workspace proxy_enabled=true must opt in")
 	}
-	// The bool cannot express "unset": a false layer keeps the base value
-	// (turning it off is the bootstrap/env/flag layer's job).
-	base2 := Default()
-	base2.Resource.ProxyEnabled = true
-	got2 := MergeLayer(base2, &Config{})
-	if !got2.Resource.ProxyEnabled {
-		t.Fatal("false in the layer must keep the base value")
+	// The field is a pointer because a bool cannot express "unset". A layer that
+	// says nothing leaves the base alone; a layer that says false means it.
+	if !MergeLayer(Default(), &Config{}).ProxyOn() {
+		t.Fatal("an unmentioned proxy_enabled must keep the base value")
+	}
+	off := false
+	if MergeLayer(Default(), &Config{Resource: Resource{ProxyEnabled: &off}}).ProxyOn() {
+		t.Fatal("an explicit false in the layer must override the shipped default — that " +
+			"override is the whole reason the field is not a bool")
 	}
 }
 
@@ -110,6 +112,16 @@ func setNonZero(v reflect.Value) {
 		v.SetInt(probeNanos)
 	case reflect.Float64:
 		v.SetFloat(probeFloat)
+	case reflect.Ptr:
+		// The tri-state knobs are pointers (a bool cannot say "unsaid"), and a
+		// merge line that forgot one would otherwise be invisible to this probe.
+		// Only *bool is supported here on purpose: a new pointer kind must arrive
+		// with a comment on what "set" means for it, so it panics until then.
+		if v.Type().Elem().Kind() != reflect.Bool {
+			panic("merge completeness probe: pointer field of non-bool kind at " + v.Type().String())
+		}
+		on := true
+		v.Set(reflect.ValueOf(&on))
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
 			if v.Field(i).CanSet() {
@@ -144,6 +156,13 @@ func droppedLeaves(layer, out reflect.Value, path string) []string {
 	case reflect.Float64:
 		if out.Float() != layer.Float() {
 			missing = append(missing, path+" (float)")
+		}
+	case reflect.Ptr:
+		if layer.IsNil() {
+			panic("merge completeness probe: pointer leaf was not filled in the layer at " + path)
+		}
+		if out.IsNil() || out.Elem().Bool() != layer.Elem().Bool() {
+			missing = append(missing, path+" (*bool)")
 		}
 	default:
 		panic("merge completeness probe: unhandled kind " + layer.Kind().String() + " at " + path)

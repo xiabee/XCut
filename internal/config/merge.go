@@ -2,8 +2,10 @@ package config
 
 // MergeLayer overlays non-zero values from layer onto base and returns a new
 // config (used for two-layer loading: bootstrap config + workspace config).
-// A field set in the layer wins; a zero value keeps the base value. Slices
-// and maps are replaced, never merged (none exist today).
+// A field set in the layer wins; a zero value keeps the base value. A tri-state
+// knob (*bool) is carried when the layer's pointer is non-nil, which is the only
+// reading that says "the file chose this"; slices and maps are replaced, never
+// merged (none exist today).
 func MergeLayer(base, layer *Config) *Config {
 	out := *base
 
@@ -67,11 +69,11 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Resource.AnalyzerCallTimeout.Duration != 0 {
 		out.Resource.AnalyzerCallTimeout = layer.Resource.AnalyzerCallTimeout
 	}
-	// A bool cannot express "unset", so a workspace may opt proxies IN but
-	// not out — turning them off is the bootstrap config / XCUT_PROXY_ENABLED
-	// / flag layer's job.
-	if layer.Resource.ProxyEnabled {
-		out.Resource.ProxyEnabled = true
+	// A pointer so the layer can say "off" and mean it: nil is the only reading
+	// that keeps the base. (With a bool, an explicit false and an absent key were
+	// the same bytes, and a workspace config could opt proxies in but never out.)
+	if layer.Resource.ProxyEnabled != nil {
+		out.Resource.ProxyEnabled = layer.Resource.ProxyEnabled
 	}
 	if layer.FFmpeg.Bin != "" {
 		out.FFmpeg.Bin = layer.FFmpeg.Bin
