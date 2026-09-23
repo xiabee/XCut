@@ -435,5 +435,10 @@ capped by accident rather than by construction.
    this package reports says the scope *started* — and why the enforcement claim in this
    repository is attached to a cgroup-v2 measurement (`TestCapKillsAChildThatOverrunsIt`:
    512 MB under a 128 MB cap, killed with SIGKILL, and red under the mutation that stops
-   wrapping) rather than to "we asked systemd politely". The container/seccomp rung in
-   ROADMAP Phase 4 stays open: this closes a resource boundary, not a filesystem one.
+   wrapping) rather than to "we asked systemd politely". `xcut doctor` asks the manager
+   itself now — a named probe scope, `systemctl show -p MemoryMax --value` read off the
+   live unit — so an operator sees the WARN on the host where the limit goes nowhere;
+   and because the deciding half of that is a pure function over the answer string, its
+   ten table cases run on every leg instead of only where a session bus exists. The
+   container/seccomp rung in ROADMAP Phase 4 stays open: this closes a resource boundary,
+   not a filesystem one.

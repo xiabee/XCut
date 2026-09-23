@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -93,14 +94,8 @@ func resolveSandbox(mb int64) sandboxState {
 		return sandboxState{reason: "uncapped: no trivial target to probe the scope with"}
 	}
 
-	scope := []string{"-q", "--scope"}
-	if os.Geteuid() != 0 {
-		// Measured: the system manager will not take a scope from an unprivileged
-		// caller without an interactive polkit prompt, which a server cannot answer.
-		scope = []string{"-q", "--user", "--scope"}
-	}
 	capArg := "MemoryMax=" + strconv.FormatInt(mb, 10) + "M"
-	prefix := append(scope, "-p", capArg, "-p", "MemorySwapMax=0", "--")
+	prefix := scopeArgs(capArg, "")
 
 	// Ask before every render pays for it: start the wrapper around a command that
 	// does nothing. A host without a session bus, or an old systemd that rejects the
@@ -117,10 +112,93 @@ func resolveSandbox(mb int64) sandboxState {
 		run:    bin,
 		prefix: prefix,
 		reason: "each FFmpeg child starts in its own systemd scope with " + capArg +
-			" and no swap — the scope started, which is what this can know from here;" +
-			" whether the kernel enforces it is measured by the media tests on the Linux leg" +
-			" (and on a cgroup-v1 Kylin it does not: see docs/OPERATIONS.md)",
+			" and no swap — the scope started; whether the manager attached the limit is" +
+			" SandboxEnforcement's question, which `xcut doctor` asks",
 	}
+}
+
+// scopeArgs builds the systemd-run argv up to and including the "--" that separates the
+// wrapper's properties from the child. unit is empty for ordinary children (let systemd
+// name the scope) and set for the doctor probe, which has to know which unit to ask
+// about afterwards.
+func scopeArgs(capArg, unit string) []string {
+	a := []string{"-q"}
+	if os.Geteuid() != 0 {
+		// Measured: the system manager will not take a scope from an unprivileged
+		// caller without an interactive polkit prompt, which a server cannot answer.
+		a = append(a, "--user")
+	}
+	a = append(a, "--scope")
+	if unit != "" {
+		a = append(a, "--unit="+unit)
+	}
+	return append(a, "-p", capArg, "-p", "MemorySwapMax=0", "--")
+}
+
+var probeSeq atomic.Uint64
+
+// SandboxEnforcement asks the manager — not systemd-run's exit status — whether the
+// limit it was handed is the limit it applied, by starting a named scope around a
+// two-second sleep and reading the property back off the live unit.
+//
+// This exists because of a measurement, not a hypothesis: on Kylin V10 SP1 (hybrid
+// cgroup) `systemd-run --scope -p MemoryMax=100M` exits 0, and the child then allocates
+// 400 MB and lives, while `systemctl show <unit> -p MemoryMax --value` answers
+// "infinity" with an empty ControlGroup. A caller that trusted the exit code reported a
+// cap that was never attached. applied=false with detail naming the manager's own answer
+// is the honest version of that sentence.
+//
+// known=false means the question could not be asked here (no systemctl, the unit gone,
+// a session without a manager) and the caller should fall back to what SandboxPosture
+// says, which is less.
+func SandboxEnforcement() (applied, known bool, detail string) {
+	mb := processMemoryLimitMB()
+	if mb <= 0 {
+		return false, false, "no cap configured, so there is nothing to measure"
+	}
+	if !SandboxArmed() {
+		return false, false, SandboxPosture()
+	}
+	sr, err := exec.LookPath("systemd-run")
+	if err != nil {
+		return false, false, "systemd-run disappeared since the posture was resolved"
+	}
+	systemctl, err := exec.LookPath("systemctl")
+	if err != nil {
+		return false, false, "no systemctl to ask: the posture is all this host will say"
+	}
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		return false, false, "no sleep binary to hold the probe scope open"
+	}
+
+	unit := "xcut-cap-probe-" + strconv.Itoa(os.Getpid()) + "-" +
+		strconv.FormatUint(probeSeq.Add(1), 10) + ".scope"
+	capArg := "MemoryMax=" + strconv.FormatInt(mb, 10) + "M"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// The scope only exists while its process runs, so the query has to land inside
+	// the sleep's window; 400 ms is enough for systemd to have created the unit (the
+	// measured answer arrives with the unit live) and far inside 2 s.
+	probe := exec.CommandContext(ctx, sr, append(scopeArgs(capArg, unit), sleep, "2")...)
+	if err := probe.Start(); err != nil {
+		return false, false, "the probe scope would not start: " + err.Error()
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	show := exec.CommandContext(ctx, systemctl, "show", unit, "-p", "MemoryMax", "--value")
+	if os.Geteuid() != 0 {
+		show = exec.CommandContext(ctx, systemctl, "--user", "show", unit, "-p", "MemoryMax", "--value")
+	}
+	out, err := show.Output()
+	_ = probe.Wait() // let the scope finish rather than leak it; the unit is gone after this
+
+	value := strings.TrimSpace(string(out))
+	if err != nil {
+		return false, false, "systemd could not be asked about the probe unit: " + firstLine(err.Error())
+	}
+	return memoryMaxAnswer(value, mb)
 }
 
 func firstLine(s string) string {

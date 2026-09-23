@@ -13,3 +13,11 @@ func SandboxPosture() string { return "" }
 
 // SandboxArmed reports that nothing is wrapping children here.
 func SandboxArmed() bool { return false }
+
+// SandboxEnforcement has nothing to measure where there is no wrapper: applied=false says
+// no cap is in force, known=false says that is a platform fact rather than a refusal —
+// on Windows the job object (jobobject_windows.go) is the mechanism, and doctor words
+// that row from its own evidence.
+func SandboxEnforcement() (applied, known bool, detail string) {
+	return false, false, "no systemd scope mechanism on this platform"
+}

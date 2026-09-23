@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 18:32 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 18:52 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1762,6 +1762,12 @@ line would go on printing `steps not run: none` on a host that skipped two steps
   with `a 512 MB allocation survived a 128 MB cap`. All five pass on the Linux node
   (cgroup v2, systemd 255, user manager running) and skip loudly — posture in the skip
   message — where no scope can start.
+- What systemd *attached* is a separate measurement (`memoryMaxAnswer`, D18): the byte
+  count we asked for is applied, `infinity` and an empty answer are not, a clamped number
+  is named back. It is a pure function in an untagged file on purpose — the decision is
+  not platform code, so the ten table cases run on every leg (the fast gate included)
+  rather than only where a session bus exists. Mutating the `infinity` arm to "assume the
+  exit code meant it" goes red twice, locally, in one command.
 - Secret scanning: gitleaks (repo-local .tools/bin) runs in every gate —
   full git history + working tree (uncommitted edits included); the scan
   fails the gate on any finding (verified with a planted secret)
@@ -2120,8 +2126,10 @@ line would go on printing `steps not run: none` on a host that skipped two steps
   a 128 MB cap dies with SIGKILL and the wrapper propagates 137. What the product claims
   is therefore deliberately weaker than what a user would like: `doctor` says the scope
   *started* (the half it can see), OPERATIONS.md carries the two commands that measure
-  the other half, and the open piece is to make doctor ask `systemctl` rather than only
-  trusting `systemd-run`'s exit code.
+  the other half. `xcut doctor` now asks `systemctl` directly — it starts a named probe
+  scope, reads `MemoryMax` back off the live unit and prints `infinity` / an empty answer
+  as a WARN — so the Kylin-shaped case is visible to whoever runs the binary, not only to
+  the test suite. What remains open is the container/seccomp rung of ROADMAP Phase 4.
 
 ## Performance (measured — docs/PERFORMANCE.md)
 

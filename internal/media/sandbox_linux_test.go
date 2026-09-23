@@ -4,6 +4,7 @@ package media
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,30 @@ func requireScope(t *testing.T) {
 	if !SandboxArmed() {
 		t.Skipf("no systemd scope on this host (%s)", SandboxPosture())
 	}
+}
+
+// cgroupV2Unified is a host precondition, not the claim being tested. On a hybrid
+// hierarchy — Kylin V10 SP1 mounts v1 controllers under a tmpfs with `unified` at
+// /sys/fs/cgroup/unified — systemd does not attach scope limits at all (measured, and
+// recorded in docs/OPERATIONS.md), so asserting the manager's answer there would be
+// reporting the host rather than the code. The skip names the mount line it read, and
+// the fstype is read from /proc/mounts rather than compared against a magic number,
+// because a magic number is the sort of thing I get wrong (the first version of this
+// check skipped on a host where the cap binds).
+func cgroupV2Unified(t *testing.T) bool {
+	t.Helper()
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		t.Skipf("cannot read /proc/mounts: %v", err)
+	}
+	// /proc/mounts is "dev mountpoint fstype opts dump pass", so the mount point and
+	// its type are adjacent fields.
+	text := string(data)
+	if strings.Contains(text, " /sys/fs/cgroup cgroup2 ") {
+		return true
+	}
+	t.Skipf("/sys/fs/cgroup is not mounted as cgroup2 — on a hybrid or v1 hierarchy systemd does not attach scope limits; see docs/OPERATIONS.md")
+	return false
 }
 
 func TestNoCapMeansNoWrap(t *testing.T) {
@@ -172,5 +197,43 @@ func TestWrapPrefixIsWellFormed(t *testing.T) {
 	}
 	if got := strings.Join(gotArgs[dash+2:], " "); got != "-hide_banner -i in.mp4" {
 		t.Errorf("the child's own argv was altered: %q", got)
+	}
+}
+
+// TestSandboxEnforcementAsksTheManager is the D18 lesson turned into a check: a scope
+// that starts is not a limit that holds. The probe asks systemd what it applied to a
+// live unit and the assertion is the number, so the Kylin-shaped answer ("infinity",
+// with systemd-run exiting 0) fails here rather than passing on an exit code.
+func TestSandboxEnforcementAsksTheManager(t *testing.T) {
+	if !cgroupV2Unified(t) {
+		return
+	}
+	withCapForTest(t, 128)
+	requireScope(t)
+
+	applied, known, detail := SandboxEnforcement()
+	if !known {
+		t.Skipf("this host will not answer the question (%s)", detail)
+	}
+	if !applied {
+		t.Fatalf("systemd answered, and the answer was not the cap: %s", detail)
+	}
+	if !strings.Contains(detail, "134217728") {
+		t.Errorf("detail = %q, want 134217728 — the 128 MB asked for, in bytes", detail)
+	}
+}
+
+// TestEnforcementWithoutACapIsNotARefusal keeps the three-way answer honest: "there is
+// nothing to measure" must not read as "the host refused", because doctor maps the
+// second to WARN and the first to a quiet row.
+func TestEnforcementWithoutACapIsNotARefusal(t *testing.T) {
+	withCapForTest(t, 0)
+
+	applied, known, detail := SandboxEnforcement()
+	if applied || known {
+		t.Errorf("no cap configured yet the probe claimed applied=%v known=%v", applied, known)
+	}
+	if !strings.Contains(detail, "no cap") {
+		t.Errorf("detail = %q, want it to say the question does not apply", detail)
 	}
 }

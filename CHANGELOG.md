@@ -20,9 +20,11 @@ sections are tagged; anything above the newest one is unreleased.
   `a 512 MB allocation survived a 128 MB cap` — under the mutation that stops wrapping.
   What this does **not** claim: on Kylin V10 SP1 (hybrid cgroup) `systemd-run` accepts the
   property, `systemctl show` answers `MemoryMax=infinity` with an empty `ControlGroup`,
-  and a 400 MB allocation survives — so the posture `doctor` prints says the scope
-  *started*, which is all it can know, and OPERATIONS.md carries the two commands that
-  measure the rest. Filesystem/syscall isolation (seccomp, containers) remains the open
+  and a 400 MB allocation survives — so `xcut doctor` no longer infers: it starts a named
+  probe scope, asks `systemctl show -p MemoryMax --value` about the live unit, and prints
+  the manager's own answer (`infinity` is reported as a WARN, not as a cap). The values it
+  has to distinguish are pinned by ten table cases in an untagged test file, so the
+  decision is checked on every leg rather than only on hosts with a session bus. Filesystem/syscall isolation (seccomp, containers) remains the open
   rung of the same roadmap item.
 
 ### Improved

@@ -222,7 +222,10 @@ the platform has:
 | macOS / other | nothing | `doctor` says so |
 
 Ask the running binary which of these you have: `xcut doctor` prints a `Process sandbox`
-row naming the mechanism and the number, or the refusal that left it unset.
+row that starts the probe scope around a two-second sleep, reads `MemoryMax` back off the
+live unit with `systemctl show`, and says which answer it got — the byte count (OK), or
+`infinity` / an empty answer (WARN, with the manager's own words). It is a WARN rather
+than a quiet OK precisely because of the Kylin measurement below.
 
 The hybrid case is worth stating plainly because it looks like success. On Kylin V10 SP1
 (systemd 245, `/sys/fs/cgroup` a tmpfs of v1 controllers plus `unified` v2 at

@@ -262,16 +262,26 @@ func cmdDoctor(a *App, args []string) error {
 			add("Process sandbox", "OPTIONAL", "ffmpeg children join a kill-on-close job; memory uncapped — set resource.ffmpeg_max_memory_mb to bound runaway encoders")
 		}
 	} else if posture := media.SandboxPosture(); posture != "" {
-		// Linux reports what it measured at the first child, not what the config
-		// asked for: a scope systemd refused is a WARN with the refusal in it,
-		// because the caller set a cap that is not happening.
+		// Linux reports what it measured: the wrap resolves once per process, and a
+		// scope systemd accepted but never attached is the case that has to be
+		// visible here (D18) — so the row asks the manager itself before it says OK.
 		switch {
-		case media.SandboxArmed():
-			add("Process sandbox", "OK", posture)
-		case a.Cfg.Resource.FFmpegMaxMemoryMB > 0:
-			add("Process sandbox", "WARN", posture)
+		case !media.SandboxArmed():
+			if a.Cfg.Resource.FFmpegMaxMemoryMB > 0 {
+				add("Process sandbox", "WARN", posture)
+			} else {
+				add("Process sandbox", "OPTIONAL", posture)
+			}
 		default:
-			add("Process sandbox", "OPTIONAL", posture)
+			applied, known, detail := media.SandboxEnforcement()
+			switch {
+			case !known:
+				add("Process sandbox", "OK", posture)
+			case applied:
+				add("Process sandbox", "OK", posture+" — "+detail)
+			default:
+				add("Process sandbox", "WARN", posture+" — "+detail)
+			}
 		}
 	} else {
 		add("Process sandbox", "OPTIONAL", "no per-child memory cap on this platform; cleanup relies on the context-kill path")
