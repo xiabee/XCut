@@ -50,12 +50,13 @@ if (-not $hostOut) {
 # Git for Windows' bash is what runs the gate's sh twin on the nodes; if it is
 # genuinely absent, refusing the release is the honest answer, because shipping a
 # binary nothing executed is the failure this step guards.
-$bash = $null
-$bashCmd = Get-Command bash -ErrorAction SilentlyContinue
-if ($bashCmd) { $bash = $bashCmd.Source }
-elseif (Test-Path "C:\Program Files\Git\bin\bash.exe") { $bash = "C:\Program Files\Git\bin\bash.exe" }
+. (Join-Path $PSScriptRoot "posh-shells.ps1")
+# Ask, do not assume: on a node whose PATH carries the WSL launcher, `bash` exists and
+# refuses to run (WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED, exit 1). Trusting the name would make
+# the smoke step look like the artifact failed; see posh-shells.ps1 for the probe.
+$bash = Resolve-PortableShell
 if (-not $bash) {
-    throw "no bash found (install Git for Windows) — refusing to ship an artifact nothing executed"
+    throw "no working bash (install Git for Windows) — refusing to ship an artifact nothing executed"
 }
 & $bash scripts/smoke-release.sh $hostOut $Version $commit
 if ($LASTEXITCODE -ne 0) { throw "release smoke failed (exit $LASTEXITCODE)" }

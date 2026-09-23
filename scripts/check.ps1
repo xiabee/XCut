@@ -12,6 +12,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "posh-shells.ps1")
 
 # Prefer a repo-local FFmpeg (.tools/, gitignored) when PATH has none.
 $hasFfmpeg = $null -ne (Get-Command ffmpeg -ErrorAction SilentlyContinue)
@@ -135,13 +136,11 @@ if ($sh) {
     Write-Host "   no sh on PATH — the step did not run"
     $NotRun += "sh-n"
 }
+
 # The twin of check.sh's idle step, and deliberately in the unconditional region: the two
 # Windows legs run `fast`, so a full-only step here would never execute on them.
 Write-Host "== idle check (rule 6: a quiet server costs nothing)"
-$idleBash = $null
-$idleSh = Get-Command bash -ErrorAction SilentlyContinue
-if ($idleSh) { $idleBash = $idleSh.Source }
-elseif (Test-Path "C:\Program Files\Gitinash.exe") { $idleBash = "C:\Program Files\Gitinash.exe" }
+$idleBash = Resolve-PortableShell
 if ($idleBash) {
     $idleDir = Join-Path ([System.IO.Path]::GetTempPath()) ("xcut-idle-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $idleDir | Out-Null
@@ -157,9 +156,29 @@ if ($idleBash) {
     }
     elseif ($idleRc -ne 0) { throw "idle check failed with exit $idleRc" }
 } else {
-    Write-Host "   no bash on PATH — the step did not run"
+    Write-Host "   no shell that would run a command — the step did not run"
     $NotRun += "idle-check(no-bash)"
 }
+# PowerShell twin of the step above, for the files `sh -n` cannot read: the gate, this
+# script's own callers, the packaging and installer paths. A parse error in one of them is
+# invisible to every other step (the file is only ever run by `powershell -File`), and the
+# step parses itself, so a broken check.ps1 names itself.
+Write-Host "== ps parse"
+$psFiles = @(Get-ChildItem -Path "scripts" -Filter "*.ps1" -File) + @(Get-ChildItem -Path "." -Filter "ci-local.ps1" -File -ErrorAction SilentlyContinue)
+if ($psFiles.Count -lt 5) {
+    throw "only $($psFiles.Count) PowerShell scripts found — this step is not reading what it claims"
+}
+$psBad = @()
+foreach ($f in $psFiles) {
+    $parseErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$parseErrors)
+    if ($parseErrors.Count -gt 0) {
+        $psBad += "$($f.Name):$($parseErrors[0].Extent.StartLineNumber) $($parseErrors[0].Message)"
+    }
+}
+if ($psBad.Count -gt 0) { throw "PowerShell syntax errors:`n  $($psBad -join "`n  ")" }
+Write-Host "   $($psFiles.Count) scripts parse"
+
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
 # The Rust toolchain decision, asked once and reused: a healthy MSVC setup links

@@ -24,7 +24,11 @@ func TestAttachJobPutsProcessInJob(t *testing.T) {
 	if err != nil || h == 0 {
 		t.Fatalf("job object unavailable: err=%v handle=%v", err, h)
 	}
-	cmd := exec.Command("cmd", "/c", "ping -n 30 127.0.0.1 > NUL")
+	// A long-running child to observe, spawned the way the rest of the repository
+	// spawns everything: argv only, no shell (AGENTS.md rule 2). The old form was
+	// `exec.Command("cmd", "/c", "ping … > NUL")`, which made the one place that
+	// documents the rule and the one test that breaks it the same file.
+	cmd := exec.Command("ping", "-n", "30", "127.0.0.1")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
