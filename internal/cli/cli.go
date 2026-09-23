@@ -255,13 +255,18 @@ func loadConfig(flagPath, flagWorkspace string) (*config.Config, string, error) 
 	if err != nil {
 		return nil, "", err
 	}
-	config.Env(cfg)
+	// Defaults first, then what the bootstrap file actually said: config.Load is
+	// sparse on purpose, so merging in this order is what keeps an unmentioned
+	// field from arriving as "the default the workspace file chose".
+	eff := config.MergeLayer(config.Default(), cfg)
+	config.Env(eff)
 	if ws := firstNonEmpty(flagWorkspace, os.Getenv("XCUT_WORKSPACE")); ws != "" {
-		cfg.Workspace = ws
+		eff.Workspace = ws
 	}
-	if err := config.Resolve(cfg); err != nil {
+	if err := config.Resolve(eff); err != nil {
 		return nil, "", err
 	}
+	cfg = eff
 
 	// Layer 2: the effective workspace's own config (when it differs from the
 	// bootstrap file's location).

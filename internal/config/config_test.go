@@ -108,13 +108,42 @@ func TestLoadInvalidFile(t *testing.T) {
 	}
 }
 
-func TestLoadMissingFileUsesDefaults(t *testing.T) {
+// Load is sparse by contract: a missing file says nothing, so nothing is set. The
+// defaults come from the layer below it at merge time — which is the whole point,
+// and the thing a prefill here used to defeat (a workspace config.json that
+// mentioned one knob arrived carrying every default and reset a bootstrap file's
+// settings). This test pins both halves: sparse in, defaults out after the merge.
+func TestLoadMissingFileIsSparseAndMergesToDefaults(t *testing.T) {
 	cfg, err := Load(filepath.Join(t.TempDir(), "nope.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Resource.MaxConcurrentJobs != 2 {
-		t.Fatalf("defaults not applied: %+v", cfg.Resource)
+	if cfg.Resource.MaxConcurrentJobs != 0 || cfg.Log.Level != "" || cfg.Server.Listen != "" {
+		t.Fatalf("a missing file must load as nothing said, got %+v / %q / %q",
+			cfg.Resource, cfg.Log.Level, cfg.Server.Listen)
+	}
+	merged := MergeLayer(Default(), cfg)
+	if merged.Resource.MaxConcurrentJobs != 2 || merged.Log.Level != "info" ||
+		merged.Server.Listen != "127.0.0.1:8619" {
+		t.Fatalf("defaults not applied through the merge: %+v", merged.Resource)
+	}
+}
+
+// The reset this replaced: the upper layer may only change what it mentions.
+func TestLoadPresentFileLeavesUnmentionedFieldsZero(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"resource":{"max_cache_gb":7}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.MaxCacheGB != 7 {
+		t.Fatalf("the mentioned field was lost: %+v", cfg.Resource)
+	}
+	if cfg.Resource.MaxConcurrentJobs != 0 || cfg.Resource.AnalysisWidth != 0 || cfg.Job.MaxHistory != 0 {
+		t.Fatalf("unmentioned fields must stay zero for the merge to see them as unsaid: %+v", cfg.Resource)
 	}
 }
 

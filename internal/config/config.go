@@ -178,9 +178,17 @@ func Default() *Config {
 // KB by design).
 const maxConfigBytes = 1 << 20 // 1 MiB
 
-// Load reads the config file if present. Missing file is not an error.
+// Load reads one config file and returns it **sparse**: only the fields the file
+// mentions come back set, everything else is the zero value. That is what
+// MergeLayer's rule ("a zero keeps the base value") needs, and it is why the
+// prefill that used to happen here was a defect: a workspace config.json that
+// mentioned one knob arrived carrying *every* default, so merging it over a
+// bootstrap config reset settings the operator had deliberately put in
+// ~/.xcut/config.json. Filling gaps with Default() is the caller's job
+// (cli.loadConfig layers: defaults ← bootstrap ← workspace, then env, then flags).
+// A missing file is not an error; it loads as all-zero, i.e. "nothing said".
 func Load(path string) (*Config, error) {
-	cfg := Default()
+	cfg := &Config{}
 	if fi, err := os.Stat(path); err == nil && fi.Size() > maxConfigBytes {
 		return nil, xcerr.E(xcerr.CodeValidation,
 			fmt.Sprintf("config file too large (%d bytes)", fi.Size()), nil)
@@ -194,7 +202,8 @@ func Load(path string) (*Config, error) {
 				fmt.Sprintf("invalid config file %s: %v", filepath.Base(path), err), err)
 		}
 	case os.IsNotExist(err):
-		// defaults only
+		// defaults only — every field stays zero, and the caller's merge keeps
+		// whatever is below it
 	default:
 		return nil, xcerr.E(xcerr.CodeInternal, "cannot read config file", err)
 	}
