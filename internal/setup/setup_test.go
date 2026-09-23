@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -36,24 +37,32 @@ func fakeFetch(payload []byte) Fetcher {
 // whatever extra entries are requested (used for slip/duplicate cases).
 func buildZip(t *testing.T, dir string, extra ...string) string {
 	t.Helper()
-	p := filepath.Join(dir, "fake-ffmpeg.zip")
-	f, err := os.Create(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	zw := zip.NewWriter(f)
 	entries := append([]string{
 		"ffmpeg-x/bin/ffmpeg.exe",
 		"ffmpeg-x/bin/ffprobe.exe",
 		"ffmpeg-x/bin/ffplay.exe", // not installed — only the two tools are
 		"ffmpeg-x/README.txt",
 	}, extra...)
-	for _, name := range entries {
-		w, err := zw.Create(name)
+	return zipEntries(t, dir, "fake-ffmpeg.zip", entries)
+}
+
+// zipEntries writes a zip holding `entries`, which are full paths inside the
+// archive: the root folder a real artifact carries is part of what a test means
+// to check, so it lives in the entries rather than in a constant here.
+func zipEntries(t *testing.T, dir, name string, entries []string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	for _, ent := range entries {
+		w, err := zw.Create(ent)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := w.Write([]byte("payload-of-" + name)); err != nil {
+		if _, err := w.Write([]byte("payload-of-" + ent)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -291,22 +300,117 @@ func TestExtractMissingToolsFails(t *testing.T) {
 	}
 }
 
-func TestRealZipLayoutExtracts(t *testing.T) {
-	if _, err := os.Stat("../../.gotmp/ffmpeg-9.0.1-essentials_build.zip"); err != nil {
-		t.Skip("pinned-archive copy not present on this machine (one-time download)")
+// TestPinnedArchiveLayoutExtracts is the layout check that runs on every machine.
+// What existed before it depended on a hand-downloaded copy of the 110 MB artifact
+// sitting in .gotmp under one exact filename: it ran on the laptop that fetched it
+// and skipped on win-devops (seen in that node's own log), and bumping the pin would
+// have left it skipping quietly forever. The root folder inside the archive is
+// derived here from the same constant that decides what gets downloaded, so the
+// fixture moves with the pin and the assumption stays tested.
+func TestPinnedArchiveLayoutExtracts(t *testing.T) {
+	root := strings.TrimSuffix(path.Base(FFmpegPin.URL), ".zip")
+	if !strings.HasPrefix(root, "ffmpeg-") || len(root) < 8 {
+		t.Fatalf("the pinned URL %q yields no plausible archive root folder %q", FFmpegPin.URL, root)
 	}
-	// This is the only test that opens the real 110 MB artifact; it proves
-	// the entry-selection logic against the genuine layout (build dir name,
-	// bin/ prefix, ffplay present). Skipped on machines without the file —
-	// CI does not fetch third-party artifacts.
+	zipPath := zipEntries(t, t.TempDir(), "pinned-layout.zip", []string{
+		root + "/bin/ffmpeg.exe",
+		root + "/bin/ffprobe.exe",
+		root + "/bin/ffplay.exe", // shipped by the vendor, never installed
+		root + "/doc/ffmpeg.txt",
+		root + "/presets/ffmpeg.spec",
+	})
 	target := t.TempDir()
-	_, _, err := extractTools("../../.gotmp/ffmpeg-9.0.1-essentials_build.zip", target)
+	ffmpeg, ffprobe, err := extractTools(zipPath, target)
+	if err != nil {
+		t.Fatalf("extractTools refused the layout the pin describes: %v", err)
+	}
+	if ffmpeg != filepath.Join(target, "ffmpeg.exe") || ffprobe != filepath.Join(target, "ffprobe.exe") {
+		t.Errorf("extracted to %q / %q, want the two tools under the target root", ffmpeg, ffprobe)
+	}
+	// Content, not existence: the bytes that landed are the entry the vendor ships
+	// under that name, and a zero-length or mis-slotted file would pass a Stat.
+	for path0, want := range map[string]string{
+		ffmpeg:  "payload-of-" + root + "/bin/ffmpeg.exe",
+		ffprobe: "payload-of-" + root + "/bin/ffprobe.exe",
+	} {
+		b, rerr := os.ReadFile(path0)
+		if rerr != nil {
+			t.Fatalf("cannot read %s: %v", filepath.Base(path0), rerr)
+		}
+		if string(b) != want {
+			t.Errorf("%s holds %q, want the archive's own bytes %q", filepath.Base(path0), b, want)
+		}
+	}
+	// ffplay is in the vendor's bin/ and is not one of the two tools XCut drives;
+	// a selection rule that grew it would show up here as a third file in the
+	// install directory. (The first version of this assertion was vacuous — it
+	// checked for an absent ffplay.exe while the code's duplicate guard had
+	// already skipped it for an unrelated reason, and a mutation adding ffplay to
+	// the selection map stayed green. The directory listing is the observable.)
+	if fi, lerr := os.ReadDir(target); lerr != nil {
+		t.Fatal(lerr)
+	} else if len(fi) != 2 {
+		names := make([]string, 0, len(fi))
+		for _, e := range fi {
+			names = append(names, e.Name())
+		}
+		t.Errorf("the install directory holds %d entries %v, want exactly ffmpeg.exe and ffprobe.exe", len(fi), names)
+	}
+}
+
+// TestDuplicateToolEntriesKeepTheFirstOne: the vendor archive has exactly one
+// ffmpeg.exe, but a malformed or tampered one with two must not silently install
+// the second — the code skips a duplicate because the slot is already filled, so
+// the *first* entry's bytes are what land. Pinning which one wins is the point.
+func TestDuplicateToolEntriesKeepTheFirstOne(t *testing.T) {
+	zipPath := zipEntries(t, t.TempDir(), "dupes.zip", []string{
+		"ffmpeg-a/bin/ffmpeg.exe",
+		"ffmpeg-b/bin/ffmpeg.exe", // a second copy under a different root
+		"ffmpeg-a/bin/ffprobe.exe",
+	})
+	target := t.TempDir()
+	ffmpeg, _, err := extractTools(zipPath, target)
 	if err != nil {
 		t.Fatal(err)
 	}
+	b, err := os.ReadFile(ffmpeg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "payload-of-ffmpeg-a/bin/ffmpeg.exe"; string(b) != want {
+		t.Errorf("the installed ffmpeg.exe holds %q, want the first entry's bytes %q", b, want)
+	}
+}
+
+// TestRealZipLayoutExtracts is the fidelity check against the genuine artifact, and
+// it only runs where someone has fetched it. The cache is matched against the pin by
+// name: an archive left over from a previous version would prove the layout of that
+// version, not this one, so it is reported as a skip naming what was found rather
+// than quietly passing as the pinned artifact.
+func TestRealZipLayoutExtracts(t *testing.T) {
+	root := strings.TrimSuffix(path.Base(FFmpegPin.URL), ".zip")
+	want := root + ".zip"
+	cached, err := filepath.Glob("../../.gotmp/ffmpeg-*-essentials_build.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var used string
+	for _, c := range cached {
+		if filepath.Base(c) == want {
+			used = c
+		}
+	}
+	if used == "" {
+		t.Skipf("the pinned archive %s is not cached under .gotmp (present: %v) — one-time download; the derived layout case covers the entry selection", want, cached)
+	}
+	t.Logf("extracting the genuine artifact: %s", used)
+	target := t.TempDir()
+	if _, _, err := extractTools(used, target); err != nil {
+		t.Fatalf("the real archive does not match the layout the extractor assumes: %v", err)
+	}
 	for _, tool := range []string{"ffmpeg.exe", "ffprobe.exe"} {
-		if fi, err := os.Stat(filepath.Join(target, tool)); err != nil || fi.Size() < 1<<20 {
-			t.Fatalf("%s missing or implausibly small (%v)", tool, err)
+		if fi, serr := os.Stat(filepath.Join(target, tool)); serr != nil || fi.Size() < 1<<20 {
+			t.Fatalf("%s missing or implausibly small (%v)", tool, serr)
 		}
 	}
 }
