@@ -5,9 +5,20 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/xiabee/XCut/internal/xcerr"
 )
+
+// pipeDrainGrace is how long a finished child may keep its descriptors open before they
+// are closed on it. A child that has exited and closed its ends is drained in
+// microseconds, so this window only ever elapses when some *other* process still holds
+// the write end — a decoder plugin or a sidecar's helper that outlived the tool we ran.
+// Without it, exec waits for the pipe to drain and the per-call deadline stops being a
+// ceiling: measured on linux-ci at `d1bb82d`, a 1 s budget on `Run` and on `StreamStdout`
+// each took 60.01 s, because a grandchild that slept for a minute inherited the descriptor.
+// Set at every exec site in this package.
+const pipeDrainGrace = time.Second
 
 // processLimiter caps concurrent ffmpeg/ffprobe processes process-wide.
 // media.Run / RunCombined / StreamStdout acquire it internally, so every
@@ -84,6 +95,7 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	defer release()
 	wbin, wargs := wrapChild(bin, args...)
 	cmd := exec.CommandContext(ctx, wbin, wargs...)
+	cmd.WaitDelay = pipeDrainGrace
 	buf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = buf
 	cmd.Stderr = buf
