@@ -310,6 +310,37 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   re-render the style at its own time).
 
 ### Improved
+- **The release build now runs the binary before shipping it.** The packaging job used
+  to do that, on a runner that no longer takes the work, so `scripts/build-release.ps1`
+  and its `sh` twin had been stamping three platform binaries, copying a worker, and
+  never starting one of them again — the shape of gap where a `-X` path that stopped
+  matching a variable ships a release that says `0.1.0-dev` forever and nobody notices
+  until a user quotes it back. `scripts/smoke-release.sh` is one file both twins call
+  (the same reason `check.sh` and `check.ps1` share a step list rather than each
+  keeping a copy): the artifact runs and reports the version and commit it was stamped
+  with, its usage page renders, an unknown command exits nonzero, `init` lays out the
+  workspace it was pointed at, and the shipped `config show` still refuses to print a
+  bearer token. Only the host artifact can be executed on the build machine, so that is
+  the one that is executed, and a platform list that misses the host now refuses to
+  ship rather than quietly producing three untested files. Measured: a full build of
+  windows-amd64 / linux-amd64 / linux-arm64 plus the musl worker printed five passes
+  against the stamped binary; the same script aimed at an unstamped `go build` exits 1
+  naming what it saw, and under the script's own `set -eu` the next statement is not
+  reached.
+- **A coverage sweep, read instead of guessed.** The attribution-correct sweep (22 test
+  binaries, max-merge) named 28 functions no leg had ever executed; three of them have
+  no caller at all and two of those carried a comment pointing at one that does not
+  exist — `workspace.RenameAtomic` (whose sibling's doc block said the timeline
+  publishes through it; it goes through `RetryableRename`), `analysis.coverageAt` (a
+  second, unread definition of the beat grid's coverage rule, orphaned by the B1b
+  rewrite), and `analysis.Key` ("used by CLI logging", unreferenced by any CLI line).
+  All three are gone; the comment now names the function that is actually called. Two
+  more were checked rather than assumed: `writeIdleWriter.Flush` is an
+  interface-conformance shim — `ServeContent` does not flush, the stdlib source was
+  read to be sure — and the non-Windows `xcut client` is a real command nobody had
+  compiled a test for. It now runs on the Linux leg, where it caught two defects in
+  the case itself before any product defect: it read the wrong URL out of the shared
+  output buffer, and it bound the default port rather than asking the kernel for one.
 - **A refused save now says which refusal it is.** The second walk through the product
   spent its time on the manual-editing surface, and it turned up three sentences that
   could not be acted on. A document rejected for a zoom of 3.0 was answered with
