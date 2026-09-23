@@ -175,16 +175,28 @@ FFmpeg 9.0.2 `linuxarm64-gpl` tarball from the immutable release tag
 the `xfade` filter is present, and prints the `bin` directory.
 
 ```sh
-BIN=$(sh scripts/fetch-arm64-ffmpeg.sh .tools | tail -1)
-export PATH="$BIN:$PATH"
-go test ./...           # verified green on aarch64 with this build
+sh scripts/verify-arm64.sh        # fetches the pin, injects it, proves it reached the tests
 ```
 
-`PATH`, not `XCUT_FFMPEG`/`XCUT_FFPROBE`, for a test run: the suite resolves both
-binaries by name (`internal/testmedia`, `media.requireFFmpeg`), while the env
-overrides are read by `config.Env` and reach only the shipped product. A run that sets
-the env vars and leaves `PATH` alone reports the vendor build's own failures — 48 of
-them on the Kylin box — and says nothing about the pin.
+That script is the durable form of the recipe, because the first hand-run of the pin got
+it wrong in two ways worth naming. The toolchain has to go on `PATH`, not into
+`XCUT_FFMPEG`/`XCUT_FFPROBE`: the suite resolves both binaries by name
+(`internal/testmedia`, `media.requireFFmpeg`) while the env overrides are read by
+`config.Env` and reach only the shipped product — a run that sets the env vars and
+leaves `PATH` alone reports the vendor build's own failures, 48 of them on the Kylin box,
+and says nothing about the pin. And "the pinned binary exists somewhere on disk" is not
+"the tests used it", so the script prints `TOOL_CHECK=OK` only after asking `command -v`
+what `ffmpeg`/`ffprobe` resolve to *and* reading the version string back. Measured on
+Kylin V10 SP1 aarch64 at `2544cc1`: `ran=553 failed=0 skipped=17`, 19 packages `ok`,
+`vendor_corruption_lines=0`.
+
+To use the stock build for something other than the suite — the shipped binary, your own
+command line — fetch it on its own and point at it:
+
+```sh
+BIN=$(sh scripts/fetch-arm64-ffmpeg.sh .tools | tail -1)   # last line is the bin dir
+export XCUT_FFMPEG="$BIN/ffmpeg" XCUT_FFPROBE="$BIN/ffprobe"
+```
 
 What that verifies, and what it does not: the whole suite passes on aarch64 against
 the pinned build, which is more than the distro build ever allowed (15+ tests failed
@@ -192,9 +204,10 @@ on environment alone). `-race` does not run on that kernel at all — Go's Threa
 reports `unsupported VMA range` before any test executes — so ARM64 is verified
 without the race detector, and the race coverage for this project stays on the Linux
 x86 full leg and on the `-race` subset the fast gate runs on a dev box that has a C
-toolchain. The digest in the script is not publisher-signed (GitHub exposes no digest
-for the asset); it is what two independent fetches of that tag agreed on, recorded
-where it can be read.
+toolchain. The script reports that refusal as a line (`tsan_refused_lines`) rather than
+as a green step; `--skip-race` omits the attempt. The digest in the script is not
+publisher-signed (GitHub exposes no digest for the asset); it is what two independent
+fetches of that tag agreed on, recorded where it can be read.
 
 ## Troubleshooting
 
