@@ -17,9 +17,13 @@
 # which agreed at the byte count recorded below. The tag is an autobuild tag, so its
 # assets do not move; `master-latest`, which does move, is deliberately not used.
 #
-# Usage: scripts/fetch-arm64-ffmpeg.sh [destdir]     (default: .tools)
-# Prints the bin directory on success; put it on PATH or point XCUT_FFMPEG and
-# XCUT_FFPROBE at it.
+# Usage: scripts/fetch-arm64-ffmpeg.sh [destdir]   (default: <repo>/.tools)
+# Prints the bin directory on the last line.
+#
+# For `go test ./...` that directory must go on PATH: the suite resolves ffmpeg and
+# ffprobe by name (internal/testmedia, media.requireFFmpeg), so XCUT_FFMPEG and
+# XCUT_FFPROBE — which are config overrides, read only by the product at startup —
+# do not reach it. The overrides are the right lever for the shipped binary.
 set -eu
 
 TAG="autobuild-2026-09-20-13-11"
@@ -30,7 +34,15 @@ BYTES=126904212
 URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$TAG/$FILE"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/${1:-.tools}"
+# `$1` is the destination as given; a relative one resolves against the repo root.
+# Joining the two unconditionally is what made an absolute argument land *inside* the
+# checkout (`<repo>//abs/path/tools`), which then downloaded 121 MB into the snapshot.
+if [ $# -ge 1 ] && [ "$1" != "" ]; then
+    OUT="$1"
+    case "$OUT" in [!/]*) OUT="$ROOT/$OUT" ;; esac
+else
+    OUT="$ROOT/.tools"
+fi
 CD="$OUT/$DIR"
 
 say_bin() {

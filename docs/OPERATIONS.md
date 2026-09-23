@@ -165,6 +165,37 @@ before the restart returned 200 for `/api/v1/projects`, and the same id
 returned 401 after it.
 See DECISIONS.md D12 (rotation) and D14 (sessions).
 
+## Verifying on ARM64 **pinned 2026-09-23**
+
+The distro FFmpeg on Kylin V10 SP1 cannot run this project's test suite (the two rows
+in the table below), so an ARM64 verification is run against a stock build that the
+repository pins: `sh scripts/fetch-arm64-ffmpeg.sh [destdir]` downloads the
+FFmpeg 9.0.2 `linuxarm64-gpl` tarball from the immutable release tag
+`autobuild-2026-09-20-13-11`, checks its size and SHA256, refuses a mismatch, checks
+the `xfade` filter is present, and prints the `bin` directory.
+
+```sh
+BIN=$(sh scripts/fetch-arm64-ffmpeg.sh .tools | tail -1)
+export PATH="$BIN:$PATH"
+go test ./...           # verified green on aarch64 with this build
+```
+
+`PATH`, not `XCUT_FFMPEG`/`XCUT_FFPROBE`, for a test run: the suite resolves both
+binaries by name (`internal/testmedia`, `media.requireFFmpeg`), while the env
+overrides are read by `config.Env` and reach only the shipped product. A run that sets
+the env vars and leaves `PATH` alone reports the vendor build's own failures — 48 of
+them on the Kylin box — and says nothing about the pin.
+
+What that verifies, and what it does not: the whole suite passes on aarch64 against
+the pinned build, which is more than the distro build ever allowed (15+ tests failed
+on environment alone). `-race` does not run on that kernel at all — Go's ThreadSanitizer
+reports `unsupported VMA range` before any test executes — so ARM64 is verified
+without the race detector, and the race coverage for this project stays on the Linux
+x86 full leg and on the `-race` subset the fast gate runs on a dev box that has a C
+toolchain. The digest in the script is not publisher-signed (GitHub exposes no digest
+for the asset); it is what two independent fetches of that tag agreed on, recorded
+where it can be read.
+
 ## Troubleshooting
 
 | Symptom | What it means |
