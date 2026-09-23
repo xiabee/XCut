@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-22 10:38 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 09:34 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1014,6 +1014,41 @@ Accepted at `86dbaa0` (which carries `bd80006` and `b17c427`) on all three chann
 `refusals_rc=0 ran=6 skipped=0` — and the `sh` guard controlled on that node:
 `guard_rc=1 BITES (an empty run was refused)`, snapshot `restored byte-identical`.
 
+**A defect as old as the rotated log, found by running `serve` for the first time.**
+`startServeCore` opened `<workspace>/logs/serve.log`, handed the combined logger to `a.Log`,
+and closed the file with a `defer` in its own prologue — so for the whole life of the server,
+every line written through that logger went to a writer returning `os.ErrClosed`, and a
+`slog` handler does not look at what its writer returns. What the operator was told to read
+(`docs/OPERATIONS.md`) therefore stopped at the startup line: the request trace that
+`api.writeErr` exists to write — its own comment says a failed request is "undiagnosable from
+serve.log" without it — the job warnings, and the drain. It shipped that way in `c12e22b` and
+survived every session since because **no test had ever called `startServeCore` or
+`shutdownServe`**: the address policy had tests, the lifetime they protect had none.
+Ownership of the file now passes to `runningServe`, whose `close` all three callers
+(`serve`, `client`, `client --browser`) already defer; the bind-failure path closes it where
+it fails.
+
+Four cases drive the lifecycle (`internal/cli/serve_lifecycle_test.go`), each with the arm
+that says "the file is the right one" beside the arm that says "and it kept recording": a
+request the running server refused must appear in the file next to the startup line; the
+three startup sweeps must reclaim what each of them *reports* — a job row left `running` by a
+dead process, temp debris, staged-upload debris — while a landed upload survives and the log
+directory is still there; the port must answer before the drain and refuse after it; and
+`serve` must stay a writer command, because the sweeps' licence to delete is exactly the
+workspace lock. The pre-fix run is the first red; five mutations were then replayed, each
+killed by the assertion it targets — and one of them (the temp sweep turned into a dry run)
+was caught *only* by the file-survival arm, because the receipt line printed anyway, which is
+what that half of the case is for.
+
+Accepted at `0769849b` on all three channels: local fast gate PASS (`583 passed, 8 skipped`,
+`steps not run: none`), the four new cases green under `-race` locally, win-devops
+`OVERALL PASS` (`exit=0 duration=1m35.726s`), and the Linux full leg PASS with
+`572 passed, 13 skipped`, `DATA_RACE_lines=0`, `not run: nothing` (cargo fmt/clippy/test all
+ran) and the new cases run explicitly — `ran=4 skipped=0`. The dispatch's own stdout was
+lost to a redirect ordering mistake (`> f 2>&1 > /dev/null`), so the verdicts above are read
+out of the files the runner writes inside the snapshot — which is the lesson this session
+keeps re-learning: put the evidence where the script itself puts it.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -1632,12 +1667,16 @@ Accepted at `86dbaa0` (which carries `bd80006` and `b17c427`) on all three chann
    package's tests reads 0.0%. `pipeline.AnalyzeProjectAsync`, the loudest of
    them, is 100% when profiled through its own consumer (`internal/api`,
    `TestAsyncJobFlow` posting `/analyze`). Remaining 0.0% entries after that
-   correction: 46, of which the ones still worth work are the CLI command
+   correction: 46, of which the ones still worth work were the CLI command
    (`cmdVersion`, `cmdConfig`, `usage`) and serve-lifecycle
    (`startServeCore`, `shutdownServe`, `newServeLogger`) paths, and the
    environment-conditional ones (`analysis.RustAudioAnalyzer.*` need the built
    Rust worker; `setup.*` runs only on Windows). Platform stubs
    (`*_other.go`) and interface shims (`Error`, `String`, `Name`) are not gaps.
+   **The serve-lifecycle half is now closed** (`0769849b`, four cases driving the
+   real start/sweep/drain path — and it is where the closed-at-startup `serve.log`
+   was found). What is left of this item is the version/config/usage trio, the
+   Rust-worker-conditional analyzers, and `setup.*` on Windows.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and

@@ -50,6 +50,12 @@ xcut serving http://172.30.240.1:8675 (remote bind, authentication required)
 msg="server started" addr=172.30.240.1:8675 version=v0.1.8-alpha auth=true
 ```
 
+`logs/serve.log` keeps recording for as long as the server is up, which is the
+point of it: a request the API refused (`msg="request failed"` with the method,
+path and cause), job warnings, and the drain lines are all in there. The same
+lines go to stderr, so a serve started from a terminal shows them live; the
+file is what is left when it does not.
+
 There is no token generator in the CLI on purpose (a token belongs in a
 config file or an environment variable, never in argv, which is why there is
 no `--token` flag either). Make one with either of these (both run today):

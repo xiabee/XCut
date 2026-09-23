@@ -389,6 +389,26 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **`serve.log` stopped recording the moment the server started.** `startServeCore`
+  opened the rotated file logger and closed it on return — `defer closeLog()`, sitting in
+  the one function that hands that logger to everything running afterwards. So the file
+  `docs/OPERATIONS.md` points an operator at, and the request-failure trace `api.writeErr`
+  exists to write, covered exactly one line: the startup one. Every failure, warning and
+  drain note from the rest of the server's life went to a closed handle, silently, because
+  a `slog` handler ignores a writer's error. The ownership now passes to `runningServe`,
+  whose `close` the three callers (`serve`, `client`, and `client --browser`) already
+  defer; the bind-failure path closes it where it fails. Found by running the paths at
+  all: `startServeCore` and `shutdownServe` had never been called by a test, which is how
+  a defect introduced with the logger itself stayed invisible through every session since.
+  Four cases now drive the real lifecycle — a request refused while the server is up must
+  reach the file, with the startup line as the control that the file is the right one; the
+  three startup sweeps must reclaim what each of them reports (a job row left running, temp
+  debris, staged-upload debris) and leave a landed upload alone; the port must answer
+  before the drain and refuse after it; and `serve` must remain a writer command, since the
+  sweeps' licence to delete is the workspace lock. Five mutations, each killed by the
+  assertion it targets: the temp sweep as a dry run (only the file-survival arm saw it), the
+  orphan sweep given its age gate back, the staging sweep removed, the drain turned into an
+  early return, `serve` dropped from the writer list.
 - **The local gate printed PASS over a run in which `go test` never started.** At 03:21
   the fast gate returned 0 with `== gate (fast): PASS (steps not run: none)` and, four
   lines above it, `== go test: 0 passed, 0 skipped`. The step's stderr redirect pointed at
