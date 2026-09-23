@@ -1527,10 +1527,46 @@ targeted node run of the four enforcement/refusal cases green individually
 re-run: the change is a Linux-tagged file and its stub tests, and the Windows build and
 suite are covered by the local fast gate at this sha.
 
-One live gap survives the sweep and is named rather than filed away:
-`worker.errResponseTooLarge.Error()` is 0.0% — the oversized-worker-response refusal is
-reachable (a worker printing more than the budget) and no test drives it, which also means
-the message nobody reads could drift.
+**Rule 6 became a gate, and its first flight failed on a host fact.** `scripts/idle-check.sh`
+starts a given binary on an ephemeral port with a throwaway workspace, waits for health, then
+measures a window in which **no request is made** — reading VmRSS and utime+stime from `/proc`.
+On this tree: `rss=18MB cpu=0ms of 5000ms (0%)`, agreeing with the hand-measured numbers
+session #8 recorded (11.9 / 12.3 / 17.2 MB) that nothing had re-read since. Teeth, measured
+before committing: a copy of the tree with the banned shape injected (a 50 ms ticker globbing
+and walking the workspace beside the startup log) reads **6%** of the same window and fails,
+naming the rule. The memory axis is the weaker discriminator (20 MB against 18 MB for that
+mutant), so both numbers are printed rather than asserted equal.
+
+Then win-devops went red at `5d6e40a` in 19 s and its log said why: that host's `bash` is the
+**WSL launcher**, answering `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED` and exiting 1. The gate had
+been reading "this host has no shell that will run a command" as "the idle check failed",
+blaming the repository for a machine fact; `build-release.ps1` carried the same name-trusting
+lookup, where a genuinely missing Git for Windows would have surfaced as a smoke failure that
+never happened. `Resolve-PortableShell` (dot-sourced by both, `scripts/posh-shells.ps1`) asks
+each candidate to echo a token, Git's own path first, and probes under a locally-downgraded
+`ErrorActionPreference` because `Stop` would promote the refusal's stderr into a terminating
+error before the refusal could be read. Contract measured both ways: a stub exiting 1 without
+the token is rejected, the real Git bash is accepted, and the resolver returns Git's path.
+
+From the same blind spot — a file type no step parses — `ps parse` runs the PowerShell parser
+over `scripts/*.ps1` (6 files, floor 5, and `check.ps1` parses itself); teeth shown by
+planting a broken file: `files=7 bad=[zz-mutant.ps1:1]`. And the last shell invocation in the
+tree, `exec.Command("cmd", "/c", "ping … > NUL")` in the job-object test — the one place
+contradicting AGENTS.md rule 2 while documenting it — is a direct `ping -n 30` now, passing
+the same assertion.
+
+Accepted at `6c0949b`: local fast gate PASS (`sh -n` 11 scripts, `ps parse` 6, idle check
+`18MB / 0%`, `steps not run: none`), and win-devops PASS again (`exit=0 duration=1m58.265s`)
+after the FAIL at `5d6e40a`. Whether that host's idle step ran or recorded
+`idle-check(no-shell)` is **not observable from here**: the jobs-log endpoint returned 822
+characters without the step and the node's ssh refuses this key. Recorded as a gap in the
+evidence rather than guessed at — what was tested is the resolver's contract, not that
+host's choice.
+
+The live gap this section named is closed: `worker.errResponseTooLarge.Error()` no longer
+sits at 0.0%, because the refusal keeps its cause and the oversized-response case drives it
+(`d1bb82d`). What the sweep still owns is the list of platform stubs and Windows-only paths,
+itemised in Next Priorities 1.
 
 **The named gap became a fix, and the re-sweep closed the loop.** `errResponseTooLarge`
 was detected by the code that refused the response and then thrown away: the resource-limit

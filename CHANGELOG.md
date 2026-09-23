@@ -60,6 +60,24 @@ sections are tagged; anything above the newest one is unreleased.
   failed; it names the code and the message now.
 
 ### Improved
+- **`xcut serve` has an idle budget that is re-measured, not remembered.**
+  `sh scripts/idle-check.sh <binary>` starts the real server on an ephemeral port with a
+  throwaway workspace, waits for health, then measures a window in which no request is made,
+  reading resident memory and CPU ticks from `/proc`: 18 MB and 0 ms of 5000 ms on this
+  tree, which agrees with the hand-measured numbers session #8 wrote down and nothing had
+  re-read since. The shape AGENTS.md rule 6 forbids — a background scanning loop — reads 6%
+  of the same window and fails the step. Both gate twins run it on every pass rather than
+  only `full`, because the Windows legs execute `fast`; a host with no shell that answers the
+  probe records `idle-check(no-shell)` under `steps not run:` instead of failing or passing.
+- **A shell is chosen by asking it, not by trusting the name.** On the win-devops CI node
+  `bash` is the WSL launcher: it answers `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED` and exits 1, and
+  the gate read that host fact as a failed idle check. `Resolve-PortableShell`
+  (`scripts/posh-shells.ps1`, used by the gate and by `build-release.ps1`) tries Git for
+  Windows' own bash first and accepts any candidate that echoes a probe token.
+- **PowerShell scripts get a syntax gate.** `ps parse` runs the parser over `scripts/*.ps1`
+  — six files today, including the gate's own script, with a floor so a scan that found
+  nothing cannot report a pass — for the same reason `sh -n` exists: a typo in a file only
+  `powershell -File` ever reads is invisible to every other step.
 - **A refused systemd query now says what systemd said.** The degraded arms of the
   memory cap (scope refused, no `systemctl` to ask, a query that errors) had never run
   anywhere — a coverage sweep found them by reading `firstLine` at 0.0% — and writing the
