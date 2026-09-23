@@ -188,6 +188,35 @@ func GenerateScoreboard(dir, name string, width, height, fps int, seconds float6
 	return out, nil
 }
 
+// GenerateCrossfade writes a silent fixture of two solid colors joined by an xfade
+// transition — the shape a scene detector must not shred, because a fade contains no cut.
+// It lives here rather than in the analyzer test that first needed it because this package
+// is the only place allowed to compose FFmpeg command lines: the analysis packages read
+// media, they never build a render (AGENTS.md rule 5, enforced by internal/architecture).
+func GenerateCrossfade(dir, name string, width, height, fps int, segmentSeconds, transitionSeconds, offsetSeconds float64) (string, error) {
+	out := filepath.Join(dir, name)
+	size := itoa(width) + "x" + itoa(height) + ":r=" + itoa(fps)
+	d := formatFloat(segmentSeconds)
+	args := []string{
+		"-hide_banner", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "color=c=red:s=" + size + ":d=" + d,
+		"-f", "lavfi", "-i", "color=c=green:s=" + size + ":d=" + d,
+		"-filter_complex",
+		"[0:v][1:v]xfade=transition=fade:duration=" + formatFloat(transitionSeconds) +
+			":offset=" + formatFloat(offsetSeconds) + ",setsar=1[v]",
+		"-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+		"-pix_fmt", "yuv420p", out,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}
+
 func errFFmpeg(out []byte, err error) error {
 	snippet := string(out)
 	if len(snippet) > 2000 {

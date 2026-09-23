@@ -179,21 +179,14 @@ func TestFrameDiffCrossfadeStaysBelowCutThreshold(t *testing.T) {
 	opts := requireTools(t)
 	const cutThreshold = 0.28
 
-	// red 4s xfade green 3s (transition 3s) + green tail, via direct ffmpeg
-	// (testmedia.Generate only does hard concats).
+	// red 5.5s xfade green 5.5s, transition 3s at offset 1.5. The command line lives in
+	// testmedia — the only package allowed to compose one (AGENTS.md rule 5).
 	dir := t.TempDir()
-	path := filepath.Join(dir, "fade.mp4")
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	_, errOut, err := media.Run(ctx, "ffmpeg",
-		"-y", "-f", "lavfi", "-i", "color=c=red:s=320x240:r=10:d=5.5",
-		"-f", "lavfi", "-i", "color=c=green:s=320x240:r=10:d=5.5",
-		"-filter_complex",
-		"[0:v][1:v]xfade=transition=fade:duration=3:offset=1.5,setsar=1[v]",
-		"-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-		"-pix_fmt", "yuv420p", path)
+	path, err := testmedia.GenerateCrossfade(dir, "fade.mp4", 320, 240, 10, 5.5, 3, 1.5)
 	if err != nil {
-		t.Fatalf("fade fixture: %v: %s", err, errOut)
+		t.Fatalf("fade fixture: %v", err)
 	}
 
 	tracks, err := (FrameDiffAnalyzer{}).Analyze(ctx, opts, path, false, newTestLogger())
