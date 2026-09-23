@@ -24,7 +24,12 @@ sections are tagged; anything above the newest one is unreleased.
   probe scope, asks `systemctl show -p MemoryMax --value` about the live unit, and prints
   the manager's own answer (`infinity` is reported as a WARN, not as a cap). The values it
   has to distinguish are pinned by eight table cases plus a four-value negative arm in an untagged test file, so the
-  decision is checked on every leg rather than only on hosts with a session bus. Filesystem/syscall isolation (seccomp, containers) remains the open
+  decision is checked on every leg rather than only on hosts with a session bus.
+  The ARM64 leg is where this fact arrived: the allocation case ran on Kylin and **failed**
+  (`a 512 MB allocation survived a 128 MB cap`), so the two allocation-dependent cases now
+  name the `/proc/mounts` hierarchy they need and skip by naming it — a permanently red
+  leg is where the next real failure would hide. The leg is green again at 68892d6
+  (`ran=560 failed=0 skipped=19`, `TOOL_CHECK=OK`). Filesystem/syscall isolation (seccomp, containers) remains the open
   rung of the same roadmap item.
 
 ### Improved

@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 18:52 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 19:19 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1477,6 +1477,33 @@ gate on the node went `619 → 624 passed` with the same `10 skipped`,
 which is also the first time the whole suite ran on a Linux host with the wrapper
 installed, so no existing test discovered it had been depending on an unwrapped child.
 
+**Doctor stopped inferring from an exit code.** The D18 row said "the scope started",
+which is true and which an operator cannot act on, so `SandboxEnforcement` now starts a
+named probe scope around a two-second sleep, asks `systemctl show -p MemoryMax --value`
+about the live unit and prints the manager's own answer: the byte count reads OK,
+`infinity` or silence reads WARN. Two things fell out of building it. The deciding half
+had to leave the Linux file — the first version of the enforcement test could not be
+mutated where it runs, because on the node the manager *does* answer with a number, so a
+mutant that treated `infinity` as applied survived there (an unreachable control passing
+as a check). As `memoryMaxAnswer`, untagged, its eight table cases plus a four-value
+negative arm run on every leg: mutating the `infinity` arm now goes red twice on the
+laptop in one command. And the ARM64 leg went **red** on the first run carrying the
+allocation case — `a 512 MB allocation survived a 128 MB cap (stdout "536870912")` on
+Kylin — which is the platform fact arriving as a failing test rather than as prose; the
+case now names the `/proc/mounts` hierarchy it needs and skips by naming it, because a
+permanently red leg is where the next real failure hides.
+
+Accepted at `68892d6` (guard + prose only after `bd6c117`): local fast gate PASS
+(`639 passed, 5 skipped`, race subset 72 s, `steps not run: none`); win-devops
+`OVERALL PASS` at `bd6c117` (`exit=0 duration=1m54.246s`); Linux full gate PASS at
+`bd6c117` (`636 passed, 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`), whose verdict
+is unchanged by construction at `68892d6` because the guard passes on that host — it was
+not re-run there, and that is the accounting, not an oversight. The ARM64 leg on the
+in-repo script (`verify-arm64.sh --tools`, cache hit, no download) is green again:
+`TOOL_CHECK=OK`, `suite_rc=0 ran=560 failed=0 skipped=19`, 19 packages `ok`,
+`vendor_corruption_lines=0`, race reported as refused — `ran` up from 553 and `skipped`
+up from 17, which is exactly the two cases moving from asserting to naming the hierarchy.
+
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
 `== sh -n` / `no sh on PATH — the step did not run`, and the verdict line carries
@@ -1753,15 +1780,18 @@ line would go on printing `steps not run: none` on a host that skipped two steps
 
 - `go test ./...` all packages green (full suite re-run after each
   milestone; integration tests run against `.tools` ffmpeg 9.0.1)
-- Per-child memory cap (D18): five Linux cases in `internal/media` — no cap means no
+- Per-child memory cap (D18): six Linux cases in `internal/media` — no cap means no
   wrap; a missing `systemd-run` degrades to unwrapped children with the refusal named in
   the posture; a wrapped child's stdout is *byte-compared* (the wrapper must not write
-  there) and its exit status propagates; the argv shape around the `--` is pinned; and
-  `TestCapKillsAChildThatOverrunsIt` measures the claim itself — 512 MB under a 128 MB
-  cap, killed by the cgroup. It has teeth: against a mutant that stops wrapping it fails
-  with `a 512 MB allocation survived a 128 MB cap`. All five pass on the Linux node
-  (cgroup v2, systemd 255, user manager running) and skip loudly — posture in the skip
-  message — where no scope can start.
+  there) and its exit status propagates; the argv shape around the `--` is pinned;
+  `TestCapKillsAChildThatOverrunsIt` measures the claim itself (512 MB under a 128 MB
+  cap, killed by the cgroup), and `TestSandboxEnforcementAsksTheManager` reads the limit
+  back off a live unit. The two allocation cases sit behind a `/proc/mounts` check for
+  `cgroup2` at `/sys/fs/cgroup` and skip naming the hierarchy, because on Kylin's hybrid
+  layout systemd attaches nothing — the cap case ran there first and **failed**, which is
+  how the platform fact got into the ledger. Teeth: a mutant that stops wrapping fails
+  with `a 512 MB allocation survived a 128 MB cap`; a mutant that reads `infinity` as
+  applied fails twice, locally, on any platform, through the untagged table below.
 - What systemd *attached* is a separate measurement (`memoryMaxAnswer`, D18): the byte
   count we asked for is applied, `infinity` and an empty answer are not, a clamped number
   is named back. It is a pure function in an untagged file on purpose — the decision is
