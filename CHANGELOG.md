@@ -18,7 +18,9 @@ sections are tagged; anything above the newest one is unreleased.
   tail's 0, which is how a pin stops being a pin). Verified on a fresh Kylin V10 SP1
   aarch64 snapshot from a from-scratch download: `suite_rc=0 ran=553 failed=0
   skipped=17 packages_ok=19`, `vendor_corruption_lines=0`, `race_rc=1
-  tsan_refused_lines=3 data_race_lines=0`.
+  tsan_refused_lines=3 data_race_lines=0`. `--tools DIR` points it at a directory that
+  already holds the pin, so re-running the leg on a box that fetched it once does not
+  move 121 MB again.
 - **The gate parses the shell the release path is written in.** `gofmt`, `go vet` and
   `go build` cannot see a typo in `scripts/*.sh`, and the release path — build, smoke,
   FFmpeg pins, the gate's own POSIX twin — is shell. Both twins now walk the directory
