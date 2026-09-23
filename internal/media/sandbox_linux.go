@@ -3,6 +3,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -191,12 +192,17 @@ func SandboxEnforcement() (applied, known bool, detail string) {
 	if os.Geteuid() != 0 {
 		show = exec.CommandContext(ctx, systemctl, "--user", "show", unit, "-p", "MemoryMax", "--value")
 	}
+	var queryErr bytes.Buffer
+	show.Stderr = &queryErr
 	out, err := show.Output()
 	_ = probe.Wait() // let the scope finish rather than leak it; the unit is gone after this
 
 	value := strings.TrimSpace(string(out))
 	if err != nil {
-		return false, false, "systemd could not be asked about the probe unit: " + firstLine(err.Error())
+		// The manager's own words, not just "exit status 1": this string is what an
+		// operator pastes into a ticket, and resolveSandbox already quotes refusals.
+		return false, false, "systemd could not be asked about the probe unit (" +
+			firstLine(queryErr.String()) + "): " + err.Error()
 	}
 	return memoryMaxAnswer(value, mb)
 }

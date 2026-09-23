@@ -245,3 +245,86 @@ func TestEnforcementWithoutACapIsNotARefusal(t *testing.T) {
 		t.Errorf("detail = %q, want it to say the question does not apply", detail)
 	}
 }
+
+// fakeTool writes an executable shell stub into a fresh directory and returns its path.
+// The repo's convention for "a host tool that behaves badly" (internal/api does the same
+// with generated ffmpeg scripts), because the arms below are unreachable on a healthy
+// machine and are exactly the ones an operator on a broken machine reads about.
+func fakeTool(t *testing.T, name, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestScopeRefusalRunsChildrenUnwrappedAndQuotesTheReason covers the fallback that
+// decides whether a render survives: systemd-run exists but the manager will not take a
+// scope (no session bus, a container, an old systemd rejecting the property).
+func TestScopeRefusalRunsChildrenUnwrappedAndQuotesTheReason(t *testing.T) {
+	withCapForTest(t, 256)
+	dir := fakeTool(t, "systemd-run",
+		"echo 'Failed to connect to bus: No such file or directory' >&2; exit 1")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	resetSandbox()
+
+	if gotBin, _ := wrapChild("/usr/bin/ffprobe", "-version"); gotBin != "/usr/bin/ffprobe" {
+		t.Errorf("a refused scope still wrapped the child: %s", gotBin)
+	}
+	if SandboxArmed() {
+		t.Error("SandboxArmed is true after the manager refused")
+	}
+	p := SandboxPosture()
+	if !strings.Contains(p, "systemd refused the scope") {
+		t.Errorf("posture = %q, want the refusal named as the reason", p)
+	}
+	// The manager's own words, not a generic "unavailable": this string is what a
+	// support ticket is triaged from.
+	if !strings.Contains(p, "Failed to connect to bus") {
+		t.Errorf("posture = %q, want the refusal's first line quoted back", p)
+	}
+}
+
+// TestEnforcementStaysSilentWhenSystemdCannotBeAsked is the arm that must NOT become a
+// WARN: a host that answers nothing is not a host that refused the limit.
+func TestEnforcementStaysSilentWhenSystemdCannotBeAsked(t *testing.T) {
+	withCapForTest(t, 256)
+	dir := fakeTool(t, "systemd-run", "exit 0")
+	// PATH holds only the stub, so systemctl (and the probe's sleep) cannot be found.
+	t.Setenv("PATH", dir)
+	resetSandbox()
+
+	if !SandboxArmed() {
+		t.Skipf("the stub scope did not resolve (%s)", SandboxPosture())
+	}
+	applied, known, detail := SandboxEnforcement()
+	if applied || known {
+		t.Errorf("a host that cannot be asked reported applied=%v known=%v (%q)", applied, known, detail)
+	}
+	if !strings.Contains(detail, "systemctl") {
+		t.Errorf("detail = %q, want it to name what was missing", detail)
+	}
+}
+
+// TestEnforcementQuotesTheManagerWhenTheQueryFails is the same distinction when the
+// binary exists but the query fails: known=false, and the words are the manager's.
+func TestEnforcementQuotesTheManagerWhenTheQueryFails(t *testing.T) {
+	withCapForTest(t, 256)
+	dir := fakeTool(t, "systemd-run", "exit 0")
+	errDir := fakeTool(t, "systemctl", "echo 'Failed to connect to bus: Host is down' >&2; exit 1")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+errDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	resetSandbox()
+
+	if !SandboxArmed() {
+		t.Skipf("the stub scope did not resolve (%s)", SandboxPosture())
+	}
+	applied, known, detail := SandboxEnforcement()
+	if applied || known {
+		t.Errorf("a failing query must not read as an answer: applied=%v known=%v (%q)", applied, known, detail)
+	}
+	if !strings.Contains(detail, "Host is down") {
+		t.Errorf("detail = %q, want the manager's error quoted", detail)
+	}
+}
