@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 17:33 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 17:53 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1443,6 +1443,15 @@ Accepted at `cb6a550`: local fast gate PASS with `== sh -n / 10 scripts parse` a
 printed `== sh -n` / `10 scripts parse` at line 3 of its gate log; `619 passed,
 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`,
 `release_rc=0 checks=5`); and the ARM64 leg above.
+
+`--tools DIR` then made the leg re-runnable without moving 121 MB again (the flag takes
+where the pin lives instead of always fetching into the checkout), and the third
+reproduction on the Kylin box — a fresh snapshot, the cache directory handed to it — read
+the same `suite_rc=0 ran=553 skipped=17 failed=0 packages_ok=19`, `TOOL_CHECK=OK` naming
+the cache path, and the same reported race refusal. Accepted at `d6865b8`: local fast
+PASS, Linux full PASS on the node (`== sh -n / 10 scripts parse`, `619 passed,
+10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`,
+`release_rc=0 checks=5`, `worker ran=21`, `analysis ran=5`, `captions ran=20`).
 
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
