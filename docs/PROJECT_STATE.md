@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 16:53 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 17:33 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1419,6 +1419,31 @@ release smoke run on that platform — `release_rc=0 checks=5`), and **win-devop
 So the shipped Windows and Linux binaries come from a tree that passed the race
 detector, the Rust worker build and the artifact smoke on two platforms.
 
+**The ARM64 leg stopped living in a scratch directory.** `scripts/verify-arm64.sh` is
+the durable form of the runner that produced this session's ARM64 numbers, with the two
+mistakes that cost the first round made unreachable rather than merely documented: the
+toolchain goes on `PATH` (the suite resolves `ffmpeg`/`ffprobe` by name, so
+`XCUT_*` would have it run on the vendor build), and the fetch script's exit status is
+taken *before* its output is piped (`| tail -1` reports tail's 0). It refuses a
+non-aarch64 host instead of downloading a binary that cannot exec, and the race attempt
+is a report, not a pass. Run from a fresh snapshot and a from-scratch download:
+`TOOL_CHECK=OK`, `suite_rc=0 ran=553 failed=0 skipped=17 packages_ok=19`,
+`vendor_corruption_lines=0`, `race_rc=1 tsan_refused_lines=3 data_race_lines=0` — the
+same counts `2544cc1` measured by hand, which is what makes the script a
+reproduction rather than a restatement.
+
+The gate now parses the shell it ships in: `check.sh` and `check.ps1` both run
+`sh -n` over `scripts/*.sh` (ten files), name offenders, refuse to count a directory
+that yielded fewer than five scripts as a pass, and record `sh-n` under
+`steps not run:` on a host without a shell. Teeth were measured before committing — the
+ten parse clean, and one deliberately broken `if [ x = y` turns exactly one red.
+
+Accepted at `cb6a550`: local fast gate PASS with `== sh -n / 10 scripts parse` and
+`steps not run: none`; **Linux full gate PASS** on the node (the POSIX twin's own step
+printed `== sh -n` / `10 scripts parse` at line 3 of its gate log; `619 passed,
+10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`,
+`release_rc=0 checks=5`); and the ARM64 leg above.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
@@ -2100,10 +2125,10 @@ detector, the Rust worker build and the artifact smoke on two platforms.
    **(a) arm64 in CI** — decided: pin a stock arm64 build the way the Windows one-click
    pins Gyan.dev. Implemented as `scripts/fetch-arm64-ffmpeg.sh` and measured green on
    the Kylin box (Known Issues, ARM64: `ran=553 failed=0 skipped=17`). What is still
-   *not* done: nothing runs that script from a gate, so the pin is a documented
-   verification step rather than a CI job, and 4 of that box's 17 skips are the Rust
-   worker cases (no cargo on the Kylin host). Wiring arm64 into the control plane is
-   now a build-infrastructure task, not a decision.
+   *not* done: the leg is a command, not a gate — `sh scripts/verify-arm64.sh` is the
+   durable form (reproducing those counts from a fresh snapshot), but no scheduler runs
+   it, and 4 of that box's 17 skips are the Rust worker cases (no cargo on the Kylin
+   host). Wiring it into the control plane is now one dispatch, not a decision.
    **(b) release cadence** — decided: cut v0.1.9-alpha now rather than bundling it with
    the next batch. Done: `v0.1.9-alpha` tagged at `48d0fe8`, seven assets published,
    both Linux artifacts executed on their target platforms, digests verified through the
@@ -2113,9 +2138,15 @@ detector, the Rust worker build and the artifact smoke on two platforms.
    `xcut subtitles` on real singing content (the plumbing is tested; the
    model load is deliberately not night work).
 
-5. Re-enable push/PR + tag CI when the GitHub account billing issue is
-   resolved (Actions jobs are refused at start; restore notes in
-   ci.yml/release.yml unchanged — the files are fine).
+5. Re-enable push/PR CI if the GitHub account's billing situation ever changes — with
+   one correction so nobody "restores" something that was removed on purpose: `ci.yml`
+   is `workflow_dispatch`-only, and **`release.yml`'s `push: tags: ["v*"]` trigger was
+   deleted at `48d0fe8`**, not merely starved by the quota. It had never completed a run
+   (every attempt from v0.1.1 to v0.1.8-alpha died in its own cargo step) and it cannot
+   build the two Windows assets a release carries. The job is still there, hand-runnable
+   against a named tag; the release path is local (`build-release.ps1`/`.sh` →
+   `make-installer.ps1` → `make-setup.ps1` → `gh release create`). Do not re-add the tag
+   trigger as part of "restoring CI".
 
 6. Phase 4 leftovers: tray/auto-update and model registry — need
    maintainer decisions; desktop packaging itself (zip, icons) shipped

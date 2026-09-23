@@ -1,7 +1,32 @@
 # Changelog
 
-All notable changes. Format loosely follows Keep a Changelog; versions are
-`0.1.0-dev` until the first tagged release.
+All notable changes. Format loosely follows Keep a Changelog. The released
+sections are tagged; anything above the newest one is unreleased.
+
+## [Unreleased] — after v0.1.9-alpha
+
+### Improved
+- **The ARM64 verification is a script in the repository now.** `sh
+  scripts/verify-arm64.sh` fetches the pinned stock FFmpeg, puts it on `PATH`, proves
+  the suite is resolving *it* (`TOOL_CHECK` asks `command -v` and reads the version
+  string back), runs `go test -v ./...` and reports the kernel's refusal of
+  ThreadSanitizer as a line rather than as a green step. The two ways the hand-run got
+  it wrong are structurally excluded: injecting the toolchain through
+  `XCUT_FFMPEG`/`XCUT_FFPROBE` (which the suite never reads — it resolves ffmpeg and
+  ffprobe by name, so that run reports 48 vendor-build failures and says nothing about
+  the pin), and reading a fetch script's status through a pipe (`| tail -1` reports
+  tail's 0, which is how a pin stops being a pin). Verified on a fresh Kylin V10 SP1
+  aarch64 snapshot from a from-scratch download: `suite_rc=0 ran=553 failed=0
+  skipped=17 packages_ok=19`, `vendor_corruption_lines=0`, `race_rc=1
+  tsan_refused_lines=3 data_race_lines=0`.
+- **The gate parses the shell the release path is written in.** `gofmt`, `go vet` and
+  `go build` cannot see a typo in `scripts/*.sh`, and the release path — build, smoke,
+  FFmpeg pins, the gate's own POSIX twin — is shell. Both twins now walk the directory
+  with `sh -n`, name every offender, and carry a floor: fewer than five scripts found is
+  an error, because a step that read nothing must not report a pass. A host with no
+  `sh` records `sh-n` under `steps not run:` instead of pretending. Measured teeth: the
+  ten shipped scripts parse (0 red), and one deliberately broken `if [ x = y` turns
+  exactly one red.
 
 ## [v0.1.9-alpha] — tagged at 48d0fe8 on 2026-09-23, 190 commits / 172 files since v0.1.8-alpha. Session #20 (Phase 5: beat grid, captions, one tap)
 
