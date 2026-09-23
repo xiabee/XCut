@@ -76,6 +76,28 @@ every peer that reaches the API from off-box.
 - No CORS headers are sent: the UI is same-origin by construction, and a
   wildcard would hand the loopback-trusted API to any page the operator opens.
 
+### Script injection in the embedded UI
+
+The UI is one HTML file plus `static/app.js`, served same-origin to every peer the
+session posture admits — including a remote machine holding a valid token (D14). A
+script injected into that page therefore reads the workspace *through an
+authenticated session*, which no other control in this document would catch. The one
+thing standing between the two is a rendering rule: server data reaches the DOM as
+text, never as markup.
+
+That rule is enforced, not trusted. `TestUINeverWritesMarkupFromAString` and
+`TestUINeverBuildsCodeFromStrings` scan the shipped scripts for `innerHTML`/
+`outerHTML` assignment, `insertAdjacentHTML`, `document.write`, `eval`,
+`new Function` and the string forms of `setTimeout`/`setInterval`, and accept only
+the empty-string assignment the code uses to clear a node. `TestTheScannersNoticeWhatTheyGuard`
+runs the same classifier over injected violations, so a scanner that stopped matching
+anything cannot report a clean UI — and both guards were checked against a real
+injection into `app.js` before it was reverted.
+
+What is **not** covered: the rule is about how the page renders, not about whether
+the markup it renders is well-formed, and it does not constrain a future feature that
+intends to render HTML (that would need its own sanitiser and its own argument here).
+
 ### Secrets
 - No secrets in git-tracked config. Env vars (`XCUT_*`) or a git-ignored local
   secrets file. `.gitignore` covers `secrets*.json`, `.env*`.
