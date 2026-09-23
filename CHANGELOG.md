@@ -420,6 +420,23 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **A workspace `config.json` no longer resets settings it never mentioned.** The
+  documented precedence is defaults < `<workspace>/config.json` < env < flags, and the
+  second file layer did not behave that way: `config.Load` prefilled the struct with
+  `Default()` before decoding, so a workspace file that named one knob arrived at the
+  merge carrying *every* default — while `MergeLayer`'s rule, pinned by its own
+  `TestMergeLayerKeepsBaseWhenLayerZero`, reads a zero as "not said". Nothing could
+  tell a choice from an absence, so writing anything into the workspace file reset
+  whatever the operator had set in the bootstrap config. Measured through the shipped
+  binary with `~/.xcut/config.json` holding `log.level=debug`,
+  `resource.max_cache_gb=2`, `resource.max_temp_gb=3` and a workspace file mentioning
+  only `resource.frame_sample_fps`: the reset (`info` / 10 / 20) before, all four
+  values honoured after. `Load` is sparse by contract and documented as such; the
+  defaults are applied where the precedence belongs. Four cases drive it through the
+  real `loadConfig` with a home directory pointed at a fixture — an explicit
+  `--config` deliberately skips the layering, which is how the first version of the
+  test passed while proving nothing — and the case now fails loudly if the layering
+  branch never runs. Flipping the merge direction is caught by two named assertions.
 - **The gate could not say it had skipped the race detector, and now it says it
   skipped a subset of it.** `-race` lives only in the full battery, which runs on the
   Linux node, so neither per-milestone leg — this laptop's gate nor win-devops's — ever

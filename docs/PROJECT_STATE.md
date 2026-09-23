@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 13:50 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 14:16 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1276,6 +1276,35 @@ skip list, so the layout assumption is now tested on a machine that never had th
 green: adding `ffplay.exe` to the selection map cannot be observed, because the same
 duplicate guard skips it once its slot is filled — which is why the assertion is about
 the directory listing and not about a name being absent.
+
+**The config layering silently discarded a user's global settings.** AGENTS.md and
+`config.go`'s header both promise defaults < `<workspace>/config.json` < env < flags,
+and the file layer never honoured it: `config.Load` prefilled with `Default()` before
+decoding, so an unmentioned field arrived at `MergeLayer` already carrying its default —
+and `MergeLayer` reads a zero as "not said" (its own `TestMergeLayerKeepsBaseWhenLayerZero`
+says so). Writing one knob into the workspace file therefore reset everything the
+bootstrap config had set. Measured through the shipped binary, then re-measured after
+the fix, with `~/.xcut/config.json` at `log.level=debug`, `max_cache_gb=2`,
+`max_temp_gb=3` and a workspace file mentioning only `frame_sample_fps`:
+`info/10/20/3` (three values invented) → `debug/2/3/3`. `Load` is sparse now, by
+contract and with the reason in its comment; defaults are applied at the point where
+precedence is built, and the two `internal/config` Load tests assert that shape instead
+of the old accident.
+
+Three things this round turned up about how to test a layering: an explicit `--config`
+*deliberately* stops at the bootstrap file, so the first version of the new case ran
+green against the broken code without ever touching the layering — it now asserts the
+resolved path is the workspace file before it asserts anything about values; flipping
+the merge direction is caught by two named assertions; and the env layer passing under
+that flip is not a contradiction, it guards a different edge.
+
+Accepted at `f2b819c` on all three channels: local fast gate PASS (`627 passed,
+5 skipped`, race subset 60 s, `steps not run: none`); win-devops `OVERALL PASS`
+(`exit=0 duration=1m53.118s`); Linux full gate PASS with `617 passed, 10 skipped`,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, and the new cases run
+explicitly on that node — `precedence=0 ran=3`, `loadcontract=0 ran=2`, plus the
+earlier rounds still running: `client=0 ran=1`, `flush=0 ran=1`, `worker=0 ran=21`,
+`analysis=0 ran=5`, `release_rc=0 checks=5`.
 
 ## Version / HEAD
 
