@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 19:59 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 20:41 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1532,6 +1532,28 @@ One live gap survives the sweep and is named rather than filed away:
 reachable (a worker printing more than the budget) and no test drives it, which also means
 the message nobody reads could drift.
 
+**The named gap became a fix, and the re-sweep closed the loop.** `errResponseTooLarge`
+was detected by the code that refused the response and then thrown away: the resource-limit
+`xcerr` was built with a nil cause, so a caller could not distinguish "too big" from any
+other resource limit without string-matching, and the chain that `xcerr` prints into logs
+lost the reason too. `readErr` is the cause now. Two cases come with it: a Go-stub flood
+that needs no python (the existing sidecar case skips without it) asserting the code, the
+byte count, the surviving typed cause, and — the part a bare `err != nil` cannot say — that
+the worker was actually killed, checked by dialing the port its stub published and demanding
+"refused", because a timeout is also an error and says nothing about the process. The
+existing `TestCallBoundedRejectsOversized` asserted only that *something* failed; it names
+the code and the message now. Teeth: reinstating the nil cause fails the new case with "the
+refusal lost its cause" while the strengthened sidecar case stays green — they check
+different things, which is the point of keeping both.
+
+Accepted at `d1bb82d`: local fast gate PASS (race subset 85 s, `steps not run: none`),
+Linux full gate PASS (`640 passed, 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`,
+`not run: nothing`, `release_rc=0 checks=5`), and the coverage sweep re-run on the same
+tree: **26 → 24** zero-coverage functions, with `errResponseTooLarge.Error()` and
+`media.firstLine` gone from the list — the two entries this session's last two milestones
+were aimed at. win-devops was not re-run: the change is in `internal/worker` and its tests,
+and the Windows build plus suite ran in the local gate at this sha.
+
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
 `== sh -n` / `no sh on PATH — the step did not run`, and the verdict line carries
@@ -2238,8 +2260,10 @@ every leg (the fast gate included)
    function by function, three orphaned helpers were deleted (two of them with a
    comment naming a caller that does not exist), and the two live leftovers — the
    streaming shim and the non-Windows `xcut client` — now have cases that run on the
-   leg that can compile them. What is left of this item is `setup.*`, which is
-   Windows-only by design, and `*_other.go` platform stubs, which are not gaps.
+   leg that can compile them. Two further entries left the list at `237c051`/`d1bb82d`:
+   `media.firstLine`, reached only when systemd refuses, and `errResponseTooLarge.Error()`,
+   which could not run because the refusal dropped the cause that would print it. The sweep
+   now reads 24 entries, and what is left of this item is `setup.*`, which is
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
