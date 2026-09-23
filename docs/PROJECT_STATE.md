@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 12:49 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 13:09 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1206,6 +1206,32 @@ explicitly on that node — `client=0 ran=1`, `flush=0 ran=1`, `worker=0 ran=21`
 erased from it: `4f032be2`'s Linux leg was red on my own test's URL slice, and
 `9b30373`'s was red with `DATA_RACE_lines=1` — the gate's numbers, not mine, which is
 why they are quoted here instead of a green headline.
+
+**The rendering rule that the session posture leans on now has a gate.** SECURITY.md
+listed the token, the loopback rule, the path guard and the pinned MIME types, and said
+nothing about the one surface where a bug reads the workspace through an authenticated
+session: a script injected into the embedded page. PROJECT_STATE had been carrying
+"the textContent-only rendering rule is what holds that line" as a *description* — and
+nothing checked it, while `app.js` held twelve `innerHTML` assignments that happened to
+all be empty-string clears. Two guards now scan the shipped scripts through one
+classifier (markup sinks: `innerHTML`/`outerHTML` assignment, `insertAdjacentHTML`,
+`document.write`; dynamic code: `eval`, `new Function`, the string timer forms),
+accepting only the clear. Both halves of the discipline this project keeps relearning
+are in the file: a floor that requires the scan to find the dozen clears it expects, so
+"no violations" cannot come from a regex that stopped matching; and a refusal table run
+through the same classifier rather than against the regexes directly — which is how the
+first version of the control disagreed with the guard about what a clear is (it fed the
+patterns whole lines with their `;`, while the guard sees folded statements).
+Verified the only way that counts: injecting `probe.innerHTML = "<b>" +
+currentProject.name;` and `setTimeout("pollTimer = null", 10)` into the asset turned
+both guards red naming `app.js:8` and `app.js:9`, and `git diff` on the asset is empty
+afterwards. SECURITY.md gained the subsection the rule deserved and never had,
+including what the guard does *not* cover.
+
+Accepted at `f2a4eb2`: local fast gate PASS (`621 passed, 5 skipped`,
+`steps not run: none`) and win-devops `OVERALL PASS` (`exit=0 duration=1m32.389s`).
+The Linux full leg was **not** re-run for this sha: no product code changed since
+`fabe46d`, whose leg was green end to end — the delta is one test file and two docs.
 
 ## Version / HEAD
 

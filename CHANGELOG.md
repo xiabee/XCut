@@ -566,6 +566,26 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   as a second opinion; and the 1 200-onset budget is a cost bound with no test that can
   observe it, so it is carried by the timings above instead of by an assertion.
 
+### Security
+- **The UI's rendering rule is now a gate, not a habit.** docs/SECURITY.md documented
+  the token, the loopback trust rule, the path guard and the pinned MIME types, and
+  never named the surface that makes one rule load-bearing: a script injected into the
+  embedded page reads the workspace *through an authenticated session* (D14), which
+  nothing else in the document would catch. `docs/PROJECT_STATE.md` said the
+  textContent-only rendering rule "is what holds that line"; no check enforced it, and
+  the twelve `innerHTML` sites in `app.js` happened to be empty-string clears — which
+  is a convention, and a convention is what a confident one-line change ends.
+  `TestUINeverWritesMarkupFromAString` and `TestUINeverBuildsCodeFromStrings` now scan
+  the shipped scripts for markup sinks (`innerHTML`/`outerHTML` assignment,
+  `insertAdjacentHTML`, `document.write`) and for code built from strings (`eval`,
+  `new Function`, the string forms of `setTimeout`/`setInterval`), accepting only the
+  clear form the code uses. Both carry the two guards this project keeps needing: a
+  **floor** (the scan must find the dozen clears it expects, so "no violations" can
+  never mean "the regex matched nothing") and a **refusal table** run through the same
+  classifier. Verified against reality: injecting `probe.innerHTML = "<b>" +
+  currentProject.name;` and `setTimeout("pollTimer = null", 10)` into `app.js` turned
+  both guards red naming `app.js:8` and `app.js:9`; the asset is byte-identical
+  afterwards.
 ### Measured
 - **B7b — what the analysis caches actually cost, and whether the proxy ceiling holds.**
   Four rows in `docs/PERFORMANCE.md`, on the 603 s broadcast and a 300 s 1080p synthetic,
