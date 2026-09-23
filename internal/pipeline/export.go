@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/storage"
@@ -56,6 +57,12 @@ const (
 	// tap either fixes it or says that it cannot.
 	ExportRestyleSubtitles = "re-transcribed for the reel's own frame: "
 	ExportStaleSubtitles   = "burned as they stand, there is no sidecar to lay them out again: "
+	// ExportFallbackSubtitles is the third answer to a mismatch, and the one that used to
+	// be missing: a plain .srt carries no PlayRes pair and no pre-computed wrap, so
+	// libass lays it out against the canvas it is burned onto. Captioned plain beats
+	// captioned wrong — a box sized for 1280×720 on a 1080×1920 reel is unreadable, and
+	// the styled look is not worth that.
+	ExportFallbackSubtitles = "burned from the plain .srt beside them, which declares no frame: "
 )
 
 // subsState is what the tap knows about the caption file a project already has:
@@ -66,6 +73,7 @@ const (
 // that can disagree with itself.
 type subsState struct {
 	path    string
+	srtPath string // the canvas-agnostic sibling, when the project has one
 	styledW int
 	styledH int
 	reelW   int
@@ -76,6 +84,13 @@ func (d Deps) subsState(projectID string) subsState {
 	s := subsState{path: d.existingSubtitlesPath(projectID)}
 	if s.path == "" {
 		return s
+	}
+	// Resolved separately rather than inferred by rewriting the extension, so the
+	// path in the log is the one SubtitlesPath would hand the writer too.
+	if p, err := d.SubtitlesPath(projectID, "srt"); err == nil {
+		if _, serr := os.Stat(p); serr == nil {
+			s.srtPath = p
+		}
 	}
 	if f, err := os.Open(s.path); err == nil {
 		if w, h, ok := subs.ReadASSFrame(f); ok {
@@ -91,6 +106,17 @@ func (d Deps) subsState(projectID string) subsState {
 		}
 	}
 	return s
+}
+
+// plainFallback returns the file to burn instead of a mismatched .ass when nothing can
+// re-lay it out — an empty string means "there is no better option on disk". It is one
+// method shared by the plan and the body on purpose: two decisions that each look at the
+// same facts and can disagree is the bug this whole type exists to avoid.
+func (s subsState) plainFallback() string {
+	if s.mismatch() && s.srtPath != "" && s.srtPath != s.path {
+		return s.srtPath
+	}
+	return ""
 }
 
 // mismatch is the case the tap used to call "reuse": the captions exist, but for
@@ -151,6 +177,12 @@ func (d Deps) subtitlesReuseStep(projectID string) ExportStep {
 	case st.mismatch() && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "":
 		return ExportStep{Step: "subtitles", Action: "create", Reason: ExportRestyleSubtitles + st.frames()}
 	case st.mismatch():
+		// No sidecar to lay the words out again. A plain .srt of the same transcript
+		// carries no frame to be wrong about, so say which of the two will burn rather
+		// than calling both of them "as they stand".
+		if st.plainFallback() != "" {
+			return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportFallbackSubtitles + st.frames()}
+		}
 		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportStaleSubtitles + st.frames()}
 	default:
 		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportReuseSubtitles}
@@ -190,14 +222,23 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 				}
 				subsPath = d.existingSubtitlesPath(project.ID)
 			case st.mismatch():
-				// No way to restyle. Burn what is there — an ill-fitted caption beats
-				// no caption, and the plan line already said which of the two the user
-				// is getting — but name both frames on the record for whoever reads the
-				// log after the reel looks wrong.
-				d.Log.Warn("captions are styled for another canvas than the reel",
-					"project", project.ID,
-					"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
-					"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH))
+				// No way to restyle. A plain .srt of the same transcript is laid out by
+				// libass against the reel it lands on, so when one exists it burns
+				// instead of a box sized for another frame; either way the record names
+				// both frames, for whoever reads the log after the reel looks wrong.
+				if alt := st.plainFallback(); alt != "" {
+					subsPath = alt
+					d.Log.Warn("burning the plain transcript instead of captions styled for another canvas",
+						"project", project.ID,
+						"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
+						"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH),
+						"using", filepath.Base(alt))
+				} else {
+					d.Log.Warn("captions are styled for another canvas than the reel",
+						"project", project.ID,
+						"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
+						"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH))
+				}
 			}
 		}
 		progress(0.8)

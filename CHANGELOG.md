@@ -6,6 +6,16 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **One tap, no sidecar, mismatched captions: the plain transcript now wins.** When a
+  project's `.ass` declares a frame the reel is not (`PlayResX/Y` is what libass scales
+  every pixel field by) and nothing can re-transcribe it, the tap burns the `.srt` of the
+  same transcript sitting beside it instead — a plain caption is sized by the canvas it
+  lands on, while a styled one sized for 1280×720 on a 1080×1920 reel is unreadable. The
+  plan says which of the two it chose (`burned from the plain .srt beside them, which
+  declares no frame: …`), the body puts the same decision on the record with the file it
+  used, and neither file is rewritten. Chosen as a product call, not a fix: flip
+  `subsState.plainFallback` to prefer the styled file's look over its fit.
+
 - **`resource.ffmpeg_max_memory_mb` now means something on Linux** (D18). The knob was
   built for the Windows job object, and every other platform — including the two where
   the server and the ARM64 target actually run — reported its absence as a single polite

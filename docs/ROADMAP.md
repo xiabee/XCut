@@ -272,9 +272,12 @@ Every item states how it is measured before it is built, because the eval harnes
       Still open, now as a decision rather than a defect: a restyle needs a re-
       transcription because the transcript payload is not stored (the words are in the
       .ass, but re-wrapping them there means reading the format back, and a
-      header-only rescale would keep a wrap computed for the old width), and with no
-      sidecar the tap burns the ill-fitted .ass rather than the canvas-agnostic .srt
-      sitting beside it — which of the two a user wants is a product call, not a fix.
+      header-only rescale would keep a wrap computed for the old width). The second
+      half was decided and shipped the same night: with no sidecar the tap now burns
+      the canvas-agnostic .srt beside a mismatched .ass, because a caption sized for
+      another frame is a defect while a plainer caption is a degradation
+      (`ExportFallbackSubtitles`, decided 2026-09-24 — flip the one call site in
+      `subsState.plainFallback` to prefer the styled file's look over its fit).
       Measured: the generated ASS text is asserted (the wire format, not a
       struct), including a long-lyric case that must wrap rather than overflow.
 - [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion

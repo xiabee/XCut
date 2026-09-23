@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-24 00:54 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-24 01:14 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1589,6 +1589,30 @@ Accepted at `e5b601b`: local fast gate PASS, win-devops `OVERALL PASS`
 cases, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`). AGENTS.md now names the
 guard next to rules 2 and 5, and rule 6 names the idle step that measures it — a rule
 whose enforcement lives somewhere a reader has to discover is a rule that gets re-litigated.
+
+**The caption mismatch got its third answer, and it was a product call made in the open.**
+`ExportStaleSubtitles` said "burned as they stand" for every unfixable mismatch, including
+the case where a plain `.srt` of the same transcript sits beside the styled `.ass`: the
+`.ass` carries a frame (`PlayResX/Y`, what libass scales every pixel field by) and the
+`.srt` carries none, so the plain file is laid out against the reel it lands on. Burning a
+caption sized for 1280×720 onto a 1080×1920 reel is a defect; burning a plainer caption is
+a degradation — so the tap now prefers the `.srt`, names the choice in its plan line, and
+writes the same sentence into the log with the file it used. `subsState.plainFallback` is
+the single rule the plan and the body share (that sharing is the whole reason the type
+exists), and ROADMAP B5 records the decision plus the one call site to flip if the styled
+look is wanted over the fit. The other half of B5's open question stays open, unchanged: a
+true restyle needs the transcript payload stored, because re-wrapping inside the `.ass`
+means reading the format back and a header-only rescale would keep a wrap computed for the
+old width.
+
+Measured on the new case: green as written (`3.11s`), and red in exactly the two places it
+should be — with the body's call site stubbed out, the log assertions fail ("the body never
+put \"burning the plain transcript\" on the record"); with the rule itself made dead, the
+plan assertion fails quoting both sentences. Building it also caught a fixture lie worth
+recording: the existing no-sidecar idiom clears `PATH`, which hides ffmpeg as well, so the
+render failed with "cannot probe source for clip" and the test was about to assert against
+a world that could not render at all. Narrowing `PATH` to the FFmpeg directory instead
+keeps the render runnable while nothing that transcribes resolves.
 
 The live gap this section named is closed: `worker.errResponseTooLarge.Error()` no longer
 sits at 0.0%, because the refusal keeps its cause and the oversized-response case drives it

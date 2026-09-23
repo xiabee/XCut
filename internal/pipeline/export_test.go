@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/subs"
 	"github.com/xiabee/XCut/internal/testmedia"
 	"github.com/xiabee/XCut/internal/timeline"
 )
@@ -403,5 +406,150 @@ func TestExportReusesArtifactsItDidNotMake(t *testing.T) {
 	assAfter, _ := os.ReadFile(assPath)
 	if string(assAfter) != sentinel {
 		t.Errorf("the tap transcribed over captions it was told to reuse:\n%s", assAfter)
+	}
+}
+
+// TestExportBurnsThePlainTranscriptWhenTheStyledOneCannotFit covers the third answer to a
+// caption/reel mismatch: with no sidecar to lay the words out again, a .srt of the same
+// transcript is chosen over a .ass whose PlayRes pair says it was sized for another frame.
+// It asserts the *body's* choice through the line it puts on the record, because the plan
+// sentence alone would still pass if the render burned the wrong file anyway.
+func TestExportBurnsThePlainTranscriptWhenTheStyledOneCannotFit(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	var log bytes.Buffer
+	d.Log = slog.New(slog.NewTextHandler(&log, nil))
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	// The reel exists before the tap is asked, so the canvas the captions are compared
+	// with is knowable at ask time rather than only after a build.
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	tlPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := timeline.LoadFile(tlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Canvas.Width == 1080 && doc.Canvas.Height == 1920 {
+		t.Fatalf("the fixture's reel is the same frame as the captions it must disagree with (%dx%d)",
+			doc.Canvas.Width, doc.Canvas.Height)
+	}
+
+	// Both caption files exist, written by the product's own writers: the styled one
+	// claims a frame the reel is not, the plain one claims nothing.
+	tr := &subs.Transcript{Segments: []subs.Segment{{Start: 0.5, End: 2.5, Text: "hello there"}}}
+	assPath, err := d.SubtitlesPath(p.ID, "ass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(assPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var styled strings.Builder
+	if err := subs.WriteCaptionASS(tr, subs.KaraokeStyle{Width: 1080, Height: 1920}, &styled); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(assPath, []byte(styled.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srtPath, err := d.SubtitlesPath(p.ID, "srt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plain strings.Builder
+	if err := subs.WriteSRT(tr, &plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(srtPath, []byte(plain.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No sidecar: the words cannot be re-laid out, which is the only world where the
+	// fallback applies — with one, the plan says "re-transcribed" instead. Narrowing
+	// PATH to the FFmpeg directory keeps the render runnable while nothing that could
+	// transcribe resolves, which clearing PATH entirely does not (it also hides ffmpeg,
+	// and the render then fails for a reason this test is not about).
+	d.Cfg.Workers.AIBin = ""
+	ffmpegPath, ferr := exec.LookPath("ffmpeg")
+	if ferr != nil {
+		t.Skipf("no ffmpeg to keep on PATH: %v", ferr)
+	}
+	ffdir := filepath.Dir(ffmpegPath)
+	if _, perr := os.Stat(filepath.Join(ffdir, "ffprobe")); perr != nil {
+		if _, xerr := os.Stat(filepath.Join(ffdir, "ffprobe.exe")); xerr != nil {
+			t.Skipf("ffprobe does not sit beside ffmpeg (%s), so narrowing PATH would break the render", ffdir)
+		}
+	}
+	t.Setenv("PATH", ffdir)
+
+	out := filepath.Join(root, "reel.mp4")
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     true,
+		Out:      out,
+	})
+	if err != nil {
+		t.Fatalf("ExportProjectAsync: %v", err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if !strings.HasPrefix(got.Reason, ExportFallbackSubtitles) {
+		t.Errorf("plan said %q (%s), want the plain-transcript answer %q",
+			got.Reason, got.Action, ExportFallbackSubtitles)
+	}
+	if strings.HasPrefix(got.Reason, ExportStaleSubtitles) {
+		t.Error("a project with a usable .srt got the sentence that means the ill-fitted file will burn")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	j := awaitTerminal(t, d, id)
+	if j.Status != storage.StatusSucceeded {
+		t.Fatalf("export job ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	text := log.String()
+	for _, want := range []string{"burning the plain transcript", filepath.Base(srtPath)} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the body never put %q on the record; the log was: %s", want, text)
+		}
+	}
+	jobs, err := d.DB.ListJobs(context.Background(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range jobs {
+		if j.Type == job.TypeRender && j.Status != storage.StatusSucceeded {
+			t.Fatalf("the render the tap queued ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+		}
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("no reel at %s: %v", out, err)
+	}
+	// The rule selects; it does not repair. The file that was passed over is the bytes
+	// it was, which is also what keeps an always-restyle rule from passing this test.
+	b, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1080 || h != 1920 {
+		t.Errorf("the fallback rewrote the file it decided not to use: %dx%d ok=%v", w, h, ok)
 	}
 }
