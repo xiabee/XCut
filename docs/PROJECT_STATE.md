@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 09:34 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 10:20 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1048,6 +1048,40 @@ ran) and the new cases run explicitly — `ran=4 skipped=0`. The dispatch's own 
 lost to a redirect ordering mistake (`> f 2>&1 > /dev/null`), so the verdicts above are read
 out of the files the runner writes inside the snapshot — which is the lesson this session
 keeps re-learning: put the evidence where the script itself puts it.
+
+**The one tap now reads the frame its captions were styled for.** `export` decided
+"the project already has subtitles" from the existence of a file, so a project that
+changed shape — the tap's own default reel is vertical, and a transcript made before a
+reel existed is laid out against `subs`' shipped 1280×720 reference — burned a box
+sized for a frame nobody would watch, with libass scaling every pixel field by the
+script's `PlayResX/Y`. The claim was already in the file; what was missing was asking
+it. `subs.ReadASSFrame` now does, and refuses to invent an answer (absent, unparsable,
+or outside the section that owns the pair is *no claim*, which is not the same thing as
+the default); `pipeline.subsState` compares that with the canvas of the document the
+same tap is about to render onto, and one rule answers for the plan and for the body,
+because the body may have only just built the reel whose canvas the plan could not have
+known. Three answers where there was one: restyle through the sidecar, say that no
+sidecar can, or keep the plain sentence — and the last of those is the arm that an
+always-restyle rule would have to pass, checked by the file's bytes as well as its
+words. Accepted at `75af02b`: local fast gate PASS (`603 passed, 8 skipped`,
+`steps not run: none`), win-devops `OVERALL PASS` (`exit=0 duration=2m10.367s`), Linux
+full gate PASS with `592 passed, 13 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`,
+`not run: nothing`, and this round's cases run explicitly on that node — `subs_rc=0
+ran=13 skipped=0`, `api_rc=0 ran=4 skipped=0`.
+
+Five mutations, one of which taught something. A body that never restyled was caught by
+the artifact, not the sentence (the plan line alone would have passed); a plan that
+ignored the state, a comparison that never fired, a no-claim file treated as a
+mismatch, and a mismatch that ignored its own comparison were each killed by the case
+named for them. Removing the section guard from the reader came back **green**: the
+fixture built to catch it was already covered by the early exit, so it proved nothing
+about that guard — the distinguishing shape (a file with no `Script Info` section at
+all, the pair parked in a style block) is in the test now, and it fails when the guard
+comes out. The dispatch that started this round's Linux leg also shipped the *previous*
+round's runner script — two scratch directories, one of them stale — so the snapshot's
+provenance was established directly (`internal/subs/subs.go` md5 on the node equals
+`git show 75af02b:internal/subs/subs.go`) and this round's cases were run against it by
+hand rather than taken on the runner's word.
 
 ## Version / HEAD
 

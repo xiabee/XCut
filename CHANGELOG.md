@@ -389,6 +389,33 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **The one tap reused captions from another frame and called it done.** "The
+  project already has subtitles" was decided by whether a file existed. For a project
+  that kept its shape that is the truth; for one that changed it — the tap's own
+  default reel is vertical, and a transcript made before the reel existed is laid out
+  against this package's shipped 1280×720 reference — it burned a caption box sized
+  and placed for a frame nobody was going to watch, because libass scales every pixel
+  field by the script's `PlayResX/Y`. The file already carries the claim, so
+  `subs.ReadASSFrame` asks the file (and refuses to invent an answer: a pair that is
+  absent, unparsable, or sitting outside the section that owns it is *no claim*, which
+  is not the same as the default). `pipeline.subsState` compares that with the canvas
+  of the timeline document the same tap is about to render onto, and one rule answers
+  for the plan and the body — they run at different moments, and a tap that has to
+  build the reel first only learns the canvas after that build. Three answers now
+  where there was one: a sidecar can lay the same words out again, so the step says
+  `create`, names both frames, and the test reads the artifact back to check it
+  declares the reel's; nothing can, so the step says `reuse`, names both frames, and
+  the render writes the two numbers into the log it now keeps writing; the frames
+  agree, so the sentence stays the plain one and the file stays the same bytes — the
+  arm that an always-restyle rule would have to pass. Four cases, and the mutations
+  that say so: a body that never restyles was caught by the artifact rather than the
+  sentence; a plan that ignored the state, a comparison that never fired, a
+  no-claim-file treated as a mismatch, and a mismatch that ignored its own
+  comparison were each caught by the case named for it. One mutation ran green at
+  first — removing the section guard changed nothing for the fixture designed to
+  catch it, because the early exit already covered that shape; the case that
+  distinguishes them (no Script Info section at all, the pair parked in a style block)
+  is in the file now.
 - **`serve.log` stopped recording the moment the server started.** `startServeCore`
   opened the rotated file logger and closed it on return — `defer closeLog()`, sitting in
   the one function that hands that logger to everything running afterwards. So the file

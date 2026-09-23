@@ -249,10 +249,28 @@ Every item states how it is measured before it is built, because the eval harnes
       transcription replaces the karaoke file the first left behind instead of only
       deleting it, and `xcut subtitles --ass` answers an ordinary transcript with a
       caption rather than an error.
-      Remaining: re-styling at burn time (the transcript payload is not stored, so a
-      canvas change needs a re-transcription), and any pixel claim about where the
-      caption lands — libass's own layout is not verified here, only the file handed
-      to it.
+      Remaining: any pixel claim about where the caption lands — libass's own layout
+      is not verified here, only the file handed to it.
+      B5d closed the half of that which was silently wrong rather than merely
+      unmeasured: the one tap answered "the project already has subtitles" from the
+      existence of a file, so a project that changed shape — the tap's own default is
+      vertical, and a transcript made before the reel existed is laid out against the
+      shipped 1280×720 reference — burned a box sized for a frame nobody would watch.
+      The file carries the claim (`PlayResX/Y` is what libass scales every pixel field
+      by), `subs.ReadASSFrame` asks it, `pipeline.subsState` compares that with the
+      canvas of the document about to render, and one rule answers for the plan and
+      the body because they run at different moments. Three answers now: a sidecar can
+      lay the same words out again (the step says so, and the artifact on disk is
+      checked to declare the reel's frame); nothing can (the step names both frames and
+      the render says it into the log); they agree (the plain sentence, and the bytes
+      untouched — the arm that stops an always-restyle rule from passing these tests).
+      A file that claims nothing is "no evidence", not "the default".
+      Still open, now as a decision rather than a defect: a restyle needs a re-
+      transcription because the transcript payload is not stored (the words are in the
+      .ass, but re-wrapping them there means reading the format back, and a
+      header-only rescale would keep a wrap computed for the old width), and with no
+      sidecar the tap burns the ill-fitted .ass rather than the canvas-agnostic .srt
+      sitting beside it — which of the two a user wants is a product call, not a fix.
       Measured: the generated ASS text is asserted (the wire format, not a
       struct), including a long-lyric case that must wrap rather than overflow.
 - [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion
