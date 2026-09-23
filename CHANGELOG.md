@@ -33,6 +33,21 @@ sections are tagged; anything above the newest one is unreleased.
   rung of the same roadmap item.
 
 ### Fixed
+- **A cancelled FFmpeg call is now actually over.** The per-call budget
+  (`resource.analyzer_call_timeout`, probe and render deadlines) bounded the *process*:
+  when a tool hands its own stdout to a helper and exits, exec keeps waiting for the pipe
+  to drain, and the deadline stops being a ceiling. Measured on a Linux runner against a
+  1 s budget with a grandchild holding the descriptor for a minute: `media.Run` returned
+  after **60.01 s and returned success** — a cancelled probe read as a completed one —
+  and `media.StreamStdout`, the path that reads ffprobe's JSON, waited the same
+  60.01 s. Both capture paths now set `cmd.WaitDelay` (1 s), and the two calls return in
+  1.01 s and 2.00 s with the cancellation error intact. What is not claimed: two of the
+  four sites are proven by the new tests, two (`RunCombined`, `Version`) carry the line by
+  construction; and the same assignment added to `worker.callBounded` was reverted,
+  because removing it left its test green — that path reads through `StdoutPipe`, whose
+  descriptors exec already closes when the context ends, so the guard could not fail and
+  was not worth keeping.
+### Fixed
 - **A refused worker response keeps the reason it was refused.** The response budget is a
   refusal, not a buffer — but the error built at that point discarded the typed cause it had
   just detected, so a caller could only string-match the resource-limit code to learn

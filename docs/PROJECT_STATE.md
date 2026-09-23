@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 20:41 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 21:21 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1553,6 +1553,28 @@ tree: **26 → 24** zero-coverage functions, with `errResponseTooLarge.Error()` 
 `media.firstLine` gone from the list — the two entries this session's last two milestones
 were aimed at. win-devops was not re-run: the change is in `internal/worker` and its tests,
 and the Windows build plus suite ran in the local gate at this sha.
+
+**A cancelled FFmpeg call was not over.** AGENTS.md rule 4 says nothing may be
+unbounded, and the deadline bounded only the process: a tool that hands its stdout to a
+helper and exits leaves the descriptor open, and exec's default is to wait for the pipe to
+drain. Measured before any fix, on the node, with a 1 s budget and a grandchild sleeping a
+minute: `media.Run` came back after **60.01 s — with success**, so a cancelled probe looked
+like a completed one, and `StreamStdout` (the ffprobe JSON path) waited the same 60.01 s.
+Four capture sites now set `cmd.WaitDelay = pipeDrainGrace` (1 s); the two driven by
+tests return in 1.01 s and 2.00 s with the cancellation intact, `RunCombined` and `Version`
+carry the line by construction and say so. The same assignment added to
+`worker.callBounded` was **reverted with its test**: removing WaitDelay left that test
+returning at 1.007 s, because the worker path reads through `StdoutPipe` and exec closes
+those descriptors when the context ends — an assignment that cannot be made to fail is not
+a guard, and a test that cannot fail is not evidence.
+
+Accepted at `66f15c2`: local fast gate PASS (`steps not run: none`), Linux full gate PASS
+(`643 passed, 10 skipped` — the +3 over `d1bb82d` is the two cases plus the re-exec'd
+holder itself, which returns at once when the env var is unset, `DATA_RACE_lines=0`,
+`FAIL_lines=0`, `not run: nothing`, `release_rc=0 checks=5`), and the targeted node runs:
+red before the fix (`60.01s`, one of the two reporting *success*), green after
+(`1.01s` / `2.00s`), red again with the four assignments removed. win-devops not re-run:
+the file is `//go:build unix`, and the Windows build and suite ran in the local gate.
 
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
