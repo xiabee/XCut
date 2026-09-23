@@ -109,6 +109,18 @@ Invoke-Step "gofmt" {
 }
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
+# The Rust toolchain decision, asked once and reused: a healthy MSVC setup links
+# fine (`cargo check` exits 0), so decide on the exit code alone — capturing output
+# conflates "linked quietly" with "failed" and flipped the fallback ON for working
+# MSVC installs. Call it from inside the crate directory.
+function Resolve-RustToolchain {
+    cargo check -q 2>$null | Out-Null
+    if (($LASTEXITCODE -ne 0) -and (rustup toolchain list | Select-String "windows-gnu")) {
+        $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-gnu"
+        Write-Host "== rust: msvc linker unavailable, using windows-gnu toolchain"
+    }
+}
+
 # -count=1: a gate that can answer from the test cache is not a gate — an
 # environment change (ffmpeg removed, fixture regression) would be masked
 # by cached PASSes instead of re-running the (possibly now-skipping) tests.
@@ -121,6 +133,28 @@ Invoke-Step "go build" { go build ./... }
 # been exercised, and that must be visible in the verdict. The skip event
 # carries no reason (it streams in the preceding output events), so the name is
 # the lookupable unit: worker/TestDescribe, not "7 skipped".
+# The Go side of the worker protocol skips when the binary is absent, and none of
+# `cargo check`, `cargo clippy --all-targets` or `cargo test` leaves an executable at
+# target/{debug,release}/xcut-worker-media — which is where internal/worker's tests
+# look. So build it *before* the tests: otherwise the thorough leg is the leg that
+# never spoke to the worker. check.sh has the same step; the two are read together.
+if ($Mode -eq "full" -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    Write-Host "== rust worker build"
+    Push-Location crates/xcut-worker-media
+    try {
+        Resolve-RustToolchain
+        cargo build -q
+        if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)" }
+    }
+    finally { Pop-Location }
+    if (Get-ChildItem "crates/xcut-worker-media/target/debug/xcut-worker-media*" -ErrorAction SilentlyContinue) {
+        Write-Host "   worker binary present — internal/worker's protocol tests will run"
+    }
+    else {
+        Write-Host "   worker binary still absent — internal/worker will skip"
+    }
+}
+
 Write-Host "== go test"
 $ErrorActionPreference = "Continue"
 # Named for this process, because a fixed name in a shared directory is a collision
@@ -214,20 +248,9 @@ if ($Mode -eq "full") {
     Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
 
     if (Get-Command cargo -ErrorAction SilentlyContinue) {
-        # Windows hosts without MSVC Build Tools cannot link under the default
-        # msvc toolchain; fall back to an installed windows-gnu toolchain.
         Push-Location crates/xcut-worker-media
         try {
-            # A healthy MSVC setup links fine (cargo check succeeds); decide
-            # on the exit code alone — capturing output conflates "linked
-            # quietly" with "failed" and flipped the fallback ON for working
-            # MSVC installs.
-            cargo check -q 2>$null | Out-Null
-            $msvcBroken = ($LASTEXITCODE -ne 0)
-            if ($msvcBroken -and (rustup toolchain list | Select-String "windows-gnu")) {
-                $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-gnu"
-                Write-Host "== rust: msvc linker unavailable, using windows-gnu toolchain"
-            }
+            Resolve-RustToolchain
             try {
                 Invoke-Step "cargo fmt --check" { cargo fmt --check }
                 Invoke-Step "cargo clippy" { cargo clippy --all-targets -- -D warnings }

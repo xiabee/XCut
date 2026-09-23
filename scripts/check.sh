@@ -115,6 +115,52 @@ go build ./...
 # tests need ffmpeg, the cross-language sidecar tests need python, the Rust
 # protocol tests need the worker binary). Names, not reasons — a skip event
 # carries no message.
+# The Go side of the worker protocol skips when the binary is absent, and none of
+# `cargo check`, `cargo clippy --all-targets` or `cargo test` leaves an executable at
+# target/{debug,release}/xcut-worker-media — which is where internal/worker's tests
+# look. So build it *before* the tests: otherwise the thorough leg is the leg that
+# never spoke to the worker, and says so in a skip line nobody was reading.
+# The Rust toolchain decision, asked once and reused: a Windows host without MSVC
+# Build Tools cannot link under the default toolchain, and an installed windows-gnu
+# one can. Decide on cargo's own exit code — its output says nothing either way, and
+# deciding on output once flipped the fallback ON for healthy MSVC installs.
+# Callers must already know cargo exists.
+RUST_TOOLCHAIN_READY=""
+pick_rust_toolchain() {
+    if [ -n "$RUST_TOOLCHAIN_READY" ]; then
+        return 0
+    fi
+    if (cd crates/xcut-worker-media && cargo check -q >/dev/null 2>&1); then
+        RUST_TOOLCHAIN_READY=yes
+        return 0
+    fi
+    if rustup toolchain list 2>/dev/null | grep -q windows-gnu; then
+        export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu
+        echo "== rust: msvc linker unavailable, using windows-gnu toolchain"
+        if (cd crates/xcut-worker-media && cargo check -q >/dev/null 2>&1); then
+            RUST_TOOLCHAIN_READY=yes
+            return 0
+        fi
+    fi
+    return 1
+}
+
+if [ "$mode" = "full" ] && command -v cargo >/dev/null 2>&1; then
+    echo "== rust worker build"
+    if pick_rust_toolchain; then
+        (cd crates/xcut-worker-media && cargo build -q)
+    else
+        # No build and no failure here: the lint/test block below runs the same
+        # toolchain and fails the gate if the Rust side is genuinely broken.
+        echo "   this toolchain cannot link the worker; internal/worker will skip" >&2
+    fi
+    if ls crates/xcut-worker-media/target/debug/xcut-worker-media* >/dev/null 2>&1; then
+        echo "   worker binary present — internal/worker's protocol tests will run"
+    else
+        echo "   worker binary still absent — internal/worker will skip" >&2
+    fi
+fi
+
 echo "== go test"
 test_json=$(mktemp)
 test_err=$(mktemp)
@@ -179,14 +225,11 @@ if [ "$mode" = "full" ]; then
     GOOS=linux GOARCH=arm64 go build -o /dev/null ./cmd/xcut
 
     if command -v cargo >/dev/null 2>&1; then
-        # Windows hosts without MSVC Build Tools cannot link under the default
-        # msvc toolchain; an installed windows-gnu toolchain links fine (and
-        # keeps the gate native). Probe once, stick with what works.
-        probe=$(cd crates/xcut-worker-media && cargo check -q >/dev/null 2>&1 && echo ok) || probe=""
-        if [ -z "$probe" ] && rustup toolchain list 2>/dev/null | grep -q windows-gnu; then
-            export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu
-            echo "== rust: msvc linker unavailable, using windows-gnu toolchain"
-        fi
+        # The toolchain was already chosen (and announced) by the build step above;
+        # `pick_rust_toolchain` is a no-op once it has decided. If it cannot make the
+        # toolchain work, the steps below fail the gate the way they always have —
+        # this block does not swallow a broken Rust install.
+        pick_rust_toolchain || true
         echo "== cargo fmt --check"
         (cd crates/xcut-worker-media && cargo fmt --check)
         echo "== cargo clippy"
