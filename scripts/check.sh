@@ -104,6 +104,37 @@ if [ -n "$unformatted" ]; then
     exit 1
 fi
 
+echo "== sh -n"
+# The release path is shell: this file, build-release.sh, smoke-release.sh,
+# fetch-arm64-ffmpeg.sh, verify-arm64.sh. A typo in any of them is invisible to gofmt,
+# go vet and go build — the gate that ships them has to at least parse them. Offenders
+# are named, the count has a floor (a step that scanned zero files is not a pass), and a
+# host with no /usr/bin/sh reports the step as not run rather than as passing.
+if command -v sh >/dev/null 2>&1; then
+    shell_count=0
+    shell_bad=""
+    for shell_file in scripts/*.sh; do
+        if [ -f "$shell_file" ]; then
+            shell_count=$((shell_count + 1))
+            if ! sh -n "$shell_file" 2>/dev/null; then
+                shell_bad="$shell_bad $shell_file"
+            fi
+        fi
+    done
+    if [ -n "$shell_bad" ]; then
+        echo "shell syntax errors in:$shell_bad" >&2
+        sh -n $shell_bad || true
+        exit 1
+    fi
+    if [ "$shell_count" -lt 5 ]; then
+        echo "only $shell_count shell scripts found under scripts/ — this step is not reading what it claims" >&2
+        exit 1
+    fi
+    echo "  $shell_count scripts parse"
+else
+    NOT_RUN="$NOT_RUN sh-n"
+fi
+
 echo "== go vet"
 go vet ./...
 

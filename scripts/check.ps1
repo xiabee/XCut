@@ -107,6 +107,34 @@ Invoke-Step "gofmt" {
     $unformatted = gofmt -l internal cmd
     if ($unformatted) { throw "unformatted files: $unformatted" }
 }
+# Twin of check.sh's "== sh -n". The release path is shell (build-release.sh,
+# smoke-release.sh, fetch-arm64-ffmpeg.sh, verify-arm64.sh, this gate's own twin), and
+# gofmt/vet/build cannot see a typo in any of it. Deliberately at script scope, like the
+# race block below: `$NotRun +=` inside an Invoke-Step scriptblock would only append to a
+# local copy and the verdict line would keep saying "steps not run: none".
+Write-Host "== sh -n"
+$sh = Get-Command sh -ErrorAction SilentlyContinue
+if ($sh) {
+    $shellFiles = @(Get-ChildItem -Path "scripts" -Filter "*.sh" -File)
+    if ($shellFiles.Count -lt 5) {
+        throw "only $($shellFiles.Count) shell scripts found under scripts/ — this step is not reading what it claims"
+    }
+    $shellBad = @()
+    # A real syntax error is reported on stderr, and Stop promotes native stderr to a
+    # terminating error: downgrade for the probe so the step names the offender instead
+    # of dying on the first line sh ever wrote.
+    $ErrorActionPreference = "Continue"
+    foreach ($f in $shellFiles) {
+        & $sh.Source -n $f.FullName 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { $shellBad += $f.Name }
+    }
+    $ErrorActionPreference = "Stop"
+    if ($shellBad.Count -gt 0) { throw "shell syntax errors in: $($shellBad -join ' ')" }
+    Write-Host "   $($shellFiles.Count) scripts parse"
+} else {
+    Write-Host "   no sh on PATH — the step did not run"
+    $NotRun += "sh-n"
+}
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
 # The Rust toolchain decision, asked once and reused: a healthy MSVC setup links
