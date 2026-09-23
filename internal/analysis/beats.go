@@ -208,19 +208,3 @@ func refineGrid(ts []float64, period, phase float64) (float64, float64) {
 	}
 	return period, phase
 }
-
-// coverageAt reports the share of onsets within beatTolerance of the grid.
-func coverageAt(ts []float64, period, phase float64) float64 {
-	tol := beatTolerance * period
-	explained := 0
-	for _, o := range ts {
-		d := math.Abs(math.Mod(o-phase+period, period))
-		if d > period/2 {
-			d = period - d
-		}
-		if d <= tol {
-			explained++
-		}
-	}
-	return float64(explained) / float64(len(ts))
-}

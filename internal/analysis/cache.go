@@ -52,11 +52,6 @@ func NewStore(cacheDir string) *Store {
 // Dir exposes the store's on-disk location (CLI reporting).
 func (s *Store) Dir() string { return s.dir }
 
-// Key exposes the cache key computation (used by CLI logging).
-func Key(fingerprint string, analyzers []Analyzer, cfg ConfigKey) string {
-	return cacheKey(fingerprint, analyzers, cfg)
-}
-
 // Load returns a cached result or nil on miss. Corrupted cache entries are
 // treated as misses (and removed), never as errors.
 func (s *Store) Load(key string) (*Result, error) {

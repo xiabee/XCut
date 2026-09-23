@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"syscall"
 	"time"
-
-	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // transientIOWaitBudget is how long an operation may keep waiting on a
@@ -63,15 +61,6 @@ func isWindowsTransientIO(err error) bool {
 	return errno == 5 || errno == 32 || errno == 33
 }
 
-// RenameAtomic is RetryableRename wrapped in the package's user-safe error
-// model, for publish paths that want a ready-made message.
-func RenameAtomic(src, dst string) error {
-	if err := RetryableRename(src, dst); err != nil {
-		return xcerr.E(xcerr.CodeInternal, "cannot finalize output file", err)
-	}
-	return nil
-}
-
 // RetryableReplace publishes src onto dst with replace semantics, for the
 // media outputs a re-render replaces while a client may still be playing the
 // previous one. After the retryable rename is exhausted, on Windows it
@@ -80,8 +69,8 @@ func RenameAtomic(src, dst string) error {
 // and renames once more. Trade-off, deliberately accepted: once the delete
 // lands, a still-failing rename means the previous output is gone and the
 // job fails loudly — the user re-renders. The timeline document keeps plain
-// RenameAtomic: nothing holds it for long, and its revision integrity is
-// worth more than the narrow convenience.
+// RetryableRename (pipeline.WriteAtomic): nothing holds it for long, and its
+// revision integrity is worth more than the narrow convenience.
 func RetryableReplace(src, dst string) error {
 	err := RetryableRename(src, dst)
 	if err == nil {
