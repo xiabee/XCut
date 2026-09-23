@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 18:20 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 18:32 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1470,6 +1470,12 @@ they claim, and why the remaining work is named rather than implied: ask `system
 just `systemd-run`. Measured on the node (`8251b98` + this working tree): `ran=5 skipped=0
 failed=0`, then the mutation — wrap disabled — `ran=0 failed=2` with
 `a 512 MB allocation survived a 128 MB cap (stdout "536870912")`.
+
+Accepted at `170b52f`: local fast gate PASS (`steps not run: none`), and the Linux full
+gate on the node went `619 → 624 passed` with the same `10 skipped`,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, `release_rc=0 checks=5` —
+which is also the first time the whole suite ran on a Linux host with the wrapper
+installed, so no existing test discovered it had been depending on an unwrapped child.
 
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
