@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-24 01:14 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-24 01:27 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1613,6 +1613,11 @@ recording: the existing no-sidecar idiom clears `PATH`, which hides ffmpeg as we
 render failed with "cannot probe source for clip" and the test was about to assert against
 a world that could not render at all. Narrowing `PATH` to the FFmpeg directory instead
 keeps the render runnable while nothing that transcribes resolves.
+
+Accepted at `752aaef`: local fast gate PASS (race subset 92 s — the new case runs under
+`-race` in `internal/pipeline` — `steps not run: none`), win-devops `OVERALL PASS`
+(`exit=0 duration=2m2s`), Linux full gate PASS (`647 → 648 passed`, `DATA_RACE_lines=0`,
+`FAIL_lines=0`, `not run: nothing`, `release_rc=0 checks=5`).
 
 The live gap this section named is closed: `worker.errResponseTooLarge.Error()` no longer
 sits at 0.0%, because the refusal keeps its cause and the oversized-response case drives it
