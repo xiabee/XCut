@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 10:20 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 10:51 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1083,6 +1083,42 @@ provenance was established directly (`internal/subs/subs.go` md5 on the node equ
 `git show 75af02b:internal/subs/subs.go`) and this round's cases were run against it by
 hand rather than taken on the runner's word.
 
+**A round that changed no product code, because two security claims turned out to
+be true — and unrun.** `docs/SECURITY.md` says `xcut config show` masks the bearer
+token as `<set>` and that `xcut init` never bakes an environment-supplied token into
+the 0644 config.json it writes. Both statements sit in the two lines that implement
+them (`Redacted()`'s one call site, and the blank line in `cmdInit`), and no test had
+ever invoked either command: `cmdConfig`, `cmdVersion` and `usage` were the last named
+0 % entries in Next Priorities #1. Six cases now go through `Run` with `--config` and
+`--workspace` pinned to a throwaway directory — the machine running the suite owns a
+real `~/.xcut`, and an assertion that reads it silently tests the operator instead of
+the code. A token from the file and one from `XCUT_AUTH_TOKEN` both come back as the
+mask and never as themselves; the rest of the config survives the redaction; `init`
+writes a file with no token in it; `config path` names the file that was passed in;
+three bad argument forms are refused with the usage line and nothing on stdout; the
+version banner is the package's own string with the stamped fields and the platform;
+and the page an unknown command prints carries every registered command's name and
+summary. Four mutations, each killed by the case named for it: dropping `.Redacted()`
+from the marshal, dropping the blank line from `init`, printing the bare version
+instead of the banner, and printing a usage page that skips the registry.
+
+One of the three first-run reds was mine, not the product's: the assertion looked for
+`"<set>"` in the raw output, and `json.MarshalIndent` escapes the angle brackets into
+their `\u003c` form, so a working mask failed a passing test. Read a decoded field, not
+an escaped byte string.
+
+Accepted at `4dd32490` on all three channels: local fast gate PASS (`609 passed,
+8 skipped`, `steps not run: none`); win-devops `OVERALL PASS` (`exit=0
+duration=1m40.326s`); Linux full gate PASS with `598 passed, 13 skipped`,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, and this round's cases run
+explicitly on that node (`cli_rc=0 ran=6 skipped=0`) with last round's still running
+(`regress_rc=0 ran=20 skipped=0`). The Linux dispatch itself went through the two
+failure modes this ledger already knew: a hand-typed sha (`not a tree object`, caught
+by `set -o pipefail` before anything launched, leaving a 4 KB husk that was then
+deleted) and, on the retry, the runner's own stdout arriving with the verdicts in it —
+the redirect ordering fixed, and the snapshot provenance checked by a marker line that
+only this commit has.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -1707,10 +1743,17 @@ hand rather than taken on the runner's word.
    environment-conditional ones (`analysis.RustAudioAnalyzer.*` need the built
    Rust worker; `setup.*` runs only on Windows). Platform stubs
    (`*_other.go`) and interface shims (`Error`, `String`, `Name`) are not gaps.
-   **The serve-lifecycle half is now closed** (`0769849b`, four cases driving the
-   real start/sweep/drain path — and it is where the closed-at-startup `serve.log`
-   was found). What is left of this item is the version/config/usage trio, the
-   Rust-worker-conditional analyzers, and `setup.*` on Windows.
+   **The serve-lifecycle half and the CLI half are both now closed**
+   (`0769849b`: four cases driving the real start/sweep/drain path — where the
+   closed-at-startup `serve.log` was found; `4dd32490`: `config show`/`config path`,
+   `init`, `version` and the usage page run through `Run`, which is where the two
+   token-handling claims in docs/SECURITY.md got their checks). What is left of this
+   item is the environment-conditional pair, and it is a *gate* gap rather than a
+   writing gap: `analysis.RustAudioAnalyzer.*` and `internal/worker`'s three
+   media-worker cases need the built Rust binary, so they skip on this laptop, on
+   win-devops, *and* on the Linux full gate — whose `cargo test` step does not leave a
+   `target/{debug,release}/xcut-worker-media` where `crateWorkerBin` looks. That is 13
+   standing skips on the leg that is supposed to be the thorough one.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
