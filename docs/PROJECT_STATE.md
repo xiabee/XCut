@@ -1409,7 +1409,15 @@ Three things worth recording:
 
 Accepted at `48d0fe8`: local fast gate PASS (race subset wall 76 s, `steps not run:
 none`, 5 skips named), and the tag push started no Actions run — checked against
-`gh run list`, whose newest Release entry is still `v0.1.8-alpha`.
+`gh run list`, whose newest Release entry is still `v0.1.8-alpha`. The release commit
+then went through the deep legs it skipped on the way: **Linux full gate PASS at
+`48d0fe8`** (`619 passed, 10 skipped`, `DATA_RACE_lines=0`, `FAIL_lines=0`,
+`not run: nothing`, `worker ran=21`, `analysis ran=5`, `captions ran=20`, and the
+release smoke run on that platform — `release_rc=0 checks=5`), and **win-devops
+`OVERALL PASS`** at the following docs commit (`exit=0 duration=1m33.343s`,
+`local evidence (after_local_pass): local CI PASS at 16:58:18 for 8d26c725`).
+So the shipped Windows and Linux binaries come from a tree that passed the race
+detector, the Rust worker build and the artifact smoke on two platforms.
 
 ## Version / HEAD
 
