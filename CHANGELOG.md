@@ -3,7 +3,7 @@
 All notable changes. Format loosely follows Keep a Changelog; versions are
 `0.1.0-dev` until the first tagged release.
 
-## [v0.1.9-alpha] — tagged 2026-09-23, 190 commits / 172 files since v0.1.8-alpha. Session #20 (Phase 5: beat grid, captions, one tap)
+## [v0.1.9-alpha] — tagged at 48d0fe8 on 2026-09-23, 190 commits / 172 files since v0.1.8-alpha. Session #20 (Phase 5: beat grid, captions, one tap)
 
 ### Added
 - **The one-shot learned to caption (`xcut auto --subs=on`, `--subs=<file>`).** The

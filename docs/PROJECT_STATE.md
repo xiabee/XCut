@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 15:42 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 16:09 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1369,10 +1369,46 @@ The two deep legs (win-devops, Linux full) were not re-run for this commit: it c
 one POSIX shell script and four prose files, and the platform that script targets is
 the one that ran it.
 
+**v0.1.9-alpha was cut, and the cut is where the packaging discipline paid for
+itself.** Decision (b) was taken, so the release went out the local path —
+`build-release.ps1` → `make-installer.ps1` → `make-setup.ps1` → `gh release create`.
+Three things worth recording:
+
+- The host artifact was **executed by the build** (`smoke-release.sh`, 5 checks: the
+  version stamp, `-h`, an unknown command refusing, `init` laying out a workspace, the
+  token masked). That step exists because of this session's earlier work; for the first
+  time the binary that shipped is a binary something ran, and the stamp it printed —
+  `xcut v0.1.9-alpha (48d0fe8, 2026-09-23T08:14:39Z, go1.26.6 windows/amd64)` — is the
+  ldflags contract checked rather than assumed.
+- The two cross-built Linux binaries were run **on the machines they target**: same
+  5 checks on Kylin V10 SP1 aarch64 and on linux-ci x86_64 (`go1.26.6 linux/arm64` and
+  `…/amd64`). The arm64 one then did the product's actual job against the pinned
+  FFmpeg: a 20.02 s four-color fixture through `xcut auto` → import, analyse, timeline
+  (4 clips, canvas 1920×1080@30) and render in 5 s wall, producing a 392,449-byte file
+  that ffprobe reads back as 20.021 s with a video and an audio stream. A `SHA256SUMS`
+  asset joined the release (six lines, `sha256sum -c` all OK); it had never been there.
+- `gh release create` with seven assets did **not** finish inside 580 s on this link,
+  and what it left behind was not "nothing" — it was a *draft release holding four of
+  the seven files*. The command's exit status was 124 (the timeout's, not gh's), so the
+  only verdict that means anything is the asset list read back from the API:
+  `gh release view --json assets`. Recovery was `gh release upload --clobber` for the
+  three stragglers and then clearing the draft. Recorded because "the create failed" and
+  "the create failed leaving a half-finished public artefact" are different incidents,
+  and only the second one is what actually happens.
+
+Accepted at `48d0fe8`: local fast gate PASS (race subset wall 76 s, `steps not run:
+none`, 5 skips named), and the tag push started no Actions run — checked against
+`gh run list`, whose newest Release entry is still `v0.1.8-alpha`.
+
 ## Version / HEAD
 
-- Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
-  tagged from an earlier session
+- Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
+  at `48d0fe8` (2026-09-23, annotated)** and published with seven assets — the three
+  platform binaries, the Windows zip, the setup exe, the static musl worker and a
+  `SHA256SUMS-v0.1.9-alpha.txt`. Both Linux binaries were executed on the machines
+  they target before the release went out (see the session paragraph below).
+  `.github/workflows/release.yml` no longer listens for tags: it never completed a
+  run, and the release path is local.
 - HEAD: session #20 (2026-09-22, Phase 5 through B5c) — the auto-edit arc landed
   on all three channels: `卡点` music carried from CLI to API to render, two new
   styles plus `clip_order`, a pacing readout measured rather than eyeballed (CLI,
