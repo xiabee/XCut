@@ -135,6 +135,22 @@ else
     NOT_RUN="$NOT_RUN sh-n"
 fi
 
+# AGENTS.md rule 6 is a product goal (idle CPU ≈ 0, idle RAM < 100 MB) that lived only in
+# hand-measured night logs nobody re-reads, so a polling loop could ship again unnoticed.
+# It runs on the fast gate too: ten seconds is cheap next to the rule it protects.
+echo "== idle check (rule 6: a quiet server costs nothing)"
+idle_tmp=$(mktemp -d)
+go build -o "$idle_tmp/xcut-idlecheck" ./cmd/xcut
+idle_rc=0
+sh scripts/idle-check.sh "$idle_tmp/xcut-idlecheck" 5 || idle_rc=$?
+rm -rf "$idle_tmp"
+if [ "$idle_rc" -eq 77 ]; then
+    echo "   the step did not run here (no /proc or no curl)" >&2
+    NOT_RUN="$NOT_RUN idle-check(no-proc)"
+elif [ "$idle_rc" -ne 0 ]; then
+    exit 1
+fi
+
 echo "== go vet"
 go vet ./...
 
@@ -277,6 +293,7 @@ if [ "$mode" = "full" ]; then
     echo "== cross-compile checks (compile-verified only, not runtime-verified)"
     GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/xcut
     GOOS=linux GOARCH=arm64 go build -o /dev/null ./cmd/xcut
+
 
     if command -v cargo >/dev/null 2>&1; then
         # The toolchain was already chosen (and announced) by the build step above;

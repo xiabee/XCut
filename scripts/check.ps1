@@ -135,6 +135,31 @@ if ($sh) {
     Write-Host "   no sh on PATH — the step did not run"
     $NotRun += "sh-n"
 }
+# The twin of check.sh's idle step, and deliberately in the unconditional region: the two
+# Windows legs run `fast`, so a full-only step here would never execute on them.
+Write-Host "== idle check (rule 6: a quiet server costs nothing)"
+$idleBash = $null
+$idleSh = Get-Command bash -ErrorAction SilentlyContinue
+if ($idleSh) { $idleBash = $idleSh.Source }
+elseif (Test-Path "C:\Program Files\Gitinash.exe") { $idleBash = "C:\Program Files\Gitinash.exe" }
+if ($idleBash) {
+    $idleDir = Join-Path ([System.IO.Path]::GetTempPath()) ("xcut-idle-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $idleDir | Out-Null
+    $idleBin = Join-Path $idleDir "xcut-idlecheck.exe"
+    go build -o $idleBin ./cmd/xcut
+    if ($LASTEXITCODE -ne 0) { throw "idle check: go build failed" }
+    & $idleBash scripts/idle-check.sh $idleBin 5
+    $idleRc = $LASTEXITCODE
+    Remove-Item -Recurse -Force $idleDir -ErrorAction SilentlyContinue
+    if ($idleRc -eq 77) {
+        Write-Host "   the step did not run here (no /proc or no curl)"
+        $NotRun += "idle-check(no-proc)"
+    }
+    elseif ($idleRc -ne 0) { throw "idle check failed with exit $idleRc" }
+} else {
+    Write-Host "   no bash on PATH — the step did not run"
+    $NotRun += "idle-check(no-bash)"
+}
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
 # The Rust toolchain decision, asked once and reused: a healthy MSVC setup links
