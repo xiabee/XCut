@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 13:09 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 13:27 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1232,6 +1232,29 @@ Accepted at `f2a4eb2`: local fast gate PASS (`621 passed, 5 skipped`,
 `steps not run: none`) and win-devops `OVERALL PASS` (`exit=0 duration=1m32.389s`).
 The Linux full leg was **not** re-run for this sha: no product code changed since
 `fabe46d`, whose leg was green end to end — the delta is one test file and two docs.
+
+**The per-milestone legs now look at data races, and say when they cannot.** `-race`
+had lived only in the full battery on the Linux node, so no leg run per milestone had
+ever watched concurrency: this session's own race (a test helper clearing a channel
+field the test goroutine read) passed `GOOS=linux go vet`, passed the node's non-race
+verification of that same file, and was reported only by the full gate, 20 minutes and
+one dispatch after the change. Fast mode in both twins now runs `-race` over
+cli/job/worker/pipeline — `internal/cli` because it holds both races this project has
+recorded (`680d707`'s shared writer, and that helper). Measured here: 62 s and 98 s on
+two runs of the subset, 3m16s for the whole fast gate against roughly 2m30s before; the
+full leg still runs `-race ./...`, so this is latency removed, not coverage moved. The
+other half of the fix is older and quieter: neither script had ever recorded the race
+skip in its own `not run:` list, in fast or full mode — the verdict line that exists to
+state what a green run did not check had no entry for the longest thing it skips. That
+was verified rather than assumed: with the cgo probe forced false the verdict reads
+`not run: race-subset`, and with it true, `steps not run: none` plus the wall time.
+
+Accepted at `111e2ba`: local fast gate PASS (`621 passed, 5 skipped`, race subset run);
+win-devops `OVERALL PASS` (`exit=0 duration=1m32.141s`) — and that duration is
+unchanged from its pre-race runs, which suggests the node took the `not run:
+race-subset` path for want of a C toolchain. **Not verified**, deliberately recorded:
+this machine cannot read that node's job log (HTTP `/api/v1/jobs` 404s, ssh refused),
+so whether its gate printed the skip is an inference from a duration, not a reading.
 
 ## Version / HEAD
 

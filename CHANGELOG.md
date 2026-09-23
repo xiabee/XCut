@@ -420,6 +420,25 @@ All notable changes. Format loosely follows Keep a Changelog; versions are
   not measure at that length.
 
 ### Fixed
+- **The gate could not say it had skipped the race detector, and now it says it
+  skipped a subset of it.** `-race` lives only in the full battery, which runs on the
+  Linux node, so neither per-milestone leg — this laptop's gate nor win-devops's — ever
+  looked at a data race. The session paid for that directly: a test helper cleared a
+  channel field the test goroutine was reading, `GOOS=linux go vet` was silent (the
+  file compiles), the node's non-race verification of it was silent, and the full gate
+  reported `DATA RACE` twenty minutes and one dispatch later. Fast mode now runs
+  `-race` over the four packages where that class of defect actually lives —
+  `internal/cli`, which holds both races this project has ever recorded (the analyze
+  fan-out's shared writer at `680d707`, and the test helper above), plus the job queue,
+  the subprocess client and the pipeline's fan-out. Cost, measured twice here: 62–98 s
+  for the subset, 3m16s for the whole fast gate against about 2m30s before. The full
+  leg keeps running `-race ./...`.
+  Both twins got the accounting fix too, which was the other half of the hole: neither
+  script had ever added the race skip to its `not run:` list, in fast *or* full mode —
+  the step whose entire job is to state what a green run did not check had no line for
+  its own longest skip. Verified by forcing the probe false and reading the verdict:
+  `not run: race-subset`, and the normal path reports `steps not run: none` with the
+  wall time printed.
 - **The one tap reused captions from another frame and called it done.** "The
   project already has subtitles" was decided by whether a file existed. For a project
   that kept its shape that is the truth; for one that changed it — the tap's own
