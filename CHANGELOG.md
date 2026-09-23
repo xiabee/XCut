@@ -33,6 +33,16 @@ sections are tagged; anything above the newest one is unreleased.
   rung of the same roadmap item.
 
 ### Improved
+- **A refused systemd query now says what systemd said.** The degraded arms of the
+  memory cap (scope refused, no `systemctl` to ask, a query that errors) had never run
+  anywhere — a coverage sweep found them by reading `firstLine` at 0.0% — and writing the
+  stub-manager cases showed why that mattered: the operator-facing detail was built from
+  exec's own error string, so `xcut doctor` on a host whose manager would not answer
+  printed `systemd could not be asked about the probe unit: exit status 1` and none of the
+  words that would explain it. The query's stderr is captured and quoted now, as the
+  scope-refusal path already did. Three cases drive those arms through stub binaries on
+  `PATH`, asserting the text a human would read rather than a non-nil error.
+
 - **The ARM64 verification is a script in the repository now.** `sh
   scripts/verify-arm64.sh` fetches the pinned stock FFmpeg, puts it on `PATH`, proves
   the suite is resolving *it* (`TOOL_CHECK` asks `command -v` and reads the version

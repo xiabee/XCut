@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 19:19 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 19:59 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1504,6 +1504,34 @@ in-repo script (`verify-arm64.sh --tools`, cache hit, no download) is green agai
 `vendor_corruption_lines=0`, race reported as refused — `ran` up from 553 and `skipped`
 up from 17, which is exactly the two cases moving from asserting to naming the hierarchy.
 
+**The coverage sweep earned its keep again.** `cover-sweep.sh` on the node listed 26
+functions at 0.0% after max-merge, and this time the triage was the point: 25 of them are
+platform stubs (`attachJob`, `icon_other`, `existing_instance_other`), Windows-only code
+the Windows legs do execute (`setup.*`, `isWindowsTransientIO`), the worker path that
+skips when no Rust binary was built (the sweep does not build it; the full gate does —
+`worker ran=21`), the entry point, and error-string helpers. The one that was a live path
+with no test was `media.firstLine` at 0.0% — reached only when systemd *refuses*, i.e. the
+degraded arms of D18 had never been exercised anywhere. Three stub-manager cases now cover
+them (a refused scope, no `systemctl` on PATH, a `systemctl` that errors), and writing them
+found a real defect: the query-failure detail was assembled from exec's own error string,
+so the operator-facing text read `systemd could not be asked about the probe unit: exit
+status 1` with none of the manager's words. The assertion that caught it wanted
+`Host is down` in the string; the product now captures the query's stderr and quotes it,
+the way the scope-refusal path has all along.
+
+Accepted at `237c051`: local fast gate PASS (race subset 59 s, `steps not run: none`),
+**Linux full gate PASS** (`639 passed, 10 skipped` — 636 plus the three stub cases,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, `release_rc=0 checks=5`), and a
+targeted node run of the four enforcement/refusal cases green individually
+(`ran=4 skipped=0 failed=0`, the previously failing one at 0.41 s). win-devops was not
+re-run: the change is a Linux-tagged file and its stub tests, and the Windows build and
+suite are covered by the local fast gate at this sha.
+
+One live gap survives the sweep and is named rather than filed away:
+`worker.errResponseTooLarge.Error()` is 0.0% — the oversized-worker-response refusal is
+reachable (a worker printing more than the budget) and no test drives it, which also means
+the message nobody reads could drift.
+
 The step's other arm was proven by accident of hardware, which is worth recording: the
 win-devops job log (`20260923-173821-bea374`, `623 passed, 11 skipped`) reads
 `== sh -n` / `no sh on PATH — the step did not run`, and the verdict line carries
@@ -1792,6 +1820,10 @@ line would go on printing `steps not run: none` on a host that skipped two steps
   how the platform fact got into the ledger. Teeth: a mutant that stops wrapping fails
   with `a 512 MB allocation survived a 128 MB cap`; a mutant that reads `infinity` as
   applied fails twice, locally, on any platform, through the untagged table below.
+  Three more cases drive the degraded arms with a stub `systemd-run`/`systemctl` on PATH
+  (a refused scope, no query binary on PATH, a query that errors), asserting the words
+  an operator would read rather than merely a non-nil error — one of them found that
+  the query-failure detail carried none of the manager’s output at all.
 - What systemd *attached* is a separate measurement (`memoryMaxAnswer`, D18): the byte
   count we asked for is applied, `infinity` and an empty answer are not, a clamped number
   is named back. It is a pure function in an untagged file on purpose — the decision is
