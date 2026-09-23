@@ -28,8 +28,13 @@ Status (2026-09-07): protocol validated end-to-end. `crates/xcut-worker-media`
 (`internal/worker`) with timeouts + structured errors; `workers.audio` config
 (auto: worker-first with FFmpeg fallback, rust: strict, ffmpeg: builtin).
 Benchmark: parity with ffmpeg astats on 60s mp3 (0.127s vs 0.143s) — kept as
-optionality, no rewrites. Known gap: symphonia cannot decode ffmpeg-encoded
-AAC ("predictor data"); auto mode's fallback covers this until fixed upstream.
+optionality, no rewrites. Known gap, narrowed by measurement on 2026-09-23: it is not
+ffmpeg-encoded AAC as such — that stream decodes in a bare `.m4a` — it is the AAC track
+as the isomp4 reader hands it over from a file that also carries video, which symphonia
+refuses as `unsupported feature: aac: predictor data`. A PCM `.wav` fails earlier and
+for a different reason (the crate's feature list has no wav demuxer). auto mode's
+fallback covers both, and a test provokes the first on purpose; fixing the decode
+itself is upstream's.
 
 ## D3: No Python in the core; AI as optional sidecar
 

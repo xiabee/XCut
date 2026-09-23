@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 10:51 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 11:51 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1119,6 +1119,42 @@ deleted) and, on the retry, the runner's own stdout arriving with the verdicts i
 the redirect ordering fixed, and the snapshot provenance checked by a marker line that
 only this commit has.
 
+**The worker protocol had never been spoken by a gate, in any direction.**
+`internal/worker`'s three describe/error cases and the Go side of
+`analysis.RustAudioAnalyzer` skip when the binary is absent, and the binary was absent
+everywhere: `cargo check`, `cargo clippy --all-targets` and `cargo test` build it into
+`target/debug/deps/`, while the lookup in those tests wants
+`target/{debug,release}/xcut-worker-media`. Confirmed on the node after its full gate:
+no such file there, and all three were among its 13 skips — for the whole life of a
+boundary AGENTS.md names as core. Both gate scripts now build it before `go test` in
+full mode (one toolchain probe each, hoisted into a function called twice rather than
+duplicated), and each prints whether the binary landed, because the skip list below
+that line is only readable against it.
+
+Five cases sit on the Go side of it: the `auto` set must wrap the worker in the ffmpeg
+net and must not share a cache key with plain ffmpeg analysis; `audio=ffmpeg` must
+ignore a worker that is genuinely present — the existing mode test asserted that opt-out
+with no binary configured, so it passed unchanged while a mutation made ffmpeg mode use
+the worker, and that mutation is why the new case exists; an unusable worker must cost a
+degradation, not an analysis; strict `audio=rust` must keep no net underneath it (the
+"must not do more" arm, killed by the mutation that added one); and the worker's own
+`audio_rms` answer must arrive as the track kind the pipeline reads, with samples that
+vary. Five mutations total, each killed by a named assertion.
+
+Measuring that last one is what turned up a stale claim: the worker refuses XCut's own
+media shape (H.264 + AAC in an MP4) with `unsupported feature: aac: predictor data`, but
+decodes the *same* encoder settings in a bare `.m4a` — so "symphonia cannot decode
+ffmpeg-encoded AAC", recorded in two places, named the wrong culprit; and a PCM `.wav`
+fails earlier because the crate has no wav demuxer. Both lines now say what was observed,
+and `TestAutoModeCoversTheWorkerCodecGap` provokes the MP4 case with its premise
+assertified, so the fallback cannot start passing on nothing.
+
+Accepted at `983596f` on the local fast gate (`617 passed, 5 skipped` — the three worker
+cases moved from skip to run on this machine, which is the arithmetic: 609+8 = 617,
+8−3 = 5) and on win-devops (`OVERALL PASS`, `exit=0 duration=1m39.746s`). The Linux full
+leg for this sha is the first to carry the new build step; its numbers are recorded when
+it reports.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -1558,8 +1594,19 @@ only this commit has.
   opened it: the Linux full leg at `aef2ace` reports `gate (full): PASS` with
   zero `DATA RACE` lines (it failed with two at `680d707`), and win-devops
   passed the same sha (job `20260921-202622-d0e4e2`, 457 passed / 7 skipped).
-- symphonia (Rust worker) cannot decode ffmpeg-encoded AAC; auto mode's
-  ffmpeg fallback covers it.
+- The Rust worker's decoder does not take XCut's own media shape, and the reason is
+  narrower than this line used to say. Measured 2026-09-23 against the built worker:
+  an H.264+AAC MP4 (what `testmedia`, an import from a phone, or a screen recorder
+  produces) fails in symphonia as `unsupported feature: aac: predictor data`, while
+  the *same* encoder settings in a bare `.m4a` decode fine (`ok: true`, −21 dBFS
+  windows) — so it is not "ffmpeg-encoded AAC", it is the AAC stream as the isomp4
+  reader hands it over next to a video track. A second, unrelated class showed up the
+  same day: a PCM `.wav` fails earlier, at the probe (`end of stream`), because the
+  crate's feature list is `isomp4, aac, mp3, flac, pcm, adpcm` and has no wav
+  demuxer. `workers.audio: auto`'s ffmpeg fallback covers both, and
+  `TestAutoModeCoversTheWorkerCodecGap` now provokes the first one on purpose — with
+  its premise asserted, so the case cannot start passing on nothing if the decode
+  ever works upstream.
 - Cut detection is chroma-aware since session #6 (max of YDIF/UDIF/VDIF);
   thresholds remain tuned for hard cuts — long crossfades are
   deliberately NOT cuts (tested) and extremely slow dissolves could
@@ -1748,12 +1795,14 @@ only this commit has.
    closed-at-startup `serve.log` was found; `4dd32490`: `config show`/`config path`,
    `init`, `version` and the usage page run through `Run`, which is where the two
    token-handling claims in docs/SECURITY.md got their checks). What is left of this
-   item is the environment-conditional pair, and it is a *gate* gap rather than a
-   writing gap: `analysis.RustAudioAnalyzer.*` and `internal/worker`'s three
-   media-worker cases need the built Rust binary, so they skip on this laptop, on
-   win-devops, *and* on the Linux full gate — whose `cargo test` step does not leave a
-   `target/{debug,release}/xcut-worker-media` where `crateWorkerBin` looks. That is 13
-   standing skips on the leg that is supposed to be the thorough one.
+   item is the environment-conditional pair, and the Rust half of it was a *gate* gap
+   rather than a writing gap: `analysis.RustAudioAnalyzer.*` and `internal/worker`'s
+   three media-worker cases need the built binary, and no leg had one — `cargo check`,
+   `clippy --all-targets` and `cargo test` all leave it in `target/debug/deps/`, while
+   the tests look for `target/{debug,release}/xcut-worker-media`. Closed at `983596f`
+   (both scripts build it before `go test`; the local fast gate went 609/8 → 617/5 as
+   those three started running). `setup.*` still runs only on Windows, and that one is
+   by design.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
