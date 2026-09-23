@@ -23,6 +23,9 @@ $ldflags = "-s -w -X github.com/xiabee/XCut/internal/version.Version=$Version -X
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
+$hostGOOS = (go env GOOS)
+$hostGOARCH = (go env GOARCH)
+$hostOut = ""
 foreach ($plat in $Platforms.Split(",")) {
     $goos, $goarch = $plat.Split("/")
     $env:GOOS = $goos
@@ -32,8 +35,30 @@ foreach ($plat in $Platforms.Split(",")) {
     Write-Host "building $out"
     go build -trimpath -ldflags $ldflags -o $out ./cmd/xcut
     if ($LASTEXITCODE -ne 0) { throw "go build failed for $plat" }
+    if ($goos -eq $hostGOOS -and $goarch -eq $hostGOARCH) {
+        # The one artifact this machine can actually run, and therefore the one it
+        # has to run before shipping. build-release.sh smokes the same file through
+        # the same script, so the check list exists in exactly one place.
+        $hostOut = $out
+    }
 }
 Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
+
+if (-not $hostOut) {
+    throw "no artifact matches the build host ($hostGOOS/$hostGOARCH) — nothing would be smoke-tested"
+}
+# Git for Windows' bash is what runs the gate's sh twin on the nodes; if it is
+# genuinely absent, refusing the release is the honest answer, because shipping a
+# binary nothing executed is the failure this step guards.
+$bash = $null
+$bashCmd = Get-Command bash -ErrorAction SilentlyContinue
+if ($bashCmd) { $bash = $bashCmd.Source }
+elseif (Test-Path "C:\Program Files\Git\bin\bash.exe") { $bash = "C:\Program Files\Git\bin\bash.exe" }
+if (-not $bash) {
+    throw "no bash found (install Git for Windows) — refusing to ship an artifact nothing executed"
+}
+& $bash scripts/smoke-release.sh $hostOut $Version $commit
+if ($LASTEXITCODE -ne 0) { throw "release smoke failed (exit $LASTEXITCODE)" }
 
 # Rust workers: static linux (musl via bundled rust-lld) + windows host.
 $workerDir = "crates/xcut-worker-media"

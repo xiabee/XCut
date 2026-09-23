@@ -24,7 +24,20 @@ for plat in windows/amd64 linux/amd64 linux/arm64; do
     out="$OUTDIR/xcut-$VERSION-$goos-$goarch$ext"
     echo "building $out"
     GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$out" ./cmd/xcut
+    # The host artifact is run before it ships; the others can only be compiled
+    # here, which is why the smoke step below is limited to this one on purpose.
+    if [ "$goos" = "$(go env GOOS)" ] && [ "$goarch" = "$(go env GOARCH)" ]; then
+        HOST_OUT="$out"
+    fi
 done
+
+if [ -n "${HOST_OUT:-}" ]; then
+    sh scripts/smoke-release.sh "$HOST_OUT" "$VERSION" "$COMMIT"
+else
+    # Nothing shipped that anyone executed is the failure this guard exists for.
+    echo "no artifact matches the build host ($(go env GOOS)/$(go env GOARCH)) — nothing was smoke-tested" >&2
+    exit 1
+fi
 
 # Rust workers: static linux (musl via bundled rust-lld) + host platform.
 worker_dir="crates/xcut-worker-media"
