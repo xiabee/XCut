@@ -209,6 +209,28 @@ if [ "$TestSkip" -gt 0 ]; then
 fi
 rm -f "$test_json" "$test_err"
 
+if [ "$mode" = "fast" ]; then
+    # The race detector runs here too, over a subset: every race this project has
+    # actually hit lived in internal/cli (the analyze fan-out writing one shared
+    # stream at 680d707; a test helper clearing a channel field the test goroutine
+    # read unlocked, 2026-09-23), and the queue and the subprocess client are the
+    # other two owners of goroutines the tests can race. The full leg still runs
+    # -race over ./... — this is the same class of defect caught in about a minute
+    # and a half on the machine making the change, instead of twenty minutes later
+    # on a node. A machine without a C toolchain says so in the verdict rather than
+    # passing quietly: that is the one outcome worse than a slow gate.
+    RACE_PKGS="./internal/cli ./internal/job ./internal/worker ./internal/pipeline"
+    if go env CGO_ENABLED | grep -q '^1$' && command -v gcc >/dev/null 2>&1; then
+        echo "== go test -race (subset: cli job worker pipeline)"
+        race_start=$(date +%s)
+        go test -race -count=1 $RACE_PKGS
+        echo "   race subset wall: $(($(date +%s) - race_start))s"
+    else
+        echo "== go test -race: SKIPPED (no cgo/C toolchain; the full leg covers it)" >&2
+        NOT_RUN="$NOT_RUN race-subset"
+    fi
+fi
+
 if [ "$mode" = "full" ]; then
     # The race detector needs cgo + a C toolchain (absent on this Windows
     # setup). Skip loudly rather than silently; run the linux container race
@@ -217,7 +239,8 @@ if [ "$mode" = "full" ]; then
         echo "== go test -race"
         go test -race ./...
     else
-        echo "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
+        echo "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)" >&2
+        NOT_RUN="$NOT_RUN race"
     fi
 
     echo "== cross-compile checks (compile-verified only, not runtime-verified)"

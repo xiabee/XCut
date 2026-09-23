@@ -225,6 +225,30 @@ Write-Host "== go test: $TestPass passed, $($TestSkips.Count) skipped"
 foreach ($s in ($TestSkips | Select-Object -First 20)) { Write-Host "   skip $s" }
 if ($TestSkips.Count -gt 20) { Write-Host "   ... and $($TestSkips.Count - 20) more" }
 
+if ($Mode -eq "fast") {
+    # The race detector runs here too, over a subset: every race this project has
+    # actually hit lived in internal/cli (the analyze fan-out writing one shared
+    # stream at 680d707; a test helper clearing a channel field the test goroutine
+    # read unlocked, 2026-09-23), and the queue and the subprocess client are the
+    # other two owners of goroutines its tests can race. The full leg still runs
+    # -race over ./... — this is the same defect class caught in about a minute and a
+    # half on the machine making the change instead of twenty minutes later on a node.
+    # check.sh carries the same step and the same $NotRun entry; a race that goes
+    # unwatched because no host in reach has a C toolchain must say so in the verdict.
+    $racePkgs = @("./internal/cli", "./internal/job", "./internal/worker", "./internal/pipeline")
+    if ((go env CGO_ENABLED).Trim() -eq "1" -and (Get-Command gcc -ErrorAction SilentlyContinue)) {
+        Write-Host "== go test -race (subset: cli job worker pipeline)"
+        $raceStart = Get-Date
+        go test -count=1 -race @racePkgs
+        if ($LASTEXITCODE -ne 0) { throw "go test -race (subset) failed with exit $LASTEXITCODE" }
+        Write-Host "   race subset wall: $([int]((Get-Date) - $raceStart).TotalSeconds)s"
+    }
+    else {
+        Write-Host "== go test -race: SKIPPED (no cgo/C toolchain; the full leg covers it)"
+        $NotRun += "race-subset"
+    }
+}
+
 if ($Mode -eq "full") {
     # The race detector needs cgo + a C toolchain (absent on this Windows
     # setup). Skip loudly rather than silently; run scripts/race-docker.sh
@@ -236,6 +260,7 @@ if ($Mode -eq "full") {
     }
     else {
         Write-Host "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
+        $NotRun += "race"
     }
 
     Write-Host "== cross-compile checks (compile-verified only, not runtime-verified)"
