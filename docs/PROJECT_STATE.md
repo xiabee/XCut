@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-24 00:25 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-24 00:54 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1562,6 +1562,33 @@ after the FAIL at `5d6e40a`. Whether that host's idle step ran or recorded
 characters without the step and the node's ssh refuses this key. Recorded as a gap in the
 evidence rather than guessed at — what was tested is the resolver's contract, not that
 host's choice.
+
+**Two "never" rules got static guards, and one of them was already broken.**
+`internal/architecture` (no production code, only scans) enforces AGENTS.md rule 2 — no
+shell interpreter as an exec target, no `&&`/`||` inside an exec call's string literals —
+and rule 5's checkable half: the analyzer layer must not import `internal/render` nor
+compose a filter graph (it may stream media to *decode*, which is what `FrameDiff` does and
+what the rule allows). Both rules had already decayed in exactly the plausible way: the
+job-object test spawned `cmd /c ping … > NUL` — the one file that contradicted rule 2 while
+documenting it — and the crossfade fixture was built inline in an analysis test, which is
+why that command line moved to `internal/testmedia`, the package whose job is composing them.
+
+The classifiers were refined by their own first runs rather than trusted: `; ` fired on
+`Run(); err != nil` in `client_windows.go`, which is Go's statement separator and not a
+command string — so shapes are matched inside literals only, and redirections were dropped
+(a redirect needs a shell, which the name rule already refuses; and render's filter graphs
+use `|` and `;` legitimately). Then the guard fired on its own fixture tables, which are now
+excluded *by name*, with the must-fire table named as the reason that cannot quietly become
+an escape hatch. Each scan prints what it read (`246 Go files, 30 exec call sites`;
+`41 files in analysis/event/style`) because "no findings" and "read nothing" are otherwise
+indistinguishable — and one counter bug in this very session was caught the same way: my
+first table-width check counted `\|` as a column and accused a healthy row of being broken.
+
+Accepted at `e5b601b`: local fast gate PASS, win-devops `OVERALL PASS`
+(`exit=0 duration=1m54.745s`), Linux full gate PASS (`643 → 647 passed`, the four new
+cases, `DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`). AGENTS.md now names the
+guard next to rules 2 and 5, and rule 6 names the idle step that measures it — a rule
+whose enforcement lives somewhere a reader has to discover is a rule that gets re-litigated.
 
 The live gap this section named is closed: `worker.errResponseTooLarge.Error()` no longer
 sits at 0.0%, because the refusal keeps its cause and the oversized-response case drives it

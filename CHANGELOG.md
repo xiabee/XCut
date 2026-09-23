@@ -60,6 +60,16 @@ sections are tagged; anything above the newest one is unreleased.
   failed; it names the code and the message now.
 
 ### Improved
+- **AGENTS.md rules 2 and 5 are checked, not remembered.** `internal/architecture` holds
+  no production code: one test walks every Go file under `internal/` and `cmd/` and refuses
+  any exec whose target is a shell interpreter (`cmd`, `bash`, `pwsh`, by basename) or whose
+  string literals contain a shell connector, and another refuses the analyzer layer
+  (`internal/analysis`, `event`, `style`) importing the renderer or composing a filter
+  graph — while leaving alone the streaming those analyzers legitimately do to decode.
+  Both guards found existing violations on the way in, and both rules now name their guard
+  in AGENTS.md.
+
+### Improved
 - **`xcut serve` has an idle budget that is re-measured, not remembered.**
   `sh scripts/idle-check.sh <binary>` starts the real server on an ephemeral port with a
   throwaway workspace, waits for health, then measures a window in which no request is made,

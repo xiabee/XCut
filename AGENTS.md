@@ -15,7 +15,8 @@ Then skim `docs/DECISIONS.md` (why the architecture looks like this) and
    dependency.** No FFI — workers speak JSON over stdin/stdout.
 2. **No shell, ever, for external processes.** `exec.CommandContext(bin,
    args...)` with per-call timeouts only. User text is argv data, never a
-   command string.
+   command string. Enforced by `internal/architecture` — no shell interpreter may be
+   the first argument of an exec, and no `&&`/`||` may sit inside one.
 3. **User media is untrusted input.** All workspace-internal paths go through
    `workspace.Workspace.SafeJoin`. The HTTP server binds loopback only; a
    remote bind is legal *only* with `listen_remote: true` **and** a bearer
@@ -25,9 +26,11 @@ Then skim `docs/DECISIONS.md` (why the architecture looks like this) and
    log growth all have configured ceilings (config `resource.*`). If you add
    a new growth axis, give it a budget and enforce it.
 5. **Timeline before FFmpeg**: analyzers never generate ffmpeg commands; all
-   editing decisions materialize as a validated `timeline.Timeline`.
+   editing decisions materialize as a validated `timeline.Timeline`. Enforced by
+   `internal/architecture` over `internal/{analysis,event,style}`.
 6. **`xcut serve` idle CPU ≈ 0 and idle RAM < 100 MB** are product goals —
-   no background scanning loops, no eager work.
+   no background scanning loops, no eager work. Measured on every gate by
+   `scripts/idle-check.sh` (18 MB / 0% of a 5 s idle window at `6c0949b`).
 7. **No visible windows from tests or smoke steps.** Console children inherit the
    parent console; anything that needs a real window or a browser hides or skips
    under `CI` / `XNIGHTOPS_CI`.

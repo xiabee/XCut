@@ -41,6 +41,8 @@ Machine: Windows 11, 32 cores (AMD), 32 GB RAM, NVMe, FFmpeg 8.1.2.
 | 2026-09-07 | **serve idle CPU** | 30 s idle | **0.031 s total, unchanged** (~0%) | — | no background scanning loops: **met** |
 | 2026-09-09 | **serve idle RAM (re-check)** | — | **11.9 MB WS / 46.6 MB private** | — | after session #3 (asset file endpoint, proxies): **met** |
 | 2026-09-09 | **serve idle CPU (re-check)** | 10 s idle | **0.000 s** (~0%) | — | **met** |
+| 2026-09-24 | **serve idle RAM (gate)** | 5 s window | **18 MB RSS** | — | goal met; now measured by `scripts/idle-check.sh` on every gate, not by hand |
+| 2026-09-24 | **serve idle CPU (gate)** | 5 s window, no traffic | **0 ms of 5000 ms (0%)** | — | ceiling 2%; a 50 ms workspace-scanning loop injected into a copy reads 6% and fails the gate |
 | 2026-09-09 | render (concat path) | 10s 1-clip 720p30 timeline | 1.7 s wall | **0.17x** output duration | normalize ×1 + concat copy, 2 threads |
 | 2026-09-09 | render (xfade combine path) | 18s 2-clip 720p30 timeline, one 2s xfade | 3.5 s wall | **0.19x** output duration | normalize ×2 + chained xfade/acrossfade re-encode; output probed exactly 18.000s |
 | 2026-09-09 | analyze, proxy OFF (cold) | 300s 1080p30 testsrc2 | 42.8 s wall | **0.14x realtime** | default 2-thread cap; frame_diff dominates (1080p decode × 9000 frames) |
