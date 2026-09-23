@@ -17,20 +17,27 @@ import (
 // clientSignalWriter notices the one line the client command prints when its
 // server is up. Synchronising on that print is what keeps this test event-driven:
 // a deadline here only reports a failure, it never decides an outcome.
+//
+// The channel is handed in and never reassigned — the first version cleared the
+// field after firing, which the test goroutine was reading without the lock, and
+// the race detector on the Linux leg found it in one run (the local box cannot
+// compile this file, and the node's earlier non-race run could not see it either).
 type clientSignalWriter struct {
-	mu     sync.Mutex
-	buf    bytes.Buffer
-	notify chan string
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	ready chan string
+	fired bool
 }
 
 func (w *clientSignalWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	n, err := w.buf.Write(p)
-	if w.notify != nil && strings.Contains(w.buf.String(), "serving the same UI at") {
-		line := w.buf.String()
-		w.notify <- line
-		w.notify = nil
+	if !w.fired && strings.Contains(w.buf.String(), "serving the same UI at") {
+		w.fired = true
+		// Buffered by its creator, and fired once, so this never blocks the
+		// command under test.
+		w.ready <- w.buf.String()
 	}
 	return n, err
 }
@@ -55,7 +62,8 @@ func TestClientCommandOnThisPlatformServesThenStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(a.Ctx)
 	defer cancel()
 	a.Ctx = ctx
-	out := &clientSignalWriter{notify: make(chan string, 1)}
+	ready := make(chan string, 1)
+	out := &clientSignalWriter{ready: ready}
 	a.Stdout = out
 	a.Stderr = io.Discard
 
@@ -64,7 +72,7 @@ func TestClientCommandOnThisPlatformServesThenStops(t *testing.T) {
 
 	var line string
 	select {
-	case line = <-out.notify:
+	case line = <-ready:
 	case <-time.After(60 * time.Second):
 		t.Fatalf("the client command never reported a server; output:\n%s", out.String())
 	}
