@@ -356,3 +356,36 @@ before the completeness gate would keep its promise about new fields. The doctor
 line flips to the capped posture on Windows out of the box. On non-Windows the
 memory knob is still a no-op stub — it is a job-object feature, and the row says
 so rather than implying a bound that is not there.
+
+## D17: ARM64 verification runs against a pinned stock FFmpeg, without the race detector
+
+**Context**: D13 and the Kylin rows in OPERATIONS.md established that the distro
+FFmpeg on Kylin V10 SP1 cannot drive this project — its OMX decoder writes plugin logs
+into ffprobe's stdout (D13) and 4.2.2 has no `xfade`. The standing answer was "point
+`XCUT_FFPROBE`/`XCUT_FFMPEG` at a stock build", and for the *product* that works. For
+verification it never could: the test suite resolves both binaries by name
+(`testmedia.HasFFmpeg`, `media.requireFFmpeg`), so the result was a ledger entry reading
+"the ARM64 test suite is NOT VERIFIED — 15+ tests fail for environmental reasons", with
+no way to tell an environmental failure from a real one on that platform. The Windows
+one-click path already pins a checksummed Gyan.dev build; nothing equivalent existed for
+arm64, and dropping an unpinned binary onto the node was refused as a decision, not as
+laziness.
+
+**Decision (owner, 2026-09-23)**: pin one. `scripts/fetch-arm64-ffmpeg.sh` fetches
+FFmpeg 9.0.2 `linuxarm64-gpl` from the immutable release tag `autobuild-2026-09-20-13-11`
+and checks size (126,904,212 B) and SHA256 before extracting, then checks `xfade` is
+actually in the build — refusing a mismatch rather than running something else.
+`master-latest`, which is the same content under a moving tag, is deliberately not used.
+
+**Consequences**: the honest one is that this is not publisher-signed. GitHub's release
+API publishes no digest for the asset (`digests: null`, checked 2026-09-23), so the hash
+in the script is what two independent fetches of that tag agreed on (the aarch64 host and
+an x86_64 laptop), and the script says so where a reader will see it. Second: ARM64 is
+verified *without* `-race` — that kernel refuses ThreadSanitizer (`unsupported VMA range`),
+so race coverage for this project stays on the Linux x86 full leg and the fast gate's
+`-race` subset, and any claim of "arm64 is covered" has to carry that clause. Third: the
+pin is injected through `PATH`, and a run that reaches for `XCUT_FFMPEG` instead will fail
+48 tests on the vendor build while looking like it tested the pin — which is how this was
+first measured, and why the runner asserts `TOOL_CHECK` from `command -v` before it runs
+anything. Fourth: nothing in a gate runs the script yet, so arm64 remains a documented
+verification step rather than an automated leg.

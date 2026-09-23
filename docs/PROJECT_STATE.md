@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 14:56 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 15:42 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1339,6 +1339,36 @@ explicitly — `defaults=0 ran=10 skipped=0`, `precedence=0 ran=3`, plus the sta
 regressions (`worker ran=21`, `analysis ran=5`, `captions ran=20`, `client`, `flush`,
 `release_rc=0 checks=5`).
 
+**ARM64 stopped being an unverified claim.** Decision (a) was taken, so `449e1af` pinned
+a stock arm64 FFmpeg, and the first run of that pin disagreed with the run before it:
+`ran=553 failed=48` where the manual run had been all-`ok`. Two harness defects, both
+mine, and each one a lesson worth keeping:
+
+1. `fetch-arm64-ffmpeg.sh` joined its argument onto the repo root without asking
+   whether the argument was already absolute, so `…/src` + `/root/…/tools` produced a
+   394 MB FFmpeg *inside* the checkout it was verifying. The doubled path was visible
+   in the run's own log (`bin=/root/xcut-arm64/src//root/xcut-arm64/tools/…`) and the
+   old expression reproduces it exactly — that is the mutation's teeth, plus two arms
+   (absolute argument used as given, relative one resolved against the repo root) and a
+   runner assertion that refuses a fetched path under `$SRC`.
+2. The runner exported `XCUT_FFMPEG`/`XCUT_FFPROBE` and left `PATH` alone. Those
+   variables are read by `config.Env` — the product's startup layer — while the suite
+   resolves both binaries *by name* (`testmedia.HasFFmpeg`, `media.requireFFmpeg`), so
+   the injection never reached the code under test and 48 tests answered with the
+   vendor build's own corruption message. The failure message was the evidence: same
+   suite, same box, same pinned binaries, `PATH` instead of env → `failed=0`,
+   `vendor_corruption_lines=0`. OPERATIONS.md had inherited my mistake and told a
+   reader to verify with those variables; it says `PATH` now, and the runner prints
+   `TOOL_CHECK=OK (vendor 4.2.2 is shadowed)` from `command -v` before it tests
+   anything, because "the binary exists" is not "the tests used it".
+
+Accepted at `2544cc1`: local fast gate PASS (`629 passed, 5 skipped`, race subset 96 s,
+`steps not run: none`), and the ARM64 leg on Kylin V10 SP1 aarch64 — `fetch_rc=0`,
+`TOOL_CHECK=OK`, `ran=553 failed=0 skipped=17`, 19 packages `ok`, `stray_in_src=0`.
+The two deep legs (win-devops, Linux full) were not re-run for this commit: it changes
+one POSIX shell script and four prose files, and the platform that script targets is
+the one that ran it.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -1906,13 +1936,20 @@ regressions (`worker ran=21`, `analysis ran=5`, `captions ran=20`, `client`, `fl
   without it, so `generic_xfade` cannot render with the distro binary. The
   render now fails with a message naming the missing filter and the two ways
   out (`generic_highlight`, or a full build) instead of "ffmpeg failed".
-  Consequence for verification: **the ARM64 test suite is NOT VERIFIED** — 15+
-  tests fail on that box for these two environmental reasons, not product
-  ones, and closing the gap needs a stock arm64 FFmpeg on the node. The repo
-  pins a checksummed Windows build for the one-click path; nothing equivalent
-  exists for arm64, and downloading an unpinned binary onto the node was not
-  done. Owner decision needed: pin an arm64 build for CI, or accept
-  "arm64 = compile-verified + artifact smoke-tested" as the standing bar.
+  Consequence for verification: **closed 2026-09-23, by measurement rather than by
+  argument.** `scripts/fetch-arm64-ffmpeg.sh` pins a stock arm64 build (FFmpeg
+  9.0.2 `linuxarm64-gpl` from the immutable tag `autobuild-2026-09-20-13-11`), checks
+  size and SHA256 before extracting, checks `xfade` is present after, and refuses a
+  mismatch instead of running something else. The whole suite then passes on that same
+  Kylin box against the pin: `ran=553 failed=0 skipped=17`, 19 packages `ok`,
+  `vendor_corruption_lines=0`, with a `TOOL_CHECK` step asserting that PATH resolves
+  the pinned binaries — because that assertion is exactly what the first run lacked
+  (see session #18). What the pin does not buy: `-race` still cannot start there
+  (`ThreadSanitizer: unsupported VMA range — Found 39, Supported 48`, a kernel limit,
+  not a product failure), so **ARM64 is verified without the race detector**, and race
+  coverage stays on the Linux x86 full leg plus the fast gate's `-race` subset. The
+  digest is not publisher-signed (GitHub publishes none for that asset); the script
+  states where the hash came from.
 - serve authentication is a **static shared bearer token over cleartext HTTP**
   (D12): no TLS, one token for all clients, and no rotation surface (rotate =
   edit config + restart, which also drops every session). The failure budget
@@ -2004,16 +2041,16 @@ regressions (`worker ran=21`, `analysis ran=5`, `captions ran=20`, `client`, `fl
    single-court recording, so "our strokes" and "the hall's strokes" stop being
    the same signal. Owner-supplied footage, or the vision sidecar.
 
-3. Two decisions that are the owner's, not mine, and both block work:
-   **(a) arm64 in CI** — Kylin's distro FFmpeg cannot run the suite (ffprobe JSON
-   corruption + no `xfade`), so arm64 is compile-verified and artifact-smoke-
-   tested only. Fixing it means pinning a stock arm64 build the way the Windows
-   one-click pins Gyan.dev with a SHA256; that was not done unilaterally.
-   **(b) release cadence** — v0.1.8-alpha shipped tonight, and the reel-length
-   override plus the quota fix that makes it work are already on `main`. Whether
-   that becomes v0.1.9-alpha now or rides along with the next batch is a
-   packaging call (and packaging is laptop load the control plane asked to keep
-   down).
+3. Two decisions that were the owner's, not mine — **both taken 2026-09-23**.
+   **(a) arm64 in CI** — decided: pin a stock arm64 build the way the Windows one-click
+   pins Gyan.dev. Implemented as `scripts/fetch-arm64-ffmpeg.sh` and measured green on
+   the Kylin box (Known Issues, ARM64: `ran=553 failed=0 skipped=17`). What is still
+   *not* done: nothing runs that script from a gate, so the pin is a documented
+   verification step rather than a CI job, and 4 of that box's 17 skips are the Rust
+   worker cases (no cargo on the Kylin host). Wiring arm64 into the control plane is
+   now a build-infrastructure task, not a decision.
+   **(b) release cadence** — decided: cut v0.1.9-alpha now rather than bundling it with
+   the next batch. In flight.
 
 4. Subtitles with a real Whisper: install faster-whisper locally and run
    `xcut subtitles` on real singing content (the plumbing is tested; the

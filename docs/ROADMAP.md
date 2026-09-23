@@ -60,6 +60,10 @@ Living document. Near-term milestones are concrete; far-term is directional.
       binary runs a full workflow on Kylin V10 SP1 aarch64. Twelve sessions of
       "remote CI" had been Windows-on-Windows and could not see platform
       drift (D11 amendment).
+- [x] ARM64 *test* verification (session #18, D17): the suite now runs green on the Kylin
+      box against a pinned stock FFmpeg (`scripts/fetch-arm64-ffmpeg.sh`) — what it
+      replaced was a ledger line that could not tell an environmental failure from a real
+      one. Not wired into a gate yet, and `-race` cannot start on that kernel.
 - [ ] FFmpeg component install off Windows: the pinned one-click installer is
       Windows-only, so a Kylin/ARM64 box needs a manual `XCUT_FFMPEG`/
       `XCUT_FFPROBE` — proven to work, unproven as product UX. Deciding this
