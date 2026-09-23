@@ -141,7 +141,15 @@ func TestWrappedChildKeepsPureStdoutAndItsOwnExitStatus(t *testing.T) {
 // TestCapKillsAChildThatOverrunsIt is the claim the posture line makes: the cap is not
 // decoration. It asks an interpreter to allocate four times the cap and expects the
 // kernel, not this package, to end the child.
+//
+// It ran on Kylin V10 SP1 first and failed there — "a 512 MB allocation survived a
+// 128 MB cap" — which is the measurement behind D18's wording, not a flake. The v2
+// precondition below keeps the case asserting where the mechanism exists and skipping by
+// name where it does not; a permanently red leg would hide the next real failure.
 func TestCapKillsAChildThatOverrunsIt(t *testing.T) {
+	if !cgroupV2Unified(t) {
+		return
+	}
 	py, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("no python3 to allocate with")
