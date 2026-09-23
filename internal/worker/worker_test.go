@@ -3,11 +3,13 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +138,27 @@ func TestHelperWorkerStub(t *testing.T) {
 		os.Stderr.WriteString(flood.String())
 		os.Stdout.WriteString(`{"protocol":1,"ok":false}`)
 		os.Exit(1)
+	case "flood":
+		// A worker that answers more than the budget may never stop answering: the
+		// reader has to abort it rather than buffer it. The answer is refused, so the
+		// port cannot come back through stdout — it is published to the side channel
+		// the parent named, and the kernel closes that listener when the process dies.
+		if p := os.Getenv("XCUT_TEST_WORKER_PORTFILE"); p != "" {
+			ln, lerr := net.Listen("tcp", "127.0.0.1:0")
+			if lerr == nil {
+				defer ln.Close()
+				port := ln.Addr().(*net.TCPAddr).Port
+				if err := os.WriteFile(p, []byte(fmt.Sprint(port)), 0o600); err != nil {
+					return
+				}
+			}
+		}
+		os.Stdout.WriteString(`{"protocol":1,"ok":true,"result":{"pad":"`)
+		for n := 0; n < 8192; n++ {
+			os.Stdout.WriteString("0123456789abcdef") // 128 KiB, well past any test budget
+		}
+		os.Stdout.WriteString(`"}}`)
+		time.Sleep(10 * time.Minute)
 	case "garbage":
 		os.Stdout.WriteString("this is not a json envelope")
 	case "never-answer":
@@ -257,5 +280,62 @@ func TestFailedWorkerCarriesTheEndOfItsStderr(t *testing.T) {
 	}
 	if strings.Contains(chain, "HEAD-MARKER") {
 		t.Fatalf("worker failure carried the whole stderr, not the tail (%d bytes)", len(chain))
+	}
+}
+
+// TestOversizedResponseIsRefusedAndTheWorkerKilled: the response budget is a refusal,
+// not a buffer. A worker that keeps writing must be aborted mid-answer — "nothing
+// unbounded" (AGENTS.md rule 4) otherwise holds only for children that behave.
+func TestOversizedResponseIsRefusedAndTheWorkerKilled(t *testing.T) {
+	bin := stubWorkerCmd(t, "flood")
+	portFile := filepath.Join(t.TempDir(), "port")
+	t.Setenv("XCUT_TEST_WORKER_PORTFILE", portFile)
+
+	const budget = 4096
+	_, err := callBounded(context.Background(), bin, Request{Protocol: Protocol, Op: "describe"},
+		30*time.Second, budget)
+	if err == nil {
+		t.Fatal("a 128 KiB response was accepted under a 4 KiB budget")
+	}
+	if code := xcerr.CodeOf(err); code != xcerr.CodeResourceLimit {
+		t.Fatalf("an oversized response reported %s, want resource_limit: %v", code, err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, fmt.Sprintf("worker response exceeded %d bytes", budget)) {
+		t.Errorf("message = %q, want it to name the budget that was hit", msg)
+	}
+	// The typed cause has to survive the wrap: a caller distinguishing "too big" from
+	// "cannot read" branches on it, and xcerr prints the chain into logs — dropping it
+	// would lose the reason in both places that matter.
+	var tooLarge errResponseTooLarge
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("the refusal lost its cause: %v", err)
+	}
+	if tooLarge.max != budget {
+		t.Errorf("the cause carries max=%d, want the %d bytes actually enforced", tooLarge.max, budget)
+	}
+	if !strings.Contains(msg, "response exceeds") {
+		t.Errorf("message = %q, want the cause's own words in the chain", msg)
+	}
+
+	// Aborted, not abandoned: the kernel closes the stub's listener with the process,
+	// so a port that still answers says the worker is alive and holding the pipe.
+	data, readErr := os.ReadFile(portFile)
+	if readErr != nil {
+		t.Skipf("the stub could not publish a port to check (%v)", readErr)
+	}
+	port, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+	if convErr != nil {
+		t.Fatalf("port file holds %q", data)
+	}
+	conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	if dialErr == nil {
+		_ = conn.Close()
+		t.Error("the oversized worker is still alive: the answer was refused but the process was not aborted")
+	}
+	// The *kind* is the claim: a timeout is also an error, and it would say nothing
+	// about whether the process is gone. Only a refused connection does.
+	if !strings.Contains(dialErr.Error(), "refused") {
+		t.Errorf("dial of the killed worker's port returned %v, want a refused connection", dialErr)
 	}
 }

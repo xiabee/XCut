@@ -167,8 +167,11 @@ func callBounded(ctx context.Context, bin string, req Request, timeout time.Dura
 	if readErr != nil {
 		var tooLarge errResponseTooLarge
 		if errors.As(readErr, &tooLarge) {
+			// readErr is kept as the cause: the code is what a caller branches on, and
+			// dropping it here would leave "why did my sidecar die" with only a generic
+			// resource-limit line to read. The convention below the branch already follows.
 			return nil, xcerr.E(xcerr.CodeResourceLimit,
-				fmt.Sprintf("worker response exceeded %d bytes (refusing to buffer it)", maxResp), nil)
+				fmt.Sprintf("worker response exceeded %d bytes (refusing to buffer it)", maxResp), readErr)
 		}
 		// Name the worker: a misconfigured workers.ai_bin (the interpreter
 		// instead of the sidecar script, say) fails here, and "cannot read
