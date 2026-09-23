@@ -1,11 +1,20 @@
 name: Release
 
-# Tag-triggered release: push a tag like v0.1.0 to build and attach binaries.
-# No official version is ever created automatically by CI.
+# Manual only, deliberately. No official version is ever created automatically by
+# CI, and the tag trigger that used to sit here had never completed a run: every
+# tagged release from v0.1.1 to v0.1.8-alpha died in "Build Rust worker" (see the
+# note below that comment), and the two Windows assets a release ships — the zip and
+# the setup exe — cannot be produced on an ubuntu runner at all. The release path is
+# local: scripts/build-release.ps1 (or .sh), then make-installer.ps1 and
+# make-setup.ps1, then `gh release create` with the artifacts and a SHA256SUMS file.
+# The job below stays runnable by hand for a machine that has the runners' shape.
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v0.1.9-alpha"
+        required: true
 
 permissions:
   contents: write
@@ -13,8 +22,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -31,9 +44,10 @@ jobs:
           workspaces: crates/xcut-worker-media
 
       - name: Build Rust worker (host)
-        # The crate is a package, not a workspace: run cargo where its
-        # Cargo.toml is. Every tagged release from v0.1.1 to v0.1.8-alpha died
-        # here with "could not find `Cargo.toml` in /home/runner/work/XCut/XCut".
+        # The crate is a package, not a workspace: run cargo where its Cargo.toml
+        # is. This is the step that killed every tag-triggered attempt from v0.1.1
+        # to v0.1.8-alpha — "could not find `Cargo.toml` in
+        # /home/runner/work/XCut/XCut" — which is one reason the trigger is gone.
         working-directory: crates/xcut-worker-media
         run: cargo build --release -p xcut-worker-media
 
@@ -45,16 +59,16 @@ jobs:
         # code — the script takes its version from $1.)
         run: |
           chmod +x scripts/build-release.sh
-          scripts/build-release.sh "$GITHUB_REF_NAME" dist
+          scripts/build-release.sh "$VERSION" dist
 
       - name: Smoke test artifact
         # The two worker files are asserted, not merely listed: shipping
         # "static musl worker" quietly degraded to "target not installed" is
         # exactly how this release path would fail quietly again.
         run: |
-          ./dist/xcut-$GITHUB_REF_NAME-linux-amd64 version
-          test -f "dist/xcut-worker-media-$GITHUB_REF_NAME-linux-amd64"
-          test -f "dist/xcut-worker-media-$GITHUB_REF_NAME-host"
+          ./dist/xcut-$VERSION-linux-amd64 version
+          test -f "dist/xcut-worker-media-$VERSION-linux-amd64"
+          test -f "dist/xcut-worker-media-$VERSION-host"
 
       - name: Create GitHub release with binaries
         uses: softprops/action-gh-release@v2
