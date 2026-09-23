@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-23 11:51 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-23 12:49 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -1158,6 +1158,55 @@ internal/worker's protocol tests will run` and no `skip worker/` line left in th
 then the explicit runs: `analysis_rc=0 ran=5 skipped=0`, `worker_rc=0 ran=21 skipped=0`
 (the package's first zero-skip pass anywhere), `regress_rc=0 ran=20 skipped=0`.
 
+**A coverage sweep, then the two things it was pointing at.** The max-merge sweep
+(22 test binaries on the node, 82.4 %) named 28 functions at 0.0 %. Three of them have
+no caller at all and two of those carry a comment naming one that does not exist:
+`workspace.RenameAtomic` (its sibling's doc block says the timeline document keeps
+plain `RenameAtomic`; the timeline publishes through `pipeline.WriteAtomic`, which
+calls `RetryableRename`), `analysis.coverageAt` (a second, unread definition of the
+beat grid's coverage rule, orphaned when B1b moved the computation into `bestPhase`),
+and `analysis.Key` ("used by CLI logging" — no CLI line references it). All three are
+gone and the comment now names what is actually called. Two more were checked instead
+of assumed: `writeIdleWriter.Flush` is an interface-conformance shim — `ServeContent`
+does not flush, verified against the stdlib's own `fs.go`, and the first version of
+that case asserted a flush through the funnel and went red for exactly that reason —
+so what is pinned is the shim's two arms; and `cmdClient` on `!windows`, the desktop
+client a Linux or macOS user actually gets, had never been compiled by a test.
+
+**The client case is also the round's lesson about which leg sees what.** It cannot
+compile on the dev box; `GOOS=linux go vet` proves only that it type-checks; the
+node's first run of it was without `-race`. Three defects surfaced in three separate
+Linux runs, all mine, none of them reachable from this laptop: the URL was sliced from
+the first `http://` in the shared buffer, which is the serve pipeline's own line, not
+the client's; it bound the configured default port, so any neighbour holding 8619
+would have failed it for unrelated reasons; and the signal channel field was cleared
+after firing from the writer's goroutine while the test read it unlocked — a real data
+race, caught by the detector the local and Windows legs do not run. Each was fixed
+where it could be seen, and the last one re-verified with `-race -count=5` on the node
+before the gate was re-run.
+
+**Packaging is checked again, locally, on the host it ships from.** The artifact smoke
+was a GitHub Actions step and that runner is out of quota, so `build-release` had been
+stamping three platform binaries and never starting one. `scripts/smoke-release.sh`
+(now called by both twins, one check list in one file) runs the host artifact: the
+version and commit it was stamped with, the usage page, a nonzero refusal for an
+unknown command, `init` laying out the workspace it was pointed at, and the shipped
+`config show` still not printing a bearer token. Measured on both hosts: a Windows run
+built all three targets plus the musl worker and printed five passes; and the Linux leg
+carried the same step for the first time (`release_rc=0 checks=5`), which is the host
+this side could not verify.
+
+Accepted at `fabe46d` on all three channels: local fast gate PASS (`618 passed,
+5 skipped`, `steps not run: none`); win-devops `OVERALL PASS` (`exit=0
+duration=1m39.453s`); Linux full gate PASS with `608 passed, 10 skipped`,
+`DATA_RACE_lines=0`, `FAIL_lines=0`, `not run: nothing`, and every new case run
+explicitly on that node — `client=0 ran=1`, `flush=0 ran=1`, `worker=0 ran=21`,
+`analysis=0 ran=5`, `captions_rc=0,0 ran=20` (round two's cases, still green),
+`release_rc=0 checks=5`. The two intermediate shas are part of the record rather than
+erased from it: `4f032be2`'s Linux leg was red on my own test's URL slice, and
+`9b30373`'s was red with `DATA_RACE_lines=1` — the gate's numbers, not mine, which is
+why they are quoted here instead of a green headline.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); v0.1.8-alpha
@@ -1804,8 +1853,12 @@ then the explicit runs: `analysis_rc=0 ran=5 skipped=0`, `worker_rc=0 ran=21 ski
    `clippy --all-targets` and `cargo test` all leave it in `target/debug/deps/`, while
    the tests look for `target/{debug,release}/xcut-worker-media`. Closed at `983596f`
    (both scripts build it before `go test`; the local fast gate went 609/8 → 617/5 as
-   those three started running). `setup.*` still runs only on Windows, and that one is
-   by design.
+   those three started running). Followed up at `fabe46d`: the sweep was re-read
+   function by function, three orphaned helpers were deleted (two of them with a
+   comment naming a caller that does not exist), and the two live leftovers — the
+   streaming shim and the non-Windows `xcut client` — now have cases that run on the
+   leg that can compile them. What is left of this item is `setup.*`, which is
+   Windows-only by design, and `*_other.go` platform stubs, which are not gaps.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
