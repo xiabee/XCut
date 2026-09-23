@@ -13,6 +13,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -161,6 +162,51 @@ func (s KaraokeStyle) frame() assFrame {
 		f.outline = 1
 	}
 	return f
+}
+
+// ReadASSFrame reports the reference frame an ASS script declares: the
+// PlayResX/PlayResY pair libass scales every pixel field of the script by. It is
+// the reader's half of KaraokeStyle.frame — a script laid out for a 1280×720
+// frame burns at the size and position meant for a shape the viewer never saw,
+// so anything that wants to know whether this file belongs to *its* reel has to
+// ask the file.
+//
+// ok=false means the script makes no claim: no [Script Info] section, a missing
+// or unparsable value, or a format like SRT that has no reference frame at all.
+// "No claim" is not "the shipped default" — a file that never wrote 1280×720
+// must not be reported as having declared it.
+func ReadASSFrame(r io.Reader) (w, h int, ok bool) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 4096), 1<<20) // a dialogue line can outgrow the default
+	section := ""
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			if section == "Script Info" {
+				break // past the only section that can carry the pair
+			}
+			section = strings.Trim(line, "[]")
+			continue
+		}
+		if section != "Script Info" {
+			continue
+		}
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n <= 0 {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "PlayResX":
+			w = n
+		case "PlayResY":
+			h = n
+		}
+	}
+	return w, h, w > 0 && h > 0
 }
 
 // WriteKaraokeASS renders the transcript as ASS with word-level \kf sweeps

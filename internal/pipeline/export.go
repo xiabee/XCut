@@ -2,10 +2,12 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/subs"
 	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/worker"
 )
@@ -48,7 +50,63 @@ const (
 	ExportRenderQueued   = "queued as its own job, so it waits for the render slot like any other render"
 	ExportReuseTimeline  = "the project already has a timeline"
 	ExportReuseSubtitles = "the project already has subtitles"
+	// ExportRestyleSubtitles and ExportStaleSubtitles are the two halves of the
+	// answer a plain "already has subtitles" used to give: the file on disk was
+	// laid out for some frame, the reel is some frame, and when those differ the
+	// tap either fixes it or says that it cannot.
+	ExportRestyleSubtitles = "re-transcribed for the reel's own frame: "
+	ExportStaleSubtitles   = "burned as they stand, there is no sidecar to lay them out again: "
 )
+
+// subsState is what the tap knows about the caption file a project already has:
+// where it is, which frame it declares, and which frame the reel renders onto.
+// One type answers at ask time and in the body, because the two moments can see
+// different things — a tap that has to build the reel first only learns the
+// canvas after that build — and a rule each of them held separately is a rule
+// that can disagree with itself.
+type subsState struct {
+	path    string
+	styledW int
+	styledH int
+	reelW   int
+	reelH   int
+}
+
+func (d Deps) subsState(projectID string) subsState {
+	s := subsState{path: d.existingSubtitlesPath(projectID)}
+	if s.path == "" {
+		return s
+	}
+	if f, err := os.Open(s.path); err == nil {
+		if w, h, ok := subs.ReadASSFrame(f); ok {
+			s.styledW, s.styledH = w, h
+		}
+		f.Close()
+	}
+	// The same read the transcript stage does: the canvas is the timeline
+	// document's, not the request's, so a hand-edited reel is respected.
+	if tp, err := d.TimelinePath(projectID); err == nil {
+		if tl, lerr := timeline.LoadFile(tp); lerr == nil {
+			s.reelW, s.reelH = tl.Canvas.Width, tl.Canvas.Height
+		}
+	}
+	return s
+}
+
+// mismatch is the case the tap used to call "reuse": the captions exist, but for
+// a different frame than the reel now has. A file that claims nothing (an SRT, or
+// an ASS with no PlayRes pair) and a project with no timeline yet both mean
+// "cannot compare" — that is the absence of evidence, not a conflict, and the
+// tap says what it knows rather than guessing a mismatch into existence.
+func (s subsState) mismatch() bool {
+	return s.path != "" && s.styledW > 0 && s.reelW > 0 &&
+		(s.styledW != s.reelW || s.styledH != s.reelH)
+}
+
+func (s subsState) frames() string {
+	return fmt.Sprintf("the captions are styled for %dx%d and this reel is %dx%d",
+		s.styledW, s.styledH, s.reelW, s.reelH)
+}
 
 // ExportProjectAsync starts the tap. It returns the job id and the plan the state
 // supported at the moment of asking.
@@ -68,10 +126,10 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 	switch {
 	case !req.Subs:
 		steps[1] = ExportStep{Step: "subtitles", Action: "skip", Reason: ExportSkipNotAsked}
-	case subsPath != "":
-		steps[1] = ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportReuseSubtitles}
-	case worker.ResolveAIBin(d.Cfg.Workers.AIBin) == "":
+	case subsPath == "" && worker.ResolveAIBin(d.Cfg.Workers.AIBin) == "":
 		steps[1] = ExportStep{Step: "subtitles", Action: "skip", Reason: ExportSkipNoSidecar}
+	case subsPath != "":
+		steps[1] = d.subtitlesReuseStep(project.ID)
 	}
 	id, err := d.Queue.RunAsync(d.Ctx, job.TypeExport, project.ID, job.ClassCPUHeavy,
 		map[string]any{"style": req.Timeline.Style, "subs": req.Subs, "out": req.Out},
@@ -80,6 +138,23 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 		return "", nil, err
 	}
 	return id, steps, nil
+}
+
+// subtitlesReuseStep says *which* kind of "there is already a file" this is.
+// Existence alone used to be the whole answer, which let a project that changed
+// shape — horizontal reel to vertical, the default of the tap itself — report its
+// old captions as done and burn a caption box sized for a frame nobody is going
+// to watch.
+func (d Deps) subtitlesReuseStep(projectID string) ExportStep {
+	st := d.subsState(projectID)
+	switch {
+	case st.mismatch() && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "":
+		return ExportStep{Step: "subtitles", Action: "create", Reason: ExportRestyleSubtitles + st.frames()}
+	case st.mismatch():
+		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportStaleSubtitles + st.frames()}
+	default:
+		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportReuseSubtitles}
+	}
 }
 
 func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner {
@@ -101,11 +176,29 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 		// a moment ago may have changed which canvas the captions are styled for, and
 		// a transcript written since the request is a transcript worth reusing.
 		subsPath := d.existingSubtitlesPath(project.ID)
-		if subsPath == "" && req.Subs && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "" {
-			if err := d.subtitlesBody(project, "")(jctx, stage(0.5, 0.8)); err != nil {
-				return err
+		if req.Subs {
+			st := d.subsState(project.ID)
+			sidecar := worker.ResolveAIBin(d.Cfg.Workers.AIBin) != ""
+			switch {
+			case (st.path == "" || st.mismatch()) && sidecar:
+				// Nothing yet, or something styled for another frame: with a sidecar
+				// the words can be laid out again, and a transcript that fails here
+				// fails the tap rather than quietly shipping the ill-fitted file the
+				// plan promised to replace.
+				if err := d.subtitlesBody(project, "")(jctx, stage(0.5, 0.8)); err != nil {
+					return err
+				}
+				subsPath = d.existingSubtitlesPath(project.ID)
+			case st.mismatch():
+				// No way to restyle. Burn what is there — an ill-fitted caption beats
+				// no caption, and the plan line already said which of the two the user
+				// is getting — but name both frames on the record for whoever reads the
+				// log after the reel looks wrong.
+				d.Log.Warn("captions are styled for another canvas than the reel",
+					"project", project.ID,
+					"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
+					"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH))
 			}
-			subsPath = d.existingSubtitlesPath(project.ID)
 		}
 		progress(0.8)
 
