@@ -1249,12 +1249,14 @@ state what a green run did not check had no entry for the longest thing it skips
 was verified rather than assumed: with the cgo probe forced false the verdict reads
 `not run: race-subset`, and with it true, `steps not run: none` plus the wall time.
 
-Accepted at `111e2ba`: local fast gate PASS (`621 passed, 5 skipped`, race subset run);
-win-devops `OVERALL PASS` (`exit=0 duration=1m32.141s`) — and that duration is
-unchanged from its pre-race runs, which suggests the node took the `not run:
-race-subset` path for want of a C toolchain. **Not verified**, deliberately recorded:
-this machine cannot read that node's job log (HTTP `/api/v1/jobs` 404s, ssh refused),
-so whether its gate printed the skip is an inference from a duration, not a reading.
+Accepted at `111e2ba`: local fast gate PASS (`621 passed, 5 skipped`, race subset run,
+`steps not run: none`); win-devops `OVERALL PASS` (`exit=0 duration=1m32.141s`) which
+**skipped the new step and said so** — read out of the node's own job log
+(`20260923-133058-4bf8f0`): `== go test -race: SKIPPED (no cgo/C toolchain; the full
+leg covers it)` and `gate (fast): PASS (steps not run: race-subset; tests skipped: 11`.
+That node has no C toolchain, so the -race subset runs on this laptop and on the Linux
+node and nowhere between; the accounting line is the reason that is visible in the
+verdict instead of inferred from a duration that did not move.
 
 ## Version / HEAD
 
