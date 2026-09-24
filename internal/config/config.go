@@ -103,6 +103,16 @@ type Log struct {
 	MaxFiles  int    `json:"max_files"`   // rotated files kept; 0 = 3
 }
 
+// Render tunes video encoding for renders (and the subtitle burn that can
+// ride one). Encoder picks the H.264 encoder: "auto" probes the machine's
+// hardware encoders (NVENC/AMF/QSV/VAAPI, platform order) and falls back to
+// libx264; a named encoder its probe refuses degrades to libx264 too —
+// wanting speed must never cost the render. Validated at load against
+// render.EncoderNames.
+type Render struct {
+	Encoder string `json:"encoder"` // auto | libx264 | h264_nvenc | hevc_nvenc | h264_qsv | h264_amf | h264_vaapi
+}
+
 // Workers configures optional helper workers (never required).
 type Workers struct {
 	// MediaBin locates the Rust media worker; "" = PATH lookup of
@@ -123,6 +133,7 @@ type Config struct {
 	Resource  Resource `json:"resource"`
 	FFmpeg    FFmpeg   `json:"ffmpeg"`
 	Job       Job      `json:"job"`
+	Render    Render   `json:"render"`
 	Workers   Workers  `json:"workers"`
 }
 
@@ -392,6 +403,17 @@ func Resolve(cfg *Config) error {
 	default:
 		return xcerr.E(xcerr.CodeValidation,
 			fmt.Sprintf("invalid workers.audio %q (want auto|ffmpeg|rust)", cfg.Workers.Audio), nil)
+	}
+	// The encoder knob is case-folded so "NVENC" from a hand-edited config is
+	// not a silent software render; unknown names are refused at load, because
+	// a typo here would otherwise be discovered as "it still works, only slow".
+	cfg.Render.Encoder = strings.ToLower(strings.TrimSpace(cfg.Render.Encoder))
+	if cfg.Render.Encoder == "" {
+		cfg.Render.Encoder = EncoderAuto
+	}
+	if !ValidEncoderName(cfg.Render.Encoder) {
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("invalid render.encoder %q (want one of: %s)", cfg.Render.Encoder, strings.Join(EncoderNames, ", ")), nil)
 	}
 	return nil
 }

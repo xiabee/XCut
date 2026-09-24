@@ -87,6 +87,9 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Job.MaxHistory != 0 {
 		out.Job.MaxHistory = layer.Job.MaxHistory
 	}
+	if layer.Render.Encoder != "" {
+		out.Render.Encoder = layer.Render.Encoder
+	}
 	if layer.Workers.MediaBin != "" {
 		out.Workers.MediaBin = layer.Workers.MediaBin
 	}

@@ -6,6 +6,34 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **GPU-accelerated rendering with automatic detection (`render.encoder`).** The knob is
+  `auto` by default: at first render the machine's hardware H.264 encoders (NVENC / AMF /
+  QSV / VAAPI, platform order) are probed with a real tiny encode — a name present in the
+  ffmpeg build says nothing about whether a GPU and its driver are actually there — and the
+  first one that answers is what every encode in the reel uses (normalized clips, xfade
+  combine, subtitle burn), falling back to libx264 when none does, with the reason logged.
+  A named encoder is honored the same way; a typo is refused at config load, and doctor
+  reports the posture (`Encoder ✓ h264_nvenc (hardware, render.encoder=auto)`). The CRF
+  number is mapped onto nvenc's `-cq` scale with a +8 offset measured for size/quality
+  parity — passing CRF raw produced 2.3× the bytes (docs/PERFORMANCE.md carries the table).
+  Proxies stay on libx264 on purpose: their bytes feed the analyzers, and an encoder change
+  there would shift analysis results without an eval A/B to say whether it shifts them well.
+
+### Fixed
+- **A drag that reorders the reel no longer destroys the ruler it sits on.** The strip
+  positioned blocks by `timeline_start` while only the save recomputed it: reordering
+  flipped the array, every block kept its stale position, and the ruler — reading the new
+  last row's stale start — collapsed from 12 s to 2 s and blew the widths up fivefold. The
+  save's layout arithmetic is now one rule shared by every editing mutation, so the strip
+  always previews the document the save will write.
+- **A relative render `out` from the API lands in the workspace**, not in whatever
+  directory serve happened to be started from; traversal (`../`) is refused before any job
+  runs. Absolute paths — the documented shape — are untouched, and the CLI keeps the
+  caller's cwd semantics a shell user can see.
+- **The inspector's xfade-duration input travels inside its label** (clicking the text
+  focuses it; screen readers get a name).
+
+### Added
 - **`xcut auto --subs auto` — the one-shot can be told to use what the project has.** The
   value was already taken: `auto --subs auto` read "auto" as a filename and died with
   "subtitle file does not exist", which is a confusing answer to a reasonable question. It now

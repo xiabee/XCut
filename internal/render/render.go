@@ -32,6 +32,11 @@ type Options struct {
 	TempDir    string // scratch dir for normalized clips (caller owns lifecycle)
 	CRF        int    // x264 quality; 0 → default 20
 	OnProgress func(done, total int)
+	// Encoder is the video codec for every encode this render performs
+	// (normalized clips, xfade combine, subtitle burn). "" is libx264.
+	// Hardware names must be probed before they get here — config.Resolve
+	// validates the knob, pipeline.SelectEncoder probes the machine.
+	Encoder string
 	// TempBudgetBytes caps this render's own scratch (normalized clips).
 	// Checked after every clip; 0 disables the check. The caller derives it
 	// from resource.max_temp_gb minus current temp/ usage.
@@ -272,8 +277,8 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000",
 	)
 	args = append(args, audioArgs...)
+	args = append(args, encoderVideoArgs(opts.Encoder, opts.CRF)...)
 	args = append(args,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", strconv.Itoa(opts.CRF),
 		"-pix_fmt", "yuv420p",
 		"-video_track_timescale", "90000",
 		out,
@@ -505,7 +510,9 @@ func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, op
 	args = append(args,
 		"-filter_complex", filter,
 		"-map", lastV, "-map", lastA,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", strconv.Itoa(opts.CRF),
+	)
+	args = append(args, encoderVideoArgs(opts.Encoder, opts.CRF)...)
+	args = append(args,
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k",
 		"-movflags", "+faststart",

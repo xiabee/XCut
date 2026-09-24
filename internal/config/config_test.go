@@ -323,3 +323,37 @@ func TestResolveClampsAbsurdDiskBudgets(t *testing.T) {
 		t.Fatalf("temp budget bytes overflow: %d", b)
 	}
 }
+
+// TestResolveRenderEncoder pins the render.encoder knob's load-time contract:
+// empty means auto (the shipped default — the feature is detection, and a
+// user who never heard of the knob still gets it), names case-fold so a
+// hand-edited "NVENC" reaches the hardware, and a typo is refused here rather
+// than discovered later as "it still renders, only slowly".
+func TestResolveRenderEncoder(t *testing.T) {
+	cfg := Default()
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Render.Encoder != EncoderAuto {
+		t.Fatalf("unset render.encoder resolved to %q, want %q", cfg.Render.Encoder, EncoderAuto)
+	}
+
+	cfg = Default()
+	cfg.Render.Encoder = "  H264_NVENC "
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Render.Encoder != "h264_nvenc" {
+		t.Fatalf("case-folded render.encoder = %q, want h264_nvenc", cfg.Render.Encoder)
+	}
+
+	cfg = Default()
+	cfg.Render.Encoder = "nvenc_made_up"
+	err := Resolve(cfg)
+	if err == nil {
+		t.Fatal("an unknown render.encoder must be refused at load")
+	}
+	if !strings.Contains(err.Error(), "h264_vaapi") {
+		t.Fatalf("the refusal should list the accepted values, got: %v", err)
+	}
+}

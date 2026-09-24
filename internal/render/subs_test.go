@@ -58,7 +58,7 @@ func TestBurnSubtitles(t *testing.T) {
 
 	// Separate output first.
 	out := filepath.Join(dir, "burned.mp4")
-	if err := BurnSubtitles(context.Background(), tools, src, subs, out); err != nil {
+	if err := BurnSubtitles(context.Background(), tools, "", src, subs, out); err != nil {
 		t.Fatal(err)
 	}
 	outProbe, err := media.ProbeFile(context.Background(), tools, out)
@@ -70,7 +70,7 @@ func TestBurnSubtitles(t *testing.T) {
 	}
 
 	// In-place: the pipeline burns the rendered file itself.
-	if err := BurnSubtitles(context.Background(), tools, src, subs, src); err != nil {
+	if err := BurnSubtitles(context.Background(), tools, "", src, subs, src); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(src + ".subs.partial"); !os.IsNotExist(err) {
@@ -90,7 +90,7 @@ func TestBurnSubtitlesMissingSubs(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools := media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe", Threads: 2}
-	err = BurnSubtitles(context.Background(), tools, src, filepath.Join(dir, "nope.srt"), filepath.Join(dir, "out.mp4"))
+	err = BurnSubtitles(context.Background(), tools, "", src, filepath.Join(dir, "nope.srt"), filepath.Join(dir, "out.mp4"))
 	if err == nil {
 		t.Fatal("missing subs must fail")
 	}

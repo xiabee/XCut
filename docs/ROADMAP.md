@@ -412,6 +412,15 @@ output — kept visible so nobody mistakes them for evidence):
 [Teleprompter — Trending YouTube Shorts 2026: Top 10 Formats](https://www.teleprompter.com/blog/trending-youtube-shorts),
 [Metricool — CapCut Video Editing Tutorial](https://metricool.com/capcut-video-editing/).
 
+- [x] G1 — GPU-accelerated rendering (owner directive, 2026-09-25): `render.encoder`
+      auto-detects the machine's hardware H.264 encoder by probing a real encode
+      (NVENC/AMF/QSV/VAAPI, platform order), drives every reel encode with it, and falls
+      back to libx264 with a logged reason when the probe refuses. Measured on the
+      reference laptop: ~31% faster encode at size/quality parity with the cq=crf+8
+      mapping (docs/PERFORMANCE.md); pipeline-level parity on small reels, real-footage
+      rows pending. Proxy generation deliberately stays on libx264 — its bytes feed the
+      analyzers.
+
 ## Phase 4 — Desktop client & polish
 
 The desktop client is designed in docs/CLIENT_DESIGN.md (native WebView2

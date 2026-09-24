@@ -39,6 +39,11 @@ type Deps struct {
 	Log   *slog.Logger
 	Queue *job.Queue
 
+	// enc caches the render.encoder resolution (probe once per process —
+	// the machine's GPUs do not change mid-run). NewDeps sets it; a Deps
+	// built literally (some tests) resolves on each render instead.
+	enc *encoderCache
+
 	// TimelineWriteLock, when set, serializes the timeline document's
 	// check-and-write sections (API PUTs, backup restores, regeneration
 	// writes) inside one process — the API server injects its own mutex so
@@ -46,6 +51,14 @@ type Deps struct {
 	// CLI commands leave it nil: the workspace writer lock already
 	// excludes concurrent writers across processes.
 	TimelineWriteLock sync.Locker
+}
+
+// encoderCache memoizes the render.encoder knob's resolution.
+type encoderCache struct {
+	mu   sync.Mutex
+	done bool
+	enc  render.Encoder
+	note string
 }
 
 // NewDeps builds Deps from an App-like configuration (used by both CLI and API).
@@ -57,7 +70,46 @@ func NewDeps(ctx context.Context, db *storage.DB, ws *workspace.Workspace, cfg *
 		Cfg:   cfg,
 		Log:   log,
 		Queue: job.NewQueue(db, cfg.Resource.MaxConcurrentJobs, cfg.Resource.MaxRenderWorkers, cfg.Job.MaxHistory, log),
+		enc:   &encoderCache{},
 	}
+}
+
+// encoderFor resolves the configured video encoder against this machine. The
+// selection note is returned once with the first resolution and logged —
+// "no hardware encoder usable" is a fact the user should see, not a silence
+// they discover as "it still works, only slow".
+func (d Deps) encoderFor(ctx context.Context) render.Encoder {
+	if d.enc == nil {
+		enc, note := d.resolveEncoder(ctx)
+		if note != "" && d.Log != nil {
+			d.Log.Warn("encoder selection", "note", note)
+		}
+		return enc
+	}
+	d.enc.mu.Lock()
+	defer d.enc.mu.Unlock()
+	if !d.enc.done {
+		d.enc.enc, d.enc.note = d.resolveEncoder(ctx)
+		d.enc.done = true
+	}
+	if d.enc.note != "" {
+		d.Log.Warn("encoder selection", "note", d.enc.note)
+		d.enc.note = ""
+	}
+	return d.enc.enc
+}
+
+func (d Deps) resolveEncoder(ctx context.Context) (render.Encoder, string) {
+	enc, note, err := render.SelectEncoder(ctx, d.tools().FFmpeg, d.Cfg.Render.Encoder)
+	if err != nil {
+		// SelectEncoder only errors on a knob config.Resolve already refuses;
+		// the software path keeps an out-of-date caller rendering regardless.
+		if d.Log != nil {
+			d.Log.Error("encoder selection failed", "err", err)
+		}
+		return render.Encoder{Name: config.EncoderSoftware}, err.Error()
+	}
+	return enc, note
 }
 
 func (d Deps) tools() media.Tools { return media.ResolveTools(d.Cfg) }
@@ -860,10 +912,12 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 		}
 
 		last := 0
+		enc := d.encoderFor(d.Ctx)
 		renderErr = render.Render(jctx, tl, render.Options{
 			Tools:           d.tools(),
 			TempDir:         tempDir,
 			TempBudgetBytes: scratchBudget,
+			Encoder:         enc.Name,
 			OnProgress: func(done, total int) {
 				if total > 0 && onProgress != nil {
 					pct := done * 100 / total
@@ -881,7 +935,7 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 		if subsPath != "" {
 			// The burn is part of the render the caller asked for: on failure
 			// the just-rendered base file is removed, not published half-done.
-			if renderErr = render.BurnSubtitles(jctx, d.tools(), outPath, subsPath, outPath); renderErr != nil {
+			if renderErr = render.BurnSubtitles(jctx, d.tools(), enc.Name, outPath, subsPath, outPath); renderErr != nil {
 				_ = os.Remove(outPath)
 				return renderErr
 			}

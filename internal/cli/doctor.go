@@ -14,6 +14,7 @@ import (
 	"github.com/xiabee/XCut/internal/analysis"
 	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/render"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/version"
 	"github.com/xiabee/XCut/internal/worker"
@@ -198,6 +199,26 @@ func cmdDoctor(a *App, args []string) error {
 		add("FFprobe", "FAIL", "not runnable — install ffprobe or set XCUT_FFPROBE")
 	} else {
 		add("FFprobe", "OK", ver)
+	}
+
+	// Encoder posture: what actually encodes reels here. The probe is a real
+	// tiny encode, so the line answers "usable on this machine", not "exists
+	// in the build" — a GPU-less box with an nvenc-capable ffmpeg reads
+	// honestly as software.
+	if _, verr := media.Version(ctx, tools.FFmpeg); verr == nil {
+		pctx, pcancel := context.WithTimeout(a.Ctx, 45*time.Second)
+		defer pcancel()
+		enc, note, serr := render.SelectEncoder(pctx, tools.FFmpeg, a.Cfg.Render.Encoder)
+		switch {
+		case serr != nil:
+			add("Encoder", "WARN", xcerr.UserMessage(serr))
+		case note != "":
+			add("Encoder", "INFO", note)
+		case enc.HW:
+			add("Encoder", "OK", fmt.Sprintf("%s (hardware, render.encoder=%s)", enc.Name, a.Cfg.Render.Encoder))
+		default:
+			add("Encoder", "OK", fmt.Sprintf("libx264 (software, render.encoder=%s)", a.Cfg.Render.Encoder))
+		}
 	}
 
 	ws := workspace.New(a.Cfg.Workspace)
