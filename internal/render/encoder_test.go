@@ -36,7 +36,7 @@ func TestEncoderVideoArgs(t *testing.T) {
 		{"", []string{"-c:v", "libx264", "-preset", "veryfast", "-crf", "22"}},
 		{"libx264", []string{"-c:v", "libx264", "-preset", "veryfast", "-crf", "22"}},
 		{"h264_nvenc", []string{"-c:v", "h264_nvenc", "-rc", "vbr", "-cq", "30", "-b:v", "0"}},
-		{"hevc_nvenc", []string{"-c:v", "hevc_nvenc", "-rc", "vbr", "-cq", "30", "-b:v", "0"}},
+		{"hevc_nvenc", []string{"-c:v", "hevc_nvenc", "-rc", "vbr", "-cq", "30", "-b:v", "0", "-tag:v", "hvc1"}},
 		{"h264_qsv", []string{"-c:v", "h264_qsv"}},
 	}
 	for _, c := range cases {

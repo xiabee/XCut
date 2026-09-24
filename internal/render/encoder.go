@@ -111,8 +111,12 @@ func selectEncoderWith(ctx context.Context, ffmpegBin, cfg string, probe func(co
 // never saw.
 func encoderVideoArgs(name string, crf int) []string {
 	switch name {
-	case "h264_nvenc", "hevc_nvenc":
+	case "h264_nvenc":
 		return []string{"-c:v", name, "-rc", "vbr", "-cq", strconv.Itoa(crf + 8), "-b:v", "0"}
+	case "hevc_nvenc":
+		// hvc1 tags the HEVC track the way Apple players require; without it
+		// an otherwise valid reel plays on nothing made by Cupertino.
+		return []string{"-c:v", name, "-rc", "vbr", "-cq", strconv.Itoa(crf + 8), "-b:v", "0", "-tag:v", "hvc1"}
 	case "", config.EncoderSoftware:
 		return []string{"-c:v", config.EncoderSoftware, "-preset", "veryfast", "-crf", strconv.Itoa(crf)}
 	default:
