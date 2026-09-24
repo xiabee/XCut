@@ -1726,6 +1726,17 @@ projects captioned before this change restyle only after one more run; and a mis
 no captions at all still goes to the sidecar, which is the one case where re-transcribing
 is the only way to get words at all.
 
+Accepted at `4e039e1`: local fast gate PASS (`steps not run: none`, tests skipped 5), the
+Linux full leg on `linux-ci` against a 1.0 MB `git archive` snapshot of that sha — `== gate
+(full): PASS` with `649 passed, 10 skipped`, `not run: nothing`, and the race, cross-compile,
+cargo fmt/clippy/test and gosec steps all present in the step list (the +1 over `752aaef`'s
+648 is the two caption cases minus the deleted stopwatch case) — and the `win-devops` node's
+own report row for XCut: `PASS`, `2m26.317s`, the same duration the control plane printed,
+with local evidence claimed as `after_local_pass: local CI PASS at 15:50:35 for 4e039e19`.
+The previous commit (`b4e1bf8`, the test-stability cycle) was accepted on the local fast gate
+only — it deletes a test and changes a test stub, and no Windows- or Linux-only code is
+reached by either, so its two deeper legs were not re-run rather than passing unmentioned.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
