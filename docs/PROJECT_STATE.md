@@ -1925,6 +1925,30 @@ printed before writing). Second: `git checkout -- <file>` was that undo, which t
 worktree rule warns against; it was safe here only because the file had no other pending
 change, and the check afterwards was a grep for the inserted text rather than a trust.
 
+Accepted at `f871309` (cycles 33–34 together): local fast gate PASS (`steps not run: none`),
+Linux full gate PASS — `670 passed, 11 skipped`, `fail=0 race=0`, `not run: nothing`,
+`gosec: clean (severity=high, any confidence)` — with the log archived only after the verdict
+line had been read (`verdict_present=1`). `win-devops` last ran at `3bb1c11`; what has changed
+since is the panel's label and the queue hand-off, both exercised by the fast gate on this
+Windows host, so that leg was not re-run rather than being claimed as passed.
+
+**35: the payload learned whose voice it is.** Every re-lay arm asked "is there a usable
+transcript"; none could ask "is it *this* project's audio", so a reel that had taken on new
+media could be captioned with words heard from the clip before it — a defect dressed as a
+repair. `transcript.json` is now an envelope carrying the asset the sidecar actually read, and
+`HasStoredTranscript` (the tap, the endpoint's refusal, the panel's button) means usable *and*
+bound to the project's current subtitle asset, compared through `subtitleAsset(p, "")` so the
+same rule picks "the asset that would be spoken" in both places. A stale binding sends the tap
+to the sidecar, which is the only component that can answer for audio that is really there.
+
+Checked from both ends: the binding is asserted where it is written (an empty one would make
+every project un-re-layable and still read as a passing comparison), and a payload pointed at
+another asset is asserted unusable — the mutation that ignores the binding fails that case
+twice, on the predicate and on the plan sentence. No migration, because no release ever wrote
+the bare payload: pre-envelope files are unbound, read as "no transcript", cost one
+re-transcription — which widens what the B5e remainder above already says about projects
+captioned before the transcript was kept (two kinds of "before", one remedy).
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

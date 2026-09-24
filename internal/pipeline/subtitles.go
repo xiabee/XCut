@@ -36,6 +36,16 @@ func (d Deps) transcriptPath(projectID string) (string, error) {
 	return d.WS.SafeJoin(filepath.Join("projects", projectID, "transcript.json"))
 }
 
+// transcriptRecord is what transcript.json holds. The payload alone cannot answer the
+// question that decides whether re-laying it out is a repair or a caption over the wrong
+// speech — whether the project's media is still the media that was heard — so the asset it
+// came from is stored beside it. A record with no binding claims nothing, and nothing is
+// answered with.
+type transcriptRecord struct {
+	AssetID    string           `json:"asset_id,omitempty"`
+	Transcript *subs.Transcript `json:"transcript"`
+}
+
 // storedTranscript is the transcript an earlier transcription left behind, read back
 // through the same validation the sidecar's answer went through. A file that cannot be
 // laid out again reads as "there is none" to the export — which has a plain .srt to fall
@@ -43,29 +53,67 @@ func (d Deps) transcriptPath(projectID string) (string, error) {
 // "a transcript that fails validation" are different answers to give whoever asks
 // directly, and only one of them can be fixed by transcribing again.
 func (d Deps) storedTranscript(projectID string) (*subs.Transcript, error) {
+	t, _, err := d.storedTranscriptRecord(projectID)
+	return t, err
+}
+
+// storedTranscriptRecord returns the payload and the asset it was heard from.
+func (d Deps) storedTranscriptRecord(projectID string) (*subs.Transcript, string, error) {
 	p, err := d.transcriptPath(projectID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	raw, err := os.ReadFile(p)
 	if err != nil {
-		return nil, xcerr.E(xcerr.CodeNotFound,
+		return nil, "", xcerr.E(xcerr.CodeNotFound,
 			"no stored transcript for this project (transcribe first)", err)
 	}
-	t, err := subs.Parse(raw)
-	if err != nil {
-		return nil, err
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return nil, "", xcerr.E(xcerr.CodeValidation,
+			"the stored transcript cannot be read (re-transcribe)", err)
 	}
-	return t, nil
+	if rec.Transcript == nil {
+		return nil, "", xcerr.E(xcerr.CodeValidation,
+			"the stored transcript holds no payload (re-transcribe)", nil)
+	}
+	// The validator speaks bytes (it is the sidecar's wire contract), and the envelope
+	// decoder has only just turned those bytes into this struct. Re-encoding is one
+	// round trip over a caption file; the alternative is a second validation path for
+	// stored payloads, which is how a stored transcript and a sidecar answer start
+	// disagreeing about what is acceptable.
+	payload, err := json.Marshal(rec.Transcript)
+	if err != nil {
+		return nil, "", xcerr.E(xcerr.CodeInternal, "cannot read the stored transcript", err)
+	}
+	t, err := subs.Parse(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return t, rec.AssetID, nil
 }
 
-// HasStoredTranscript is the question the plan asks: can this project's captions be laid
-// out again from what is on disk. The reason it is not read from disk is in
-// storedTranscript: a payload that fails validation cannot be laid out either, and the
-// export should say which file it chose rather than fail over one it could not parse.
+// HasStoredTranscript is the question the plan, the panel and the endpoint ask: can this
+// project's captions be laid out again *now*. It is not "does a file exist", and not only
+// "does it parse" — a payload heard from a different asset is somebody else's speech, so
+// the reel cannot re-lay it, and the callers then reach for a sidecar, which is the one
+// component able to answer for audio that is actually here.
 func (d Deps) HasStoredTranscript(projectID string) bool {
-	t, err := d.storedTranscript(projectID)
-	return err == nil && t != nil
+	t, boundID, err := d.storedTranscriptRecord(projectID)
+	if err != nil || t == nil || boundID == "" {
+		return false
+	}
+	p, err := d.DB.GetProject(d.Ctx, projectID)
+	if err != nil || p == nil {
+		return false
+	}
+	// The same resolution the transcription itself uses, so "the asset this reel would
+	// speak" and "the asset the words came from" are compared by one rule, not two.
+	asset, err := d.subtitleAsset(p, "")
+	if err != nil {
+		return false
+	}
+	return asset.ID == boundID
 }
 
 // writeStyledSubtitles lays a transcript out as the project's styled caption file, and
@@ -259,7 +307,7 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 		// The transcript is kept beside its two renderings. It is the only copy of
 		// the words the sidecar produced, and a reel that later changes shape can be
 		// laid out again from it instead of paying for another transcription.
-		payload, err := json.Marshal(t)
+		payload, err := json.Marshal(transcriptRecord{AssetID: asset.ID, Transcript: t})
 		if err != nil {
 			return err
 		}

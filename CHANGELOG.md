@@ -162,6 +162,22 @@ sections are tagged; anything above the newest one is unreleased.
   plain `.srt`.
 
 ### Added
+- **A stored transcript now says which asset it was heard from, and a reel only re-lays its
+  own speech.** `transcript.json` gained an envelope (`{"asset_id": …, "transcript": …}`)
+  written with the asset the sidecar actually read, and `HasStoredTranscript` — the question
+  behind the tap's re-lay arms, the endpoint's refusal, and the panel's button — now means
+  "usable *and* bound to this project's current media", not "a file exists". The reason is the
+  one thing a bare payload cannot answer: a project that took on new media still has the old
+  words on disk, and captioning them over a different clip is worse than the ill-fitted box the
+  re-lay exists to fix; with a stale binding the tap reaches for the sidecar, which is the only
+  component able to speak to audio that is actually there. Two cases hold it: the binding is
+  checked where it is *written* (a silently empty one would otherwise pass every comparison
+  downstream), and a payload rewritten to name another asset reads as un-layable — under a
+  build that ignores the binding that case fails twice, on the predicate and on the plan line
+  (`Action:restyle … from the stored transcript`). The format is unreleased, so there is no
+  migration: a payload from before the envelope is unbound, which means "no transcript", which
+  means one more transcription — the same limit already recorded for projects captioned before
+  any transcript was kept at all.
 - **One tap, no sidecar, mismatched captions: the plain transcript now wins.** When a
   project's `.ass` declares a frame the reel is not (`PlayResX/Y` is what libass scales
   every pixel field by) and nothing can re-transcribe it, the tap burns the `.srt` of the

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -971,5 +972,94 @@ func TestCaptionStateReportsWhetherTheStyledFileSweeps(t *testing.T) {
 	}
 	if st.StyledW != 1080 {
 		t.Errorf("the frame read %d, want 1080 beside the sweep check", st.StyledW)
+	}
+}
+
+// TestExportWillNotReStyleAnotherClipsWords: the payload says which asset it was heard
+// from, and that is the one question a bare transcript cannot answer. A project that took
+// on new media keeps the old words on disk — re-laying them out would caption speech that
+// is not in the reel, which is worse than the ill-fitted box the same arm exists to fix.
+// So a stale binding reads as "no transcript", and the tap reaches for the sidecar.
+func TestExportWillNotReStyleAnotherClipsWords(t *testing.T) {
+	d, p, _, assPath, _ := restyledReel(t)
+	if !d.HasStoredTranscript(p.ID) {
+		t.Fatal("the freshly transcribed project should be re-layable before the binding is changed")
+	}
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.AssetID == "" {
+		t.Fatal("transcription stored a transcript with no asset bound to it")
+	}
+	rec.AssetID = "asst_someone_elses_clip"
+	bound_elsewhere, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tp, bound_elsewhere, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if d.HasStoredTranscript(p.ID) {
+		t.Error("a payload bound to another asset still read as re-layable")
+	}
+	_, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     true,
+		Out:      filepath.Join(t.TempDir(), "stale.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action == "restyle" {
+		t.Fatalf("the tap planned to re-lay words heard from another clip: %+v", got)
+	}
+	// The payload is a file on disk like any other: refusing to use it leaves it alone.
+	after, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(after)); !ok || w != 1920 || h != 1080 {
+		t.Errorf("the refused re-lay still rewrote the captions: %dx%d ok=%v", w, h, ok)
+	}
+}
+
+// TestTranscriptionBindsThePayloadToTheAssetHeard: the whole staleness rule rests on the
+// id written at transcription time, so it is checked where it is produced rather than only
+// where it is consumed — a silently empty binding would make every project un-re-layable
+// and read here as a passing comparison.
+func TestTranscriptionBindsThePayloadToTheAssetHeard(t *testing.T) {
+	d, p, _, _, _ := restyledReel(t)
+	asset, err := d.subtitleAsset(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatalf("the stored transcript is not the envelope the writer promises: %v", err)
+	}
+	if rec.AssetID != asset.ID {
+		t.Errorf("stored asset_id %q, want the transcribed asset %q", rec.AssetID, asset.ID)
+	}
+	if rec.Transcript == nil || len(rec.Transcript.Segments) == 0 {
+		t.Fatalf("stored envelope carries no segments: %s", raw)
 	}
 }
