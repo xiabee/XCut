@@ -290,6 +290,23 @@ async function refreshProjects() {
     menu.appendChild(li);
   }
   renderProjButton();
+  restoreRememberedProject(projects);
+}
+
+// The app comes back where the user left it: a reload (or a re-opened client)
+// re-selects the remembered project instead of dumping the user on the empty
+// state. A remembered id that no longer exists — deleted in another window —
+// is forgotten silently; the picker is the honest answer. Attempted once per
+// page load, so a deliberate deselect is not fought by the next list refresh.
+let projectRestoreAttempted = false;
+function restoreRememberedProject(projects) {
+  if (currentProject || projectRestoreAttempted) return;
+  projectRestoreAttempted = true;
+  let id = "";
+  try { id = localStorage.getItem("xcut_project") || ""; } catch (_) { /* private mode etc. */ }
+  if (!id) return;
+  const p = projects.find((o) => o.id === id);
+  if (p) selectProject(p);
 }
 
 // The picker button is the only door into an existing project, and it used to
@@ -327,6 +344,7 @@ $("new-project").addEventListener("submit", async (e) => {
 
 function selectProject(p) {
   currentProject = p;
+  try { localStorage.setItem("xcut_project", p.id); } catch (_) { /* private mode etc. */ }
   $("project-view").hidden = false;
   const ph = document.querySelector("#detail .placeholder");
   if (ph) ph.style.display = "none";
@@ -365,6 +383,7 @@ async function deleteProject() {
   try {
     await api(`/api/v1/projects/${currentProject.id}`, { method: "DELETE" });
     currentProject = null;
+    try { localStorage.removeItem("xcut_project"); } catch (_) { /* private mode etc. */ }
     $("project-view").hidden = true;
     const ph = document.querySelector("#detail .placeholder");
     if (ph) ph.style.display = "";
