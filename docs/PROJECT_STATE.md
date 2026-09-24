@@ -2028,6 +2028,31 @@ skips — archived at `~/ci/evidence/xcut-fce3704-gate.log.gz` after the verdict
 `win-devops` was not re-run: the Windows-only surface since its `3bb1c11` pass is the caption
 arms, and those are exercised by the fast gate on this host, where they run.
 
+**40: a release candidate for v0.1.10-alpha is built, executed and digested — and not
+published.** 51 commits / 57 files sit between `v0.1.9-alpha` and here, so
+`scripts/build-release.ps1 -Version v0.1.10-alpha` was run with its two packaging twins: the
+three cross-compiled binaries, the static musl Rust worker, the Windows zip and the setup exe
+(Inno compiled clean), plus `SHA256SUMS-v0.1.10-alpha.txt` re-checked with `sha256sum -c` (6/6
+OK) and `dist/release-notes-v0.1.10-alpha.md`. Every artifact that can be executed on this
+fleet *was* executed, not just built: the Windows binary through the script's own 5 smoke
+checks; linux/amd64 on `linux-ci` (`version` + `/api/v1/health` → `version:"v0.1.10-alpha"`,
+`ffmpeg:"ok"`); **linux/arm64 on Kylin V10 SP1** (`version`, `health`, and `/api/v1/styles`
+returning the embedded presets). Two facts worth writing down rather than glossing: the shipped
+worker is byte-identical to v0.1.9's (`0666f93446c7…` on both — the Rust source did not change,
+so cargo reused its cache and "built rust worker" is a copy, not a compile), and the version
+stamp inside all three binaries is the same `230fb5d / 2026-09-24T13:10:00Z`.
+
+**Publishing is deliberately not done.** A tag and a GitHub release are outward-facing and hard
+to un-show, so they stay the operator's one command; everything up to that point is ready:
+
+```
+git tag -a v0.1.10-alpha 230fb5d -m "…" && git push <ssh-443-remote> v0.1.10-alpha
+gh release create v0.1.10-alpha dist/xcut-v0.1.10-alpha-* dist/XCut-v0.1.10-alpha-*.zip   dist/xcut-v0.1.10-alpha-windows-setup.exe dist/SHA256SUMS-v0.1.10-alpha.txt   --title "XCut v0.1.10-alpha" --notes-file dist/release-notes-v0.1.10-alpha.md
+```
+
+(the 443 SSH remote because port 22 is closed here; `gh` timed out mid-upload once before, so
+verify the asset count after it returns rather than trusting the command's exit code).
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
