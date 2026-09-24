@@ -6,6 +6,17 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **`xcut auto --subs auto` — the one-shot can be told to use what the project has.** The
+  value was already taken: `auto --subs auto` read "auto" as a filename and died with
+  "subtitle file does not exist", which is a confusing answer to a reasonable question. It now
+  asks the same thing `xcut render --subs auto` asks — resolve the project's captions, make
+  them fit from what is on disk, print the tap's sentence about it — and refuses with the flag
+  that would create them (`--subs on`) when there is nothing to resolve, rather than
+  transcribing on a flag named for using what is already there. Both directions covered on a
+  real project, the positive one with `XCUT_AI_BIN` cleared so a silent transcription would
+  have been visible in the output.
+
+### Added
 - **`xcut render --subs auto` — the CLI asks the project what should burn.** A named file has
   always burned as it stands, which made the render the one path that could not see a caption
   box sized for a frame the project no longer has: the tap re-laid captions out, the panel

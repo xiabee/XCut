@@ -1990,6 +1990,17 @@ satisfied there too). Archived at `~/ci/evidence/xcut-9f0f097-gate.log.gz` after
 read. `win-devops` was not re-run: the Windows surface touched here is a CLI flag and a pipeline
 method, both exercised by the fast gate on this host.
 
+**38: the same question in the one-shot.** `xcut auto --subs auto` had been reading "auto" as
+a filename and answering "subtitle file does not exist" — a confusing answer to a reasonable
+question, now routed through the same `ReelSubtitles` the render uses, refusing with the flag
+that would create captions (`--subs on`) instead of transcribing under a flag named for using
+what is there. Covered both ways on a real project, the positive one with `XCUT_AI_BIN` cleared
+so a silent transcription would show up in the output rather than in the assertion's blind
+spot. A ledger note on my own mechanics: inserting this paragraph by replacing the heading line
+was the third time in one session of using an anchor that was *inside* a paragraph, and each
+time it spliced `## Version / HEAD` into running prose. Each was caught by re-reading the
+region and repaired by targeted edit — `grep -c` for the heading is now the check, not a glance.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
