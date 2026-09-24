@@ -319,6 +319,35 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 	}
 }
 
+// ReelSubtitles answers the question a render asks: which caption file should burn for this
+// project, after making it fit where that can be done from what is already on disk. `note`
+// is the sentence for whoever asked — the same wording the tap's plan line uses, so one set
+// of sentences describes the decision wherever it is taken — and it is empty when there was
+// nothing to decide.
+//
+// It deliberately never starts a transcription. A `--subs auto` that quietly spent minutes of
+// Whisper would be the surprise this method exists to avoid, so the arm that needs a sidecar
+// says what cannot be done instead of doing it.
+func (d Deps) ReelSubtitles(projectID string) (path, note string, err error) {
+	st := d.CaptionState(projectID)
+	switch {
+	case st.Mismatch() && d.HasStoredTranscript(projectID):
+		if err := d.RestyleSubtitles(projectID); err != nil {
+			return "", "", err
+		}
+		return d.existingSubtitlesPath(projectID), ExportRelaidSubtitles + st.frames(), nil
+	case st.Mismatch() && st.plainFallback() != "":
+		return st.plainFallback(), ExportFallbackSubtitles + st.frames(), nil
+	case st.Mismatch():
+		return st.Path, ExportStaleSubtitles + st.frames(), nil
+	}
+	p, err := d.ResolveSubtitlesPath(projectID)
+	if err != nil {
+		return "", "", err
+	}
+	return p, "", nil
+}
+
 func (d Deps) hasTimeline(projectID string) bool {
 	p, err := d.TimelinePath(projectID)
 	if err != nil {

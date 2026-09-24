@@ -6,6 +6,23 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **`xcut render --subs auto` — the CLI asks the project what should burn.** A named file has
+  always burned as it stands, which made the render the one path that could not see a caption
+  box sized for a frame the project no longer has: the tap re-laid captions out, the panel
+  gained a button, and `xcut render --subs projects/x/subtitles.ass` silently burned the old
+  one. `auto` resolves the project's captions and fixes what can be fixed from disk first,
+  printing the tap's own sentence about what it did (`captions are styled for 1920x1080 and
+  this reel is 1080x1920` / `re-laid out …`) so the readout is one vocabulary across CLI, API
+  and tap. What it deliberately never does is start a transcription — `--subs auto` spending
+  minutes of Whisper nobody asked for would be a surprise wearing a default; the message says
+  where transcription lives instead (`xcut auto --subs=on`, the subtitles endpoint), and an
+  unfixable mismatch burns with the warning named rather than quietly. End to end on a real
+  project: caption a `generic_highlight` reel, restyle it to `beat_shortform`, render with
+  `auto`, and the file on disk declares 1080x1920; disabling the arm turns both the sentence
+  and the frame assertion red. `docs/USAGE.md` was caught out of date by the repo's own
+  mirror guard, which named the line rather than the test failing.
+
+### Added
 - **The web panel now says when the captions are sized for another frame, and offers the
   fix.** `subs-status` reads `字幕按 1920x1080 排版，成片是 1080x1920` instead of the
   "ready" sentence it used to give a mismatched project, and a `re-lay captions` button

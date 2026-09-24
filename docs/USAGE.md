@@ -156,10 +156,12 @@ point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
 ## xcut render
 ```
-usage: xcut render <project> [--out path] [--subs file]
+usage: xcut render <project> [--out path] [--subs file|auto]
 
 render a project timeline to MP4
 ```
+
+`--subs auto` asks the project what should burn rather than being told: it resolves the project's captions and, when they are laid out for another frame and the stored transcript is still bound to this project's media, re-lays them out first and prints what it did. A named file stays a named file — it burns as it stands, wrong frame included — because the caller pointed at it. `auto` never starts a transcription: that is `xcut auto --subs=on` or the subtitles endpoint, and a render flag that silently spent minutes of Whisper would be a surprise, not a default.
 
 ## xcut serve
 ```

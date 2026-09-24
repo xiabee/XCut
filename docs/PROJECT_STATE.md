@@ -1965,6 +1965,23 @@ build a real reel) rather than a second, thinner staging path that would quietly
 different thing; the bench also refuses to time anything unless the staged payload actually
 reads as re-layable.
 
+**37: the render can now be asked instead of pointed at.** `--subs <file>` burns that file,
+which is what "pointed at" means — but it left the CLI as the one surface with no notion of a
+caption box sized for another frame, after four cycles of building exactly that notion for the
+tap, the endpoint and the panel. `--subs auto` resolves the project's captions, re-lays them
+when the stored transcript is bound to this project's media, and prints the tap's own sentence
+about what it chose, so CLI/API/tap now describe the decision with one vocabulary. It refuses
+to start a transcription (a flag that quietly spent minutes of Whisper would be a surprise), and
+an unfixable mismatch still burns with the frames named instead of in silence.
+
+Walked end to end on a real project (caption `generic_highlight` → restyle to `beat_shortform`
+→ render with `auto` → the file on disk declares 1080x1920), and the arm's absence is caught by
+that same test rather than inferred: switching it off fails both the sentence and the frame.
+Two notes worth keeping. The render in the case is real ffmpeg work (~5 s for a 4 s reel), not a
+mock. And `TestUsageDocsMirrorTheBinary` failed the first run — `docs/USAGE.md` was behind the
+binary for `render` — which is that guard doing its job on a change that would otherwise have
+shipped a stale help page.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
