@@ -2093,8 +2093,8 @@ leg had not started when it went out; that is stated rather than left to be infe
 absence of a line.
 
 **Night 2026-09-24→25 (session #21, owner directive mid-night: GPU acceleration + a
-modern client).** Seven milestones, all landed with control-plane local gate + win-devops
-remote legs; final HEAD `6aa73b1`. **M-1** closed the manual-editing gap the ledger had
+modern client).** Ten milestones, all landed with control-plane local gate + win-devops
+remote legs; final HEAD `31f4478`. **M-1** closed the manual-editing gap the ledger had
 carried for two sessions: a drag reorder left every strip block at its stale
 `timeline_start` and `totalDuration` — reading the new last row — collapsed the ruler
 from 12 s to 2 s and blew the widths up fivefold (reproduced in the browser at DOM
@@ -2114,16 +2114,22 @@ analyzers. Measured on the RTX 2070 laptop: ~31% faster encode at size/quality p
 (99964c8; docs/PERFORMANCE.md). **M-5** gave the workspace a light scheme with an
 auto/dark/light picker that follows `prefers-color-scheme` (f7b159e) and **M-7**
 contrast-audited it — the first palette measured below AA and was fixed before it
-shipped (6aa73b1). **M-6** makes the desktop client remember its window, clamped to
-today's work area (35fd04e). Verification on final HEAD: control-plane fast gate PASS
-(685+/6), win-devops PASS per milestone, Linux full gate PASS on linux-ci (691 passed /
-11 skipped, `-race`, Rust, gosec clean, `not run: nothing`), soak 10 rounds errors=0
-with the busy gate 10/10. Two infrastructure facts for the operator: the `xnightops ci
-run` client wrapper exited 127 mid-flight three times tonight (verdicts had to be read
-from the control-plane/node logs — one swallow made an already-running node job look
-like a FAIL), and `push_snapshot` snapshots the **working tree**, so a remote dispatch
-with uncommitted WIP tests the WIP. The v0.1.10-alpha release candidate at `c4f0549`
-is now 14+ commits behind main and gets stale by the night; publishing stays the
+shipped (6aa73b1), with **M-10** turning the audit into a gate whose Go maths
+reproduces the browser's ratios to two decimals (31f4478). **M-6** makes the desktop
+client remember its window, clamped to today's work area (35fd04e). **M-8** tags
+hevc_nvenc tracks `hvc1` so Apple players play them (181e12d, verified end to end:
+the product path renders hevc/hvc1). **M-9** brings the app back to the project the
+user left open after a reload, forgetting silently what was deleted elsewhere
+(832ac53). Verification on final HEAD: control-plane fast gate PASS (685+/6),
+win-devops PASS per milestone, Linux full gate PASS on linux-ci (691 passed /
+11 skipped, `-race`, Rust, gosec clean, `not run: nothing`), soak 30 rounds errors=0
+plus a 10-round soak on the final HEAD, busy gate fully engaged both times. Two
+infrastructure facts for the operator: the `xnightops ci run` client wrapper exited
+127 mid-flight three times tonight (verdicts had to be read from the
+control-plane/node logs — one swallow made an already-running node job look like a
+FAIL), and `push_snapshot` snapshots the **working tree**, so a remote dispatch with
+uncommitted WIP tests the WIP. The v0.1.10-alpha release candidate at `c4f0549` is
+now ~20 commits behind main and gets stale by the night; publishing stays the
 operator's call.
 
 ## Version / HEAD
