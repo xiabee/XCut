@@ -2040,25 +2040,30 @@ checks; linux/amd64 on `linux-ci` (`version` + `/api/v1/health` → `version:"v0
 returning the embedded presets). Two facts worth writing down rather than glossing: the shipped
 worker is byte-identical to v0.1.9's (`0666f93446c7…` on both — the Rust source did not change,
 so cargo reused its cache and "built rust worker" is a copy, not a compile), and the version
-stamp inside all three binaries is the same `230fb5d / 2026-09-24T13:10:00Z`.
+stamp inside all three binaries is the same at build time (see the rebuild below — it is now `c4f0549`).
 
 **Publishing is deliberately not done.** A tag and a GitHub release are outward-facing and hard
 to un-show, so they stay the operator's one command; everything up to that point is ready:
 
 ```
-git tag -a v0.1.10-alpha 230fb5d -m "…" && git push <ssh-443-remote> v0.1.10-alpha
+git tag -a v0.1.10-alpha c4f0549 -m "…" && git push <ssh-443-remote> v0.1.10-alpha
 gh release create v0.1.10-alpha dist/xcut-v0.1.10-alpha-* dist/XCut-v0.1.10-alpha-*.zip   dist/xcut-v0.1.10-alpha-windows-setup.exe dist/SHA256SUMS-v0.1.10-alpha.txt   --title "XCut v0.1.10-alpha" --notes-file dist/release-notes-v0.1.10-alpha.md
 ```
 
 (the 443 SSH remote because port 22 is closed here; `gh` timed out mid-upload once before, so
 verify the asset count after it returns rather than trusting the command's exit code).
 
-**…and the candidate above is already stale, which is exactly why this line exists.** Two
-commits have landed since `230fb5d`, and one of them (`0b25559`) changes shipped UI code:
-the artifacts in `dist/` carry the early-return bug below. Whoever publishes runs
-`build-release.ps1`/`make-installer.ps1`/`make-setup.ps1` again against the new HEAD and
-re-executes the three platform checks — the notes and digests are outputs of that build, not
-reusable across it.
+**The first build went stale under me, and that is worth the sentence.** The set above was
+stamped `230fb5d`; two commits landed after it, one of which (`0b25559`) changed shipped UI
+code — so the artifacts in `dist/` were, for a while, a candidate carrying the bug fixed on the
+next line. It was rebuilt rather than noted: `build-release.ps1` + both packaging scripts ran
+again against `c4f0549`, the old set was deleted so two sets could not be confused, and
+`SHA256SUMS-v0.1.10-alpha.txt` was regenerated and re-checked (6/6 `OK`). The re-execution on
+the targets is part of the rebuild, not an echo of the first one: linux/amd64 on `linux-ci`
+(`version` → `c4f0549`, `health`, and a real `POST /projects` that persisted a row),
+linux/arm64 on Kylin V10 SP1 (`version`, `health`), Windows through the script's own 5 smoke
+checks. The candidate is therefore `c4f0549`, and the notes and digests belong to that build —
+they are outputs of it, not reusable across another.
 
 **41: the stale-media readout stopped eating the download links.** The branch added in cycle 39
 returned early and cleared `links.innerHTML` with the rest, so the one state where a user
@@ -2076,6 +2081,16 @@ deliberately broken `app.js` fails the local gate naming `app.js:1806`, a restor
 node) prints the not-run note and leaves `not_run=[ js-parse(no-node)]` — Git Bash did not
 shadow its own node with an extensionless shim, so that half is asserted where PATH semantics
 are POSIX, not where they happened to be convenient.
+
+Accepted at `d1732b8` (cycles 41–42 together): local fast gate PASS with the new step
+reporting `2 UI scripts parse (v24.18.0)` and `steps not run: none`, Linux full gate PASS on
+the same sha — `678 passed, 11 skipped`, `gosec: clean`, `not run: nothing`, and the js step
+live there too (`2 UI scripts parse (v22.23.2)`, the node on that host being v22 rather than
+this machine's v24) — archived at `~/ci/evidence/xcut-d1732b8-gate.log.gz` after the verdict
+was read. `win-devops` was not re-run. The two documentation commits after it (`c4f0549` and
+this one) were pushed without a fresh local gate run: the first is prose only and the Linux
+leg had not started when it went out; that is stated rather than left to be inferred from the
+absence of a line.
 
 ## Version / HEAD
 
