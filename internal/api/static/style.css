@@ -58,14 +58,17 @@
   --fg: #1b2530;
   --dim: #51637a;
   --faint: #8695a7;
-  --acc: #0e9f6e;
+  /* Accent/error/warning text colors are contrast-audited against both the
+     panel and the background (WCAG AA 4.5:1 for normal text) — measured, not
+     guessed; see docs/NIGHTLY_PROGRESS.md night 2026-09-24→25. */
+  --acc: #0b7d55;
   --acc-2: #0d9488;
   --acc-grad: linear-gradient(135deg, #12b981 0%, #0d9488 100%);
   --acc-soft: rgba(14, 159, 110, .12);
   --acc-line: rgba(14, 159, 110, .4);
-  --err: #d5453c;
+  --err: #c23830;
   --err-soft: rgba(213, 69, 60, .1);
-  --warn: #b78612;
+  --warn: #8a6508;
   --warn-soft: rgba(183, 134, 18, .1);
   --shadow: 0 10px 28px rgba(23, 43, 77, .12), 0 2px 6px rgba(23, 43, 77, .08);
   --shadow-pop: 0 14px 36px rgba(23, 43, 77, .16);
