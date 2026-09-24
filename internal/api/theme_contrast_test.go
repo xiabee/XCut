@@ -57,22 +57,41 @@ func themeBlockTokens(t *testing.T, css, header string) map[string]string {
 	return out
 }
 
-func TestLightThemeTextTokensMeetAAContrast(t *testing.T) {
+func TestThemeTextTokensMeetAAContrast(t *testing.T) {
 	css := staticFile(t, "static/style.css")
+	dark := themeBlockTokens(t, css, ":root")
 	light := themeBlockTokens(t, css, `[data-theme="light"]`)
-	bg, panel := light["bg"], light["panel"]
-	if bg == "" || panel == "" {
-		t.Fatal("light theme must define --bg and --panel — every ratio is measured against them")
+	if len(dark) == 0 {
+		t.Fatal("dark :root block not found — the extractor rotted")
 	}
-	for _, name := range []string{"fg", "dim", "acc", "err", "warn"} {
-		if light[name] == "" {
-			t.Fatalf("light theme lost --%s — the token set drifted", name)
+	if len(light) == 0 {
+		t.Fatal("light block not found — the extractor rotted")
+	}
+	// Both schemes are gated: dark is the shipped default, light the newer
+	// sibling — a palette tweak that drops either below AA fails here with
+	// the ratio named. The faint hint token is deliberately decorative
+	// (3.36 dark / 3.06 light as shipped) and is not gated.
+	for _, scheme := range []struct {
+		name   string
+		tokens map[string]string
+	}{
+		{"dark", dark},
+		{"light", light},
+	} {
+		bg, panel := scheme.tokens["bg"], scheme.tokens["panel"]
+		if bg == "" || panel == "" {
+			t.Fatalf("%s theme must define --bg and --panel — every ratio is measured against them", scheme.name)
 		}
-		if r := wcagRatio(light[name], bg); r < 4.5 {
-			t.Errorf("--%s %s on --bg: %.2f:1, want ≥ 4.5 (WCAG AA normal text)", name, light[name], r)
-		}
-		if r := wcagRatio(light[name], panel); r < 4.5 {
-			t.Errorf("--%s %s on --panel: %.2f:1, want ≥ 4.5 (WCAG AA normal text)", name, light[name], r)
+		for _, name := range []string{"fg", "dim", "acc", "err", "warn"} {
+			if scheme.tokens[name] == "" {
+				t.Fatalf("%s theme lost --%s — the token set drifted", scheme.name, name)
+			}
+			if r := wcagRatio(scheme.tokens[name], bg); r < 4.5 {
+				t.Errorf("%s --%s %s on --bg: %.2f:1, want ≥ 4.5 (WCAG AA normal text)", scheme.name, name, scheme.tokens[name], r)
+			}
+			if r := wcagRatio(scheme.tokens[name], panel); r < 4.5 {
+				t.Errorf("%s --%s %s on --panel: %.2f:1, want ≥ 4.5 (WCAG AA normal text)", scheme.name, name, scheme.tokens[name], r)
+			}
 		}
 	}
 }
