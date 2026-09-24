@@ -181,6 +181,11 @@ func TestInstallHappyPath(t *testing.T) {
 	if st.ProgressPct != 100 {
 		t.Fatalf("done progress = %v", st.ProgressPct)
 	}
+	// The UI reads this as "where did the binary on my machine come from", so it has
+	// to be the source the gates ran against — the same URL fetchPinned is given.
+	if st.Source != in.pin().URL {
+		t.Errorf("Status.Source = %q, want the pin's own URL %q", st.Source, in.pin().URL)
+	}
 }
 
 func TestInstallSingleFlight(t *testing.T) {

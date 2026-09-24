@@ -5,6 +5,29 @@ sections are tagged; anything above the newest one is unreleased.
 
 ## [Unreleased] — after v0.1.9-alpha
 
+### Fixed
+- **The FFmpeg installer now downloads what it says it downloaded, and checks what it
+  installed.** A coverage sweep (`4e039e1`: 17 functions at 0.0%) left five of them in the
+  one package that puts a binary on the user's PATH, and reading that code found two things
+  no test could have caught. `fetchPinned` fetched the package-level pin's URL while the
+  status the UI reads was filled from the resolved pin — so an install gated against one
+  artifact's size and hash could be told to the user as coming from another, and the field
+  that names the source was decorative (D19); it now fetches the URL of the pin in force,
+  and a nil `Fetch` means the production fetcher instead of a missing one. `verifyFFprobe`
+  read a zero exit status as identity, so a file that runs and is not ffprobe was published
+  as an installed tool; it must now answer as ffprobe, and the refusal carries what it said
+  instead. Both are tested by running the test binary as the tool under verification, with
+  an env var choosing the answer — no shell, no compiler, no committed fixture — and the
+  fetch cases point at a local source, so nothing here reaches the network. What is
+  deliberately **not** claimed: a banner is a string anyone can print, so this is a
+  defect-catcher (mislabeled extract, zero-byte stub, wrong zip entry kept) and provenance
+  still rests on the SHA-256 and byte-count gate ahead of it. Measured: `internal/setup`
+  85.6% statement coverage with the five 0.0% functions gone; three mutations each turned
+  the matching case red — identity check disabled (`a file that runs and says it is not
+  ffprobe was accepted`), progress clamp removed (`reads 99.98017942447866, want the
+  clamped 99`), and a fetcher bound to another URL (both fetch cases, in 0.02 s against a
+  refused local port rather than an external host).
+
 ### Added
 - **A reel that changes shape restyles its own captions — no sidecar needed.** Transcription
   now keeps the transcript it was given (`projects/<id>/transcript.json`, not a

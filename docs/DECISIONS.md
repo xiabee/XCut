@@ -443,3 +443,26 @@ capped by accident rather than by construction.
    only where a session bus exists. The
    container/seccomp rung in ROADMAP Phase 4 stays open: this closes a resource boundary,
    not a filesystem one.
+
+## D19: the FFmpeg installer fetches from the pin it gates, and asks the tool what it is
+
+Context: a coverage sweep of the whole tree (`4e039e1`, 17 functions at 0.0% after
+max-merge) left five of them in `internal/setup` — the package that puts a binary on the
+user's PATH. Reading that code rather than the list found two things the tests could not
+have caught because they never ran it: `fetchPinned` ignored `Pin.URL` and fetched the
+package-level constant, while `Status.Source` had already told the UI the other URL, and
+`verifyFFprobe` treated a zero exit status as proof of identity. D17 and the release
+digest checks already commit this repository to naming where a binary came from; a path
+with 0% coverage was the one place that claim was unchecked.
+Decision: fetch from the URL of the pin actually in force (`runErr` binds it, and a nil
+`Fetch` means the production fetcher rather than a missing one), and verify by running
+`ffprobe -version` **and** requiring the answer to call itself ffprobe.
+Consequences: an artifact gated against one identity can no longer be downloaded from
+another source, which is what makes `Status.Source` a statement rather than a decoration;
+a file that runs happily but is not the tool is refused where it used to be published as
+ready. What this does not buy: a banner is a string anyone can print, so the identity
+check is a defect-catcher (a mislabeled extract, a zero-byte stub, the wrong entry kept
+by the zip reader) and not an authenticity check — provenance still rests on the
+SHA-256 and byte-count gate that runs before it. Both halves are tested by running this
+test binary as the tool under verification (an env var picks the answer it gives), which
+keeps the checks honest without a shell, a compiler call, or a committed fixture.

@@ -1737,6 +1737,31 @@ The previous commit (`b4e1bf8`, the test-stability cycle) was accepted on the lo
 only — it deletes a test and changes a test stub, and no Windows- or Linux-only code is
 reached by either, so its two deeper legs were not re-run rather than passing unmentioned.
 
+**The installer that puts a binary on PATH had never been measured.** The same sweep that
+cleared the caption work's remainder (`4e039e1`, 17 functions at 0.0% after max-merge — down
+from 24) left five in `internal/setup`, and reading them found two defects no test could
+have caught because the code they sit in was never run: `fetchPinned` fetched
+`FFmpegPin.URL` while `Status.Source` was filled from the resolved pin, so `Pin.URL` — the
+field D17's digest discipline and the UI's own "where did this come from" both rest on —
+was decorative; and `verifyFFprobe` took a zero exit status for identity, which publishes a
+file that runs happily but is not ffprobe as an installed tool. Now the fetch uses the URL
+of the pin in force (and a nil `Fetch` means that fetcher, not a missing one), and the
+verify step must hear the tool call itself ffprobe — recorded as D19, including the part it
+does not cover: a banner is a string, so identity here is a defect-catcher and provenance
+stays with the SHA-256 and byte-count gate ahead of it. Both are exercised by running this
+test binary as the tool under verification (env var picks the answer), which is the
+repository's existing idiom for "a real executable that answers on command" without a
+shell, a compiler call or a committed fixture; the fetch cases serve from a local
+`httptest` source, so no test in this package can reach the network.
+`internal/setup` reads **85.6%** statements with the five gone, and three mutations were
+caught by the cases that replaced them: identity check disabled → `a file that runs and
+says it is not ffprobe was accepted`; the 99% progress clamp removed → `reads
+99.98017942447866, want the clamped 99`; a fetcher bound to another URL → both fetch cases,
+in 0.02 s against a refused local port rather than an external host. One 0.0% left in the
+package by a single-binary profile is `NewFFmpegInstaller`, which is reached through
+`cli/serve.go` and covered under the sweep's max-merge — not a gap, and the sweep is the
+denominator that says so.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

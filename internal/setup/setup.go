@@ -78,19 +78,20 @@ type Status struct {
 }
 
 // Fetcher streams the pinned artifact to dst, reporting cumulative bytes.
-// The real implementation enforces the pinned size ceiling and hashes on
-// the fly; tests inject fakes.
+// The real implementation is fetchPinned, bound to the URL of the pin in force
+// (nil Fetch means that one); tests inject fakes.
 type Fetcher func(ctx context.Context, dst io.Writer, progress func(fetched int64)) (err error)
 
-// Verifier sanity-checks an installed ffprobe (real: `ffprobe -version`).
+// Verifier sanity-checks an installed ffprobe (real: run `ffprobe -version` and
+// require it to answer as ffprobe).
 type Verifier func(ffprobePath string) error
 
 // Installer installs FFmpeg into TargetDir. All mutable state is guarded
 // by mu; Start is single-flight, Status is safe for concurrent polling.
 type Installer struct {
-	TargetDir  string // ffmpeg.exe / ffprobe.exe land here
-	ScratchDir string // where the downloaded zip lives (removed when done)
-	Fetch      Fetcher
+	TargetDir  string  // ffmpeg.exe / ffprobe.exe land here
+	ScratchDir string  // where the downloaded zip lives (removed when done)
+	Fetch      Fetcher // nil: fetch the pin's own URL (the production path)
 	Verify     Verifier
 	// Artifact is the pinned download identity; zero uses FFmpegPin
 	// (tests override it to describe their fake payload).
@@ -117,7 +118,6 @@ func NewFFmpegInstaller(exeDir, scratchDir string) *Installer {
 	return &Installer{
 		TargetDir:  filepath.Join(exeDir, "bin"),
 		ScratchDir: scratchDir,
-		Fetch:      fetchPinned,
 		Verify:     verifyFFprobe,
 	}
 }
@@ -233,7 +233,15 @@ func (in *Installer) runErr(ctx context.Context) error {
 	}
 	defer os.Remove(zipPath)
 	counter := &countingWriter{w: io.MultiWriter(f, hasher), total: pin.Bytes, last: 0, cb: in.setProgress}
-	fetchErr := in.Fetch(ctx, counter, func(int64) {})
+	fetch := in.Fetch
+	if fetch == nil {
+		// Bound to the URL of the pin the size and hash below are checked
+		// against, so the artifact gated is the artifact fetched.
+		fetch = func(ctx context.Context, dst io.Writer, progress func(int64)) error {
+			return fetchPinned(ctx, pin.URL, dst, progress)
+		}
+	}
+	fetchErr := fetch(ctx, counter, func(int64) {})
 	closeErr := f.Close()
 	if fetchErr != nil {
 		return xcerr.E(xcerr.CodeInternal, "FFmpeg download failed", fetchErr)
@@ -386,13 +394,16 @@ func extractFile(f *zip.File, dst string) error {
 	return nil
 }
 
-// fetchPinned streams the pinned URL with a hard timeout. The size ceiling
-// and hash gate live in runErr (they compare against the pin, not the
+// fetchPinned streams one artifact with a hard timeout, from the URL it is given —
+// which is the URL of the pin the install is gated against, never a second source of
+// truth. `Status.Source` already reports that URL to the UI, so a fetch that reached for
+// the package-level pin instead would tell the user about a download it did not make.
+// The size ceiling and hash gate live in runErr (they compare against the pin, not the
 // transport), so this is a plain bounded GET.
-func fetchPinned(ctx context.Context, dst io.Writer, progress func(fetched int64)) error {
+func fetchPinned(ctx context.Context, url string, dst io.Writer, progress func(fetched int64)) error {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, FFmpegPin.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
@@ -415,6 +426,11 @@ func fetchPinned(ctx context.Context, dst io.Writer, progress func(fetched int64
 	return nil
 }
 
+// verifyFFprobe asks the installed binary what it is. Running with exit 0 is not
+// verification: whatever lands at that path gets executed, and a file that answers but is
+// not ffprobe would be published to the user as an installed tool. What the banner can
+// prove is that the thing answering calls itself ffprobe; what binds it to the artifact
+// that was pinned is the size and SHA-256 gate in runErr, which runs before this.
 func verifyFFprobe(ffprobePath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
 	defer cancel()
@@ -422,6 +438,10 @@ func verifyFFprobe(ffprobePath string) error {
 	if err != nil {
 		return xcerr.E(xcerr.CodeFFmpegFailure,
 			string(trimOutput(out)), err)
+	}
+	if !strings.Contains(strings.ToLower(string(trimOutput(out))), "ffprobe version") {
+		return xcerr.E(xcerr.CodeFFmpegFailure,
+			"installed ffprobe did not identify itself as ffprobe: "+string(trimOutput(out)), nil)
 	}
 	return nil
 }
