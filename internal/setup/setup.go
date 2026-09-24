@@ -82,9 +82,9 @@ type Status struct {
 // (nil Fetch means that one); tests inject fakes.
 type Fetcher func(ctx context.Context, dst io.Writer, progress func(fetched int64)) (err error)
 
-// Verifier sanity-checks an installed ffprobe (real: run `ffprobe -version` and
-// require it to answer as ffprobe).
-type Verifier func(ffprobePath string) error
+// Verifier sanity-checks both installed tools (real: run each with `-version` and
+// require it to answer as the tool its path claims to be).
+type Verifier func(ffmpegPath, ffprobePath string) error
 
 // Installer installs FFmpeg into TargetDir. All mutable state is guarded
 // by mu; Start is single-flight, Status is safe for concurrent polling.
@@ -118,7 +118,7 @@ func NewFFmpegInstaller(exeDir, scratchDir string) *Installer {
 	return &Installer{
 		TargetDir:  filepath.Join(exeDir, "bin"),
 		ScratchDir: scratchDir,
-		Verify:     verifyFFprobe,
+		Verify:     verifyTools,
 	}
 }
 
@@ -266,11 +266,14 @@ func (in *Installer) runErr(ctx context.Context) error {
 	}
 
 	in.setPhase(PhaseVerifying)
-	if in.Verify == nil {
-		in.Verify = verifyFFprobe
+	verify := in.Verify
+	if verify == nil {
+		verify = verifyTools
 	}
-	if err := in.Verify(ffprobePath); err != nil {
-		return xcerr.E(xcerr.CodeFFmpegFailure, "installed ffprobe did not verify", err)
+	if err := verify(ffmpegPath, ffprobePath); err != nil {
+		// Which tool failed is in the cause: the two answers differ, and "ffprobe"
+		// in this sentence would have been wrong half the time.
+		return xcerr.E(xcerr.CodeFFmpegFailure, "the installed FFmpeg tools did not verify", err)
 	}
 	// Remove the scratch archive *before* publishing success. The deferred
 	// cleanup below still covers the error paths, but leaving it to the return
@@ -426,22 +429,37 @@ func fetchPinned(ctx context.Context, url string, dst io.Writer, progress func(f
 	return nil
 }
 
-// verifyFFprobe asks the installed binary what it is. Running with exit 0 is not
-// verification: whatever lands at that path gets executed, and a file that answers but is
-// not ffprobe would be published to the user as an installed tool. What the banner can
-// prove is that the thing answering calls itself ffprobe; what binds it to the artifact
-// that was pinned is the size and SHA-256 gate in runErr, which runs before this.
-func verifyFFprobe(ffprobePath string) error {
+// verifyTools asks both installed binaries what they are. ffprobe alone was not
+// enough: extractTools writes two files, the renderer execs the other one on every
+// render, and a check that only ever asked ffprobe would publish an unverified
+// ffmpeg.exe as an installed tool.
+func verifyTools(ffmpegPath, ffprobePath string) error {
+	for _, tool := range []struct {
+		name string
+		path string
+	}{
+		{"ffmpeg", ffmpegPath},
+		{"ffprobe", ffprobePath},
+	} {
+		if err := verifyTool(tool.path, tool.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// verifyTool runs one installed binary and requires the answer to name it.
+func verifyTool(toolPath, name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, ffprobePath, "-version").CombinedOutput()
+	out, err := exec.CommandContext(ctx, toolPath, "-version").CombinedOutput()
 	if err != nil {
 		return xcerr.E(xcerr.CodeFFmpegFailure,
-			string(trimOutput(out)), err)
+			name+" did not run: "+string(trimOutput(out)), err)
 	}
-	if !strings.Contains(strings.ToLower(string(trimOutput(out))), "ffprobe version") {
+	if !strings.Contains(strings.ToLower(string(trimOutput(out))), name+" version") {
 		return xcerr.E(xcerr.CodeFFmpegFailure,
-			"installed ffprobe did not identify itself as ffprobe: "+string(trimOutput(out)), nil)
+			name+" did not identify itself as "+name+": "+string(trimOutput(out)), nil)
 	}
 	return nil
 }

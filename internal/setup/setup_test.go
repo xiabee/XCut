@@ -95,7 +95,7 @@ func installerFor(t *testing.T, zipPath, target, scratch string) *Installer {
 		TargetDir:  target,
 		ScratchDir: scratch,
 		Fetch:      fakeFetch(payload),
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   pinFor(t, payload),
 	}
 }
@@ -201,7 +201,7 @@ func TestInstallSingleFlight(t *testing.T) {
 			_, err := dst.Write(payload)
 			return err
 		},
-		Verify:   func(string) error { return nil },
+		Verify:   func(string, string) error { return nil },
 		Artifact: pinFor(t, payload),
 	}
 	if err := in.Start(context.Background()); err != nil {
@@ -223,7 +223,7 @@ func TestInstallBadZipFailsHonest(t *testing.T) {
 		TargetDir:  filepath.Join(root, "bin"),
 		ScratchDir: filepath.Join(root, "scratch"),
 		Fetch:      fakeFetch(payload),
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   pinFor(t, payload),
 	}
 	if err := in.Start(context.Background()); err != nil {

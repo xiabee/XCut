@@ -456,7 +456,10 @@ digest checks already commit this repository to naming where a binary came from;
 with 0% coverage was the one place that claim was unchecked.
 Decision: fetch from the URL of the pin actually in force (`runErr` binds it, and a nil
 `Fetch` means the production fetcher rather than a missing one), and verify by running
-`ffprobe -version` **and** requiring the answer to call itself ffprobe.
+`ffprobe -version` **and** requiring the answer to call itself ffprobe — extended the same
+day to both tools the archive extracts (`verifyTools`), because `extractTools` installs
+`ffmpeg.exe` beside `ffprobe.exe`, the renderer execs the first on every job, and a check
+that only ever asked the second would publish an unverified binary as installed.
 Consequences: an artifact gated against one identity can no longer be downloaded from
 another source, which is what makes `Status.Source` a statement rather than a decoration;
 a file that runs happily but is not the tool is refused where it used to be published as

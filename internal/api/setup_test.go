@@ -66,7 +66,7 @@ func setupServer(t *testing.T) (*Server, *setup.Installer) {
 		TargetDir:  filepath.Join(root, "bin"),
 		ScratchDir: filepath.Join(root, "scratch"),
 		Fetch:      setupTestFetch(t),
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   setupTestPin(t),
 	}
 	s.Setup = in

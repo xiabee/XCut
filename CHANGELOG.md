@@ -6,6 +6,20 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Fixed
+- **Both installed FFmpeg tools are verified, not just the one that answers first.** The
+  archive `extractTools` unpacks installs `ffmpeg.exe` *and* `ffprobe.exe`, and the renderer
+  execs the first on every job — but the install's verify step asked only `ffprobe
+  -version`. A file in the ffmpeg slot that is not ffmpeg (a wrong zip entry kept, a
+  renamed sibling, a zero-byte stub) was therefore published as an installed tool and then
+  run with the user's arguments. `Verifier` now takes both paths and `verifyTools` asks each
+  one to name itself. Caught by the direction it needs: a missing `ffmpeg.exe` beside a
+  perfectly answering `ffprobe.exe` used to verify clean, and now refuses naming the tool
+  that failed — under a build that checks only ffprobe, that case is the one that goes red.
+  Same ceiling as the identity check it extends: a banner is a string, so this catches
+  defects, not an adversary; provenance stays with the SHA-256 and byte-count gate ahead of
+  it (D19).
+
+### Fixed
 - **The FFmpeg installer now downloads what it says it downloaded, and checks what it
   installed.** A coverage sweep (`4e039e1`: 17 functions at 0.0%) left five of them in the
   one package that puts a binary on the user's PATH, and reading that code found two things

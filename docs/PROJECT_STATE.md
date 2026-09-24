@@ -1762,6 +1762,23 @@ package by a single-binary profile is `NewFFmpegInstaller`, which is reached thr
 `cli/serve.go` and covered under the sweep's max-merge — not a gap, and the sweep is the
 denominator that says so.
 
+**The sibling binary was the same defect, one file over.** Having just read the verify step,
+the asymmetry was visible without another sweep: `extractTools` installs `ffmpeg.exe` beside
+`ffprobe.exe`, every render execs the first, and the check asked only the second — so the
+one thing the previous cycle's fix was about (a file that runs and is not the tool) stayed
+uncaught on the side that actually carries the user's arguments. `Verifier` takes both paths
+now and `verifyTools` asks each to name itself; the wrap that used to say "installed ffprobe
+did not verify" says FFmpeg and lets the cause name the tool, because half the time the old
+sentence would have been wrong.
+
+Tested in the direction that isolates it: a missing `ffmpeg.exe` next to a `ffprobe.exe` that
+answers perfectly must refuse and must name ffmpeg — and removing the ffmpeg entry from the
+loop is caught by exactly that case (`an ffmpeg that does not exist was accepted because
+ffprobe answered`), while the three cases that only exercise the ffprobe slot stay green. The
+pair's other direction (the ffprobe slot answering as ffmpeg) and the installer handing both
+extracted paths to the verifier are covered beside it. `internal/setup`'s `Verifier` seam is
+now two-argument, which is the only reason the four existing injections changed.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

@@ -108,7 +108,7 @@ func installerAt(root string, body []byte) (*Installer, *servedPin) {
 		TargetDir:  filepath.Join(root, "bin"),
 		ScratchDir: filepath.Join(root, "scratch"),
 		Fetch:      nil, // the production path: fetch the pin's own URL
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   pinOf(body, srv.URL+"/ffmpeg-pinned.zip"),
 	}, sp
 }
@@ -157,7 +157,7 @@ func TestFetchRefusesASourceThatDoesNotAnswer(t *testing.T) {
 	in := &Installer{
 		TargetDir:  filepath.Join(root, "bin"),
 		ScratchDir: filepath.Join(root, "scratch"),
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   Pin{URL: srv.URL + "/ffmpeg-pinned.zip", SHA256: "0000", Bytes: 1},
 	}
 	err := in.runErr(context.Background())
@@ -196,7 +196,7 @@ func TestSizeGateFiresAfterTheProgressCeiling(t *testing.T) {
 	in := &Installer{
 		TargetDir:  filepath.Join(root, "bin"),
 		ScratchDir: filepath.Join(root, "scratch"),
-		Verify:     func(string) error { return nil },
+		Verify:     func(string, string) error { return nil },
 		Artifact:   pin,
 	}
 	err := in.runErr(context.Background())
