@@ -1858,6 +1858,30 @@ regardless, so the log was archived before the pass/fail was read. The fix is th
 `#nosec` described above, and the evidence for it is a full Linux leg re-run at the sha that
 carries it, not a re-read of this paragraph.
 
+Accepted at `03638bf` (the panel + the G703 justification): local fast gate PASS
+(`steps not run: none`, 6 skips), Linux full gate PASS — `665 passed, 11 skipped`,
+`fail=0 race=0`, `not run: nothing`, and the step that caught the finding now reports
+`== gosec: clean (severity=high, any confidence)` — and `win-devops` had PASSed two commits
+earlier at `8fb4195` on the same Go core; it has not been re-run at this sha, and the next
+line is where that leg is accounted for. The poll this time read the verdict line *before*
+archiving (`verdict_present=1`, then CLEANED), which is the order the `8fb4195` record above
+says it should have had.
+
+**A caption wrap defect, found by looking at the artifact rather than the assertion.** The
+browser verification above ended with a `.ass` containing `first line o\Nf dialogue` — every
+test in the tree was green on it, because the invariants pinned were "wraps", "at most 12
+characters", "no karaoke tags". None of them said *where* a line may break. `layoutTextCues`
+divided runes by the frame budget without looking for a space, which is right for CJK (the
+text says nothing about word ends) and wrong for text that does. It now breaks at the last
+space inside the budget when one exists, and hard-breaks otherwise; the space used as the
+break is printed on neither line, and the dwell share still divides by what is on screen.
+Reproduced as `TestPlainWrapKeepsLatinWordsWhole` — red before the change reading
+`got: "first line o f dialogue o ver the reel today"`, green after — with the two directions
+it must not disturb pinned beside it (30 unspaced CJK characters still wrap by character with
+all 30 arriving; a single word wider than the frame still arrives broken rather than lost).
+`internal/subs`, `pipeline`, `api` and `cli` green after. The lesson for the ledger: a green
+suite over a generated artifact is evidence about the assertions, not about the artifact.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

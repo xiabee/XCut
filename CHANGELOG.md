@@ -59,6 +59,19 @@ sections are tagged; anything above the newest one is unreleased.
   because the endpoint is its caller.
 
 ### Fixed
+- **Latin captions stop breaking inside words.** The plain (no word timings) path divided a
+  segment into rune chunks of the frame's width without looking for a space, so a
+  40-character English line on a 1080×1920 reel reached the screen as `first line o\Nf
+  dialogue o\Nver the reel today` — a break no sidecar authorised, since the text itself
+  says where those words end. The wrap now takes the last space inside the budget when there
+  is one and keeps the character rule when there is not: CJK has no break opportunities to
+  find, and a word wider than the frame is still broken rather than dropped, because losing
+  text would be worse than the mid-word break this fixes. Seen first in a real artifact
+  written through the browser by `POST …/subtitles/restyle`, then reproduced as a case that
+  reads `got: "first line o f dialogue o ver the reel today"` before the fix and matches the
+  word list after. The two directions that must NOT change are pinned beside it: a
+  30-character unspaced CJK run still wraps by character with all 30 reaching the screen, and
+  an over-wide single word still arrives whole-but-broken.
 - **`GET …/subtitles` no longer says nothing about a reel it can read.** The state type it
   is built from returned early when the project had no caption file, which was right for
   the tap (nothing to compare) and wrong for a status endpoint: a project with a 1080×1920

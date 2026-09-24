@@ -283,14 +283,32 @@ func layoutTextCues(s Segment, perLine int) []laidCue {
 		perLine = 1
 	}
 	var lines [][]Word
-	for i := 0; i < len(r); i += perLine {
+	for i := 0; i < len(r); {
 		end := i + perLine
 		if end > len(r) {
 			end = len(r)
 		}
+		// Break at the last space inside the budget when the text has one: a space is
+		// the sidecar telling us where a word ends, and cutting through it puts
+		// "o" on one line and "f" on the next. With no space in reach — CJK, or a word
+		// wider than the frame — the character rule stands, because dropping the rest
+		// of a long word to keep the line tidy would lose text nobody asked to lose.
+		if end < len(r) {
+			for j := end - 1; j > i; j-- {
+				if r[j] == ' ' {
+					end = j
+					break
+				}
+			}
+		}
 		// One Word per line, not per character: the plain renderer prints the
 		// text and the timings only ever name the cue's window.
 		lines = append(lines, []Word{{Start: 0, End: 0, Word: string(r[i:end])}})
+		i = end
+		// The space that was chosen as the break is not printed on either line.
+		for i < len(r) && r[i] == ' ' {
+			i++
+		}
 	}
 	var cues []laidCue
 	// share is each cue's character count: the span is divided by it, because with
