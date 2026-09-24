@@ -26,12 +26,12 @@ type rectWindows struct {
 }
 
 // getWindowBounds reads the current placement of the host window.
-func getWindowBounds(hwnd unsafe.Pointer) (windowBounds, bool) {
-	if hwnd == nil {
+func getWindowBounds(hwnd uintptr) (windowBounds, bool) {
+	if hwnd == 0 {
 		return windowBounds{}, false
 	}
 	var r rectWindows
-	p := uintptr(hwnd)
+	p := hwnd
 	if _, _, _ = procGetWindowRect.Call(p, uintptr(unsafe.Pointer(&r))); r.Right <= r.Left || r.Bottom <= r.Top {
 		return windowBounds{}, false
 	}
@@ -41,16 +41,20 @@ func getWindowBounds(hwnd unsafe.Pointer) (windowBounds, bool) {
 // workArea returns the primary monitor's usable desktop.
 func workArea() rect {
 	var r rectWindows
-	if _, _, _ = procSystemParametersInfo.Call(spiGetWorkarea, 0, uintptr(unsafe.Pointer(&r)), 0); r.Right <= r.Left || r.Bottom <= r.Top {
-		return rect{}
+	if _, _, _ = procSystemParametersInfo.Call(spiGetWorkarea, 0, uintptr(unsafe.Pointer(&r)), 0); r.Right > r.Left && r.Bottom > r.Top {
+		return rect{Left: int(r.Left), Top: int(r.Top), Right: int(r.Right), Bottom: int(r.Bottom)}
 	}
-	return rect{Left: int(r.Left), Top: int(r.Top), Right: int(r.Right), Bottom: int(r.Bottom)}
+	// The API cannot answer here (a headless service session reports no work
+	// area). A conservative default keeps the clamp working — "unknown" must
+	// not disable it, because a stranded window is the bug it exists to
+	// prevent; the saved width/height clamps still fit the window to it.
+	return rect{Left: 0, Top: 0, Right: 1280, Bottom: 1024}
 }
 
 // restoreWindowBounds moves the host window onto its saved placement,
 // clamped to today's work area. Best-effort.
-func restoreWindowBounds(hwnd unsafe.Pointer, path string) {
-	if hwnd == nil {
+func restoreWindowBounds(hwnd uintptr, path string) {
+	if hwnd == 0 {
 		return
 	}
 	b := clampBounds(loadWindowBounds(path), workArea())
@@ -61,7 +65,7 @@ func restoreWindowBounds(hwnd unsafe.Pointer, path string) {
 // window lives. A 2 s ticker is cheaper and far simpler than subclassing the
 // window procedure for WM_MOVE/WM_SIZE — the file is 40 bytes — and the save
 // is atomic, so a kill shot mid-write cannot tear it.
-func trackWindowBounds(hwnd unsafe.Pointer, path string, stop <-chan struct{}) {
+func trackWindowBounds(hwnd uintptr, path string, stop <-chan struct{}) {
 	save := func() {
 		if b, ok := getWindowBounds(hwnd); ok {
 			_ = saveWindowBounds(path, b)
