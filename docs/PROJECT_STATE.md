@@ -1779,6 +1779,29 @@ pair's other direction (the ffprobe slot answering as ffmpeg) and the installer 
 extracted paths to the verifier are covered beside it. `internal/setup`'s `Verifier` seam is
 now two-argument, which is the only reason the four existing injections changed.
 
+**The mismatch becomes something a client can see.** The restyle the tap does at export was
+invisible everywhere else: the panel that lists caption files knew only that an `.ass`
+existed, so a project whose captions were sized for another frame looked exactly like one
+whose captions fit. `GET /api/v1/projects/{id}/subtitles` now answers with the four facts
+(`styled_frame`, `reel_frame`, `mismatch`, `transcript`) and `POST …/subtitles/restyle` does
+the repair without a sidecar and without a render, returning the same body so the caller
+sees the frame it asked for. `pipeline.CaptionState` and `RestyleSubtitles` were exported for
+it — a second reader re-deriving the frames would be the disagreement `subsState` was built
+to prevent, and the endpoint is a real caller, not a test seam. `storedTranscript` changed
+shape in the same pass: it used to fold "no file", "unreadable" and "fails validation" into
+one `nil`, which is the right answer for a tap that has a `.srt` to fall back on and the wrong
+one for a client asking directly; it now returns the error and `HasStoredTranscript` is the
+tap's question. The new case `TestExportDoesNotPromiseARestyleItCannotPerform` pins the
+difference (a truncated payload plans the plain-transcript answer, not a restyle) and goes
+red when existence is mistaken for usability.
+
+Writing the status assertion before the handler was finished caught a second defect: the
+state type returned early when a project had no caption file, so a project with a 1080×1920
+reel and nothing transcribed yet reported `reel_frame: ""` — correct for the tap, which has
+nothing to compare, and a withheld fact for a status endpoint. The reel's canvas is read
+unconditionally now and `mismatch` still says false. That one was not a mutation catch; the
+fixture's own claim failed first, which is the cheaper way to find it.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

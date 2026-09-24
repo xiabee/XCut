@@ -70,44 +70,49 @@ const (
 	ExportFallbackSubtitles = "burned from the plain .srt beside them, which declares no frame: "
 )
 
-// subsState is what the tap knows about the caption file a project already has:
+// CaptionState is what the tap knows about the caption file a project already has:
 // where it is, which frame it declares, and which frame the reel renders onto.
 // One type answers at ask time and in the body, because the two moments can see
 // different things — a tap that has to build the reel first only learns the
 // canvas after that build — and a rule each of them held separately is a rule
-// that can disagree with itself.
-type subsState struct {
-	path    string
-	srtPath string // the canvas-agnostic sibling, when the project has one
-	styledW int
-	styledH int
-	reelW   int
-	reelH   int
+// that can disagree with itself. It is exported because the same question is
+// asked by anything that wants to *show* the state before a render commits to it;
+// a second reader that re-derived the frames would be the disagreement this type
+// exists to prevent.
+type CaptionState struct {
+	Path    string // the caption file resolution would burn, "" when there is none
+	SRTPath string // the canvas-agnostic sibling, when the project has one
+	StyledW int
+	StyledH int
+	ReelW   int
+	ReelH   int
 }
 
-func (d Deps) subsState(projectID string) subsState {
-	s := subsState{path: d.existingSubtitlesPath(projectID)}
-	if s.path == "" {
-		return s
-	}
-	// Resolved separately rather than inferred by rewriting the extension, so the
-	// path in the log is the one SubtitlesPath would hand the writer too.
-	if p, err := d.SubtitlesPath(projectID, "srt"); err == nil {
-		if _, serr := os.Stat(p); serr == nil {
-			s.srtPath = p
+func (d Deps) CaptionState(projectID string) CaptionState {
+	s := CaptionState{Path: d.existingSubtitlesPath(projectID)}
+	if s.Path != "" {
+		// Resolved separately rather than inferred by rewriting the extension, so the
+		// path in the log is the one SubtitlesPath would hand the writer too.
+		if p, err := d.SubtitlesPath(projectID, "srt"); err == nil {
+			if _, serr := os.Stat(p); serr == nil {
+				s.SRTPath = p
+			}
 		}
-	}
-	if f, err := os.Open(s.path); err == nil {
-		if w, h, ok := subs.ReadASSFrame(f); ok {
-			s.styledW, s.styledH = w, h
+		if f, err := os.Open(s.Path); err == nil {
+			if w, h, ok := subs.ReadASSFrame(f); ok {
+				s.StyledW, s.StyledH = w, h
+			}
+			f.Close()
 		}
-		f.Close()
 	}
 	// The same read the transcript stage does: the canvas is the timeline
-	// document's, not the request's, so a hand-edited reel is respected.
+	// document's, not the request's, so a hand-edited reel is respected. Read even
+	// when there are no captions yet — a panel that shows the reel's frame before
+	// anything is transcribed knows something the file probe does not, and `mismatch`
+	// still answers false because there is nothing to compare.
 	if tp, err := d.TimelinePath(projectID); err == nil {
 		if tl, lerr := timeline.LoadFile(tp); lerr == nil {
-			s.reelW, s.reelH = tl.Canvas.Width, tl.Canvas.Height
+			s.ReelW, s.ReelH = tl.Canvas.Width, tl.Canvas.Height
 		}
 	}
 	return s
@@ -117,26 +122,26 @@ func (d Deps) subsState(projectID string) subsState {
 // re-lay it out — an empty string means "there is no better option on disk". It is one
 // method shared by the plan and the body on purpose: two decisions that each look at the
 // same facts and can disagree is the bug this whole type exists to avoid.
-func (s subsState) plainFallback() string {
-	if s.mismatch() && s.srtPath != "" && s.srtPath != s.path {
-		return s.srtPath
+func (s CaptionState) plainFallback() string {
+	if s.Mismatch() && s.SRTPath != "" && s.SRTPath != s.Path {
+		return s.SRTPath
 	}
 	return ""
 }
 
-// mismatch is the case the tap used to call "reuse": the captions exist, but for
+// Mismatch is the case the tap used to call "reuse": the captions exist, but for
 // a different frame than the reel now has. A file that claims nothing (an SRT, or
 // an ASS with no PlayRes pair) and a project with no timeline yet both mean
 // "cannot compare" — that is the absence of evidence, not a conflict, and the
 // tap says what it knows rather than guessing a mismatch into existence.
-func (s subsState) mismatch() bool {
-	return s.path != "" && s.styledW > 0 && s.reelW > 0 &&
-		(s.styledW != s.reelW || s.styledH != s.reelH)
+func (s CaptionState) Mismatch() bool {
+	return s.Path != "" && s.StyledW > 0 && s.ReelW > 0 &&
+		(s.StyledW != s.ReelW || s.StyledH != s.ReelH)
 }
 
-func (s subsState) frames() string {
+func (s CaptionState) frames() string {
 	return fmt.Sprintf("the captions are styled for %dx%d and this reel is %dx%d",
-		s.styledW, s.styledH, s.reelW, s.reelH)
+		s.StyledW, s.StyledH, s.ReelW, s.ReelH)
 }
 
 // ExportProjectAsync starts the tap. It returns the job id and the plan the state
@@ -177,15 +182,15 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 // old captions as done and burn a caption box sized for a frame nobody is going
 // to watch.
 func (d Deps) subtitlesReuseStep(projectID string) ExportStep {
-	st := d.subsState(projectID)
+	st := d.CaptionState(projectID)
 	switch {
-	case st.mismatch() && d.storedTranscript(projectID) != nil:
+	case st.Mismatch() && d.HasStoredTranscript(projectID):
 		// The words are already on disk, so the fix costs a layout pass instead of a
 		// transcription: this is the arm that used to be the sidecar's alone.
 		return ExportStep{Step: "subtitles", Action: "restyle", Reason: ExportRelaidSubtitles + st.frames()}
-	case st.mismatch() && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "":
+	case st.Mismatch() && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "":
 		return ExportStep{Step: "subtitles", Action: "create", Reason: ExportRestyleSubtitles + st.frames()}
-	case st.mismatch():
+	case st.Mismatch():
 		// No sidecar to lay the words out again. A plain .srt of the same transcript
 		// carries no frame to be wrong about, so say which of the two will burn rather
 		// than calling both of them "as they stand".
@@ -218,25 +223,25 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 		// a transcript written since the request is a transcript worth reusing.
 		subsPath := d.existingSubtitlesPath(project.ID)
 		if req.Subs {
-			st := d.subsState(project.ID)
+			st := d.CaptionState(project.ID)
 			sidecar := worker.ResolveAIBin(d.Cfg.Workers.AIBin) != ""
 			switch {
-			case st.mismatch() && d.storedTranscript(project.ID) != nil:
+			case st.Mismatch() && d.HasStoredTranscript(project.ID):
 				// The plan said it could lay the same words out for this frame, and the
 				// words are still there: do it here rather than trusting the plan's
 				// reading of a moment ago. A restyle that fails fails the tap — the
 				// alternative is burning the ill-fitted file the plan just promised to
 				// replace.
-				if err := d.restyleSubtitles(project.ID); err != nil {
+				if err := d.RestyleSubtitles(project.ID); err != nil {
 					return err
 				}
 				subsPath = d.existingSubtitlesPath(project.ID)
 				d.Log.Info("captions re-laid out for the reel's canvas from the stored transcript",
 					"project", project.ID,
-					"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
-					"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH),
+					"styled", fmt.Sprintf("%dx%d", st.StyledW, st.StyledH),
+					"reel", fmt.Sprintf("%dx%d", st.ReelW, st.ReelH),
 					"subs", subsPath)
-			case (st.path == "" || st.mismatch()) && sidecar:
+			case (st.Path == "" || st.Mismatch()) && sidecar:
 				// Nothing yet, or something styled for another frame: with a sidecar
 				// the words can be laid out again, and a transcript that fails here
 				// fails the tap rather than quietly shipping the ill-fitted file the
@@ -245,7 +250,7 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 					return err
 				}
 				subsPath = d.existingSubtitlesPath(project.ID)
-			case st.mismatch():
+			case st.Mismatch():
 				// No way to restyle. A plain .srt of the same transcript is laid out by
 				// libass against the reel it lands on, so when one exists it burns
 				// instead of a box sized for another frame; either way the record names
@@ -254,14 +259,14 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 					subsPath = alt
 					d.Log.Warn("burning the plain transcript instead of captions styled for another canvas",
 						"project", project.ID,
-						"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
-						"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH),
+						"styled", fmt.Sprintf("%dx%d", st.StyledW, st.StyledH),
+						"reel", fmt.Sprintf("%dx%d", st.ReelW, st.ReelH),
 						"using", filepath.Base(alt))
 				} else {
 					d.Log.Warn("captions are styled for another canvas than the reel",
 						"project", project.ID,
-						"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
-						"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH))
+						"styled", fmt.Sprintf("%dx%d", st.StyledW, st.StyledH),
+						"reel", fmt.Sprintf("%dx%d", st.ReelW, st.ReelH))
 				}
 			}
 		}

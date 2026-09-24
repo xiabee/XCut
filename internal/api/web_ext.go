@@ -1,11 +1,13 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/style"
 	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
@@ -32,6 +34,10 @@ func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreDelete)
 	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles", s.handleSubtitlesStatus)
 	mux.HandleFunc("GET /api/v1/projects/{id}/subtitles/file", s.handleSubtitlesFile)
+	// Captions laid out for another frame are fixable from the stored transcript, and
+	// the client that can see `mismatch` above should not have to render a reel to act
+	// on it.
+	mux.HandleFunc("POST /api/v1/projects/{id}/subtitles/restyle", s.handleSubtitlesRestyle)
 }
 
 // handleStyles lists style presets visible to the server (embedded +
@@ -142,18 +148,59 @@ func (s *Server) handleSubtitlesStatus(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		return
 	}
+	writeJSON(w, http.StatusOK, s.subtitlesStatus(p))
+}
+
+// subtitlesStatus reports what the project's caption files *are*, not what the server
+// would do about it: which exist, which frame the styled one declares, which frame the
+// reel renders onto, and whether the words are still on disk to be laid out again. The
+// client decides what that means, because the answer to "should I restyle" is different
+// for a panel showing a warning and a tap that is about to render.
+func (s *Server) subtitlesStatus(p *storage.Project) map[string]any {
 	status := map[string]any{"srt": false, "ass": false}
 	for _, ext := range []string{"srt", "ass"} {
 		path, err := s.Pipe.SubtitlesPath(p.ID, ext)
 		if err != nil {
-			s.writeErr(w, r, err)
-			return
+			continue // a path the workspace refuses is not a caption file either way
 		}
 		if _, err := os.Stat(path); err == nil {
 			status[ext] = true
 		}
 	}
-	writeJSON(w, http.StatusOK, status)
+	st := s.Pipe.CaptionState(p.ID)
+	status["styled_frame"] = captionFrame(st.StyledW, st.StyledH)
+	status["reel_frame"] = captionFrame(st.ReelW, st.ReelH)
+	status["mismatch"] = st.Mismatch()
+	status["transcript"] = s.Pipe.HasStoredTranscript(p.ID)
+	return status
+}
+
+// captionFrame names a declared frame, or "" when the file (or the reel) claims nothing.
+// An empty string is the difference between "these disagree" and "this cannot be known",
+// which a 0x0 would flatten into a mismatch the project does not have.
+func captionFrame(w, h int) string {
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dx%d", w, h)
+}
+
+// handleSubtitlesRestyle lays the project's stored captions out again for the reel's own
+// frame. It is the caption half of what the export tap does inline, offered on its own so
+// a project that changed shape can be fixed without rendering anything, and without the
+// sidecar: the words are already on disk.
+func (s *Server) handleSubtitlesRestyle(w http.ResponseWriter, r *http.Request) {
+	p := s.requireProjectRow(w, r)
+	if p == nil {
+		return
+	}
+	if err := s.Pipe.RestyleSubtitles(p.ID); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	// The same body as GET, so the caller sees the frame it asked for rather than
+	// polling for the write to land.
+	writeJSON(w, http.StatusOK, s.subtitlesStatus(p))
 }
 
 // handleSubtitlesFile downloads one subtitle artifact (?format=ass|srt,

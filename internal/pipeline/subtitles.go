@@ -37,24 +37,35 @@ func (d Deps) transcriptPath(projectID string) (string, error) {
 }
 
 // storedTranscript is the transcript an earlier transcription left behind, read back
-// through the same validation the sidecar's answer went through. Anything that cannot
-// be laid out again — missing, unreadable, invalid — reads as "there is none", which is
-// what the export then reports it has, rather than a tap failing over a file it never
-// needed in the first place.
-func (d Deps) storedTranscript(projectID string) *subs.Transcript {
+// through the same validation the sidecar's answer went through. A file that cannot be
+// laid out again reads as "there is none" to the export — which has a plain .srt to fall
+// back to and should use it — but the error is returned too, because "no transcript" and
+// "a transcript that fails validation" are different answers to give whoever asks
+// directly, and only one of them can be fixed by transcribing again.
+func (d Deps) storedTranscript(projectID string) (*subs.Transcript, error) {
 	p, err := d.transcriptPath(projectID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	raw, err := os.ReadFile(p)
 	if err != nil {
-		return nil
+		return nil, xcerr.E(xcerr.CodeNotFound,
+			"no stored transcript for this project (transcribe first)", err)
 	}
 	t, err := subs.Parse(raw)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return t
+	return t, nil
+}
+
+// HasStoredTranscript is the question the plan asks: can this project's captions be laid
+// out again from what is on disk. The reason it is not read from disk is in
+// storedTranscript: a payload that fails validation cannot be laid out either, and the
+// export should say which file it chose rather than fail over one it could not parse.
+func (d Deps) HasStoredTranscript(projectID string) bool {
+	t, err := d.storedTranscript(projectID)
+	return err == nil && t != nil
 }
 
 // writeStyledSubtitles lays a transcript out as the project's styled caption file, and
@@ -122,16 +133,15 @@ func (d Deps) writeStyledSubtitles(projectID string, t *subs.Transcript) (bool, 
 	return false, nil
 }
 
-// restyleSubtitles lays the project's stored transcript out again for the canvas its
+// RestyleSubtitles lays the project's stored transcript out again for the canvas its
 // timeline now declares — the caption fix a sidecar would have made, without the
 // sidecar or the minutes of transcription it costs.
-func (d Deps) restyleSubtitles(projectID string) error {
-	t := d.storedTranscript(projectID)
-	if t == nil {
-		return xcerr.E(xcerr.CodeNotFound,
-			"no stored transcript to lay out again (transcribe first)", nil)
+func (d Deps) RestyleSubtitles(projectID string) error {
+	t, err := d.storedTranscript(projectID)
+	if err != nil {
+		return err
 	}
-	_, err := d.writeStyledSubtitles(projectID, t)
+	_, err = d.writeStyledSubtitles(projectID, t)
 	return err
 }
 

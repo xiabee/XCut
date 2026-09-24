@@ -696,6 +696,56 @@ func TestExportRelaysOutStoredCaptionsWithoutTheSidecar(t *testing.T) {
 // present. Delete it and an unfixable mismatch goes back to burning the plain .srt with
 // the ill-fitted file left alone — which is what the new arm would otherwise be
 // indistinguishable from.
+// TestExportDoesNotPromiseARestyleItCannotPerform is the difference between a
+// transcript file existing and a transcript being usable. A payload that fails
+// validation cannot be laid out again, so the tap must give the mismatch the answer it
+// gives with no payload at all — burn the plain .srt, say so — rather than queueing a
+// restyle that dies inside the job.
+func TestExportDoesNotPromiseARestyleItCannotPerform(t *testing.T) {
+	d, p, _, assPath, _ := restyledReel(t)
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Truncated the way a killed writer leaves it: present, non-empty, unparsable.
+	if err := os.WriteFile(tp, []byte(`{"language":"zh","segments":[{"start":0.`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d.HasStoredTranscript(p.ID) {
+		t.Fatal("an unparsable payload read as usable")
+	}
+
+	_, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     true,
+		Out:      filepath.Join(t.TempDir(), "broken.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action == "restyle" {
+		t.Fatalf("the tap promised a restyle from a transcript it cannot parse: %+v", got)
+	}
+	if !strings.HasPrefix(got.Reason, ExportFallbackSubtitles) {
+		t.Fatalf("a broken payload planned %q / %q, want the plain-transcript answer", got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	// The unusable payload also went untouched: refusing to read it is not the same
+	// as repairing or replacing it.
+	b, rerr := os.ReadFile(assPath)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1920 || h != 1080 {
+		t.Errorf("the ill-fitted .ass was rewritten by a tap that could not restyle it: %dx%d ok=%v", w, h, ok)
+	}
+}
+
 func TestExportStillFallsBackWithoutAStoredTranscript(t *testing.T) {
 	d, p, _, assPath, srtPath := restyledReel(t)
 	tp, err := d.transcriptPath(p.ID)

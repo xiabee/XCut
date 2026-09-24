@@ -5,6 +5,29 @@ sections are tagged; anything above the newest one is unreleased.
 
 ## [Unreleased] — after v0.1.9-alpha
 
+### Added
+- **The caption frame is now something a client can see and fix without rendering.**
+  `GET /api/v1/projects/{id}/subtitles` reports `styled_frame`, `reel_frame`, `mismatch`
+  and `transcript` (whether the words are still on disk to be laid out again), and
+  `POST /api/v1/projects/{id}/subtitles/restyle` re-lays the project's stored transcript
+  onto the reel it has now — the same repair the export tap performs inline, offered on
+  its own so switching style presets no longer means cutting a reel to find out, and no
+  sidecar. Answers name what is missing rather than what failed: a project with no stored
+  transcript gets `404 not_found` saying "transcribe first", and the restyle's success
+  response is the same body as the GET, so the caller sees the frame it asked for instead
+  of polling. `pipeline.CaptionState` is exported because a second reader that re-derived
+  the frames would be the disagreement the type exists to prevent, and `pipeline.RestyleSubtitles`
+  because the endpoint is its caller.
+
+### Fixed
+- **`GET …/subtitles` no longer says nothing about a reel it can read.** The state type it
+  is built from returned early when the project had no caption file, which was right for
+  the tap (nothing to compare) and wrong for a status endpoint: a project with a 1080×1920
+  reel and no captions yet reported an empty `reel_frame`, hiding the one fact the panel
+  needs before anything is transcribed. The reel's canvas is read unconditionally now;
+  `mismatch` still answers false, because there is nothing to disagree with. Found by
+  writing the status assertion first and having it fail on the fixture's own claim.
+
 ### Fixed
 - **Both installed FFmpeg tools are verified, not just the one that answers first.** The
   archive `extractTools` unpacks installs `ffmpeg.exe` *and* `ffprobe.exe`, and the renderer

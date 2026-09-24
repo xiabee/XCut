@@ -263,6 +263,7 @@ systemd-run -q --user --scope -p MemoryMax=128M -p MemorySwapMax=0 \
 | Render fails with "this FFmpeg build does not include the 'xfade' filter" | A trimmed distro build, not a broken project: Kylin V10 SP1's FFmpeg 4.2.2 has no `xfade` (measured in session #15's ARM64 run). Use `generic_highlight` (no transitions) or install a full build. |
 | `doctor` says FFmpeg missing but the app finds it | Different shells, different PATH. `xcut doctor` exits 1 and names the remedy; check the environment the app actually runs in. |
 | FFmpeg dies with an allocation error on a machine that has RAM free | The memory cap is doing its job and is too tight for this render — `xcut doctor`'s `Process sandbox` row names the number. Raise `resource.ffmpeg_max_memory_mb` (measured worst normal child: 566 MB for an xfade render) or set it to `0` for uncapped. On Linux the same symptom can mean the scope never attached: see *What bounds a runaway FFmpeg child*. |
+| Captions land at the wrong size or height after the project changed style | The `.ass` declares the frame it was laid out for (`PlayResX/Y`) and the reel now declares another. `GET /api/v1/projects/{id}/subtitles` reports both (`styled_frame`, `reel_frame`, `mismatch`) and whether the words are still on disk (`transcript`); `POST /api/v1/projects/{id}/subtitles/restyle` lays them out again for the current reel without a sidecar, and the export tap does the same thing on its own. Without a stored transcript the tap burns the plain `.srt` instead. |
 
 ## Health and limits
 
