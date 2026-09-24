@@ -168,7 +168,7 @@ async function post(path, body) {
 }
 
 function busy(on) {
-  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-export", "btn-subtitles", "btn-subs-preview"]) {
+  for (const id of ["btn-analyze", "btn-timeline", "btn-render", "btn-export", "btn-subtitles", "btn-subs-preview", "btn-subs-restyle"]) {
     $(id).disabled = on;
   }
 }
@@ -1386,11 +1386,12 @@ async function refreshSubtitlesStatus() {
   const status = $("subs-status");
   const links = $("subs-links");
   const previewBtn = $("btn-subs-preview");
+  const restyleBtn = $("btn-subs-restyle");
   const transcript = $("subs-transcript");
   const hideTranscript = () => { transcript.hidden = true; transcript.textContent = ""; };
   if (!currentProject) {
     status.textContent = ""; links.innerHTML = "";
-    previewBtn.hidden = true; hideTranscript();
+    previewBtn.hidden = true; restyleBtn.hidden = true; hideTranscript();
     return;
   }
   const pid = currentProject.id;
@@ -1400,11 +1401,19 @@ async function refreshSubtitlesStatus() {
     if (!st.srt && !st.ass) {
       status.textContent = t("none yet — transcribe to create");
       links.innerHTML = "";
-      previewBtn.hidden = true; hideTranscript();
+      previewBtn.hidden = true; restyleBtn.hidden = true; hideTranscript();
       checkAISidecar(status);
       return;
     }
-    status.textContent = st.ass ? t("srt + karaoke ass ready") : t("srt ready");
+    // The frame the styled file was laid out for is a fact the server now reports,
+    // and a caption box sized for another shape is a defect the user should see
+    // before the render, not after. The button appears only when the words are still
+    // on disk to be laid out again: without them there is nothing to offer but a
+    // transcription, which is the Transcribe button's job.
+    restyleBtn.hidden = !(st.mismatch && st.transcript);
+    status.textContent = st.mismatch
+      ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
+      : (st.ass ? t("srt + karaoke ass ready") : t("srt ready"));
     const base = `/api/v1/projects/${currentProject.id}/subtitles/file?format=`;
     links.innerHTML = "";
     for (const [fmt, ok] of [["srt", st.srt], ["ass", st.ass]]) {
@@ -1455,6 +1464,25 @@ function srtToText(srt) {
     .filter(Boolean)
     .join("\n");
 }
+
+$("btn-subs-restyle").addEventListener("click", async () => {
+  if (!currentProject) return;
+  const pid = currentProject.id;
+  busy(true);
+  try {
+    const st = await api(`/api/v1/projects/${pid}/subtitles/restyle`, { method: "POST" });
+    if (projectChangedSince(pid)) return; // the answer belongs to a project no longer shown
+    // The endpoint answers with the same body the panel polls, so the readout is the
+    // server's after the write, not a client-side guess that it worked.
+    $("subs-status").textContent = st.mismatch
+      ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
+      : t("captions re-laid out for this reel");
+    $("btn-subs-restyle").hidden = !(st.mismatch && st.transcript);
+    refreshSubtitlesStatus();
+  } catch (e) {
+    banner(tf("Re-lay failed: {msg}", { msg: e.message }));
+  } finally { busy(false); }
+});
 
 $("btn-subtitles").addEventListener("click", async () => {
   try {

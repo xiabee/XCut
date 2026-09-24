@@ -1819,6 +1819,45 @@ burn prefers, and the case says so rather than leaving it to be assumed. Still o
 arc: a project captioned before the transcript was stored has no payload to rebuild from, so
 it keeps needing a sidecar exactly as it did.
 
+**The panel says it out loud.** `subs-status` used to answer "ready" to a project whose
+captions were sized for another frame, because the only question it asked was whether files
+existed. It now reads the frame facts the server reports and says which two frames disagree,
+with a `re-lay captions` button that appears only when the stored transcript makes the fix
+possible — the button is the difference between telling the user about a defect and handing
+them the way out, and hiding it when there are no words on disk keeps the panel from
+offering a POST that can only 404. Clicking it re-reads the status the endpoint returns
+rather than assuming success.
+
+Verified in a browser against a running server on a throwaway workspace (a 4-second lavfi
+clip, a real timeline PUT, caption files staged in the project dir, and the panel driven
+through the DOM): mismatch with a transcript → button shown, click, `styled_frame` becomes
+1080x1920, `mismatch` false, button hidden, and the `.ass` on disk carries those
+`PlayResX/Y`; re-entry after a reload → the readout matches the files, not the last click;
+mismatch with the transcript moved away → the warning shows and the button does not. What
+that staging did *not* reach is the failure banner, and the caption file it produced is
+also the next item on this list: the plain path's character-wise wrap broke
+`first line of dialogue` as `first line o\Nf dialogue`, which is correct for CJK and wrong
+for text that has spaces in it.
+
+Accepted at `3d5c7fd` (the pair verify): local fast gate PASS (`steps not run: none`,
+6 skips), Linux full gate PASS (`658 → 660 passed, 11 skipped`, `fail=0 race=0`,
+`not run: nothing`, cargo/race/cross-compile/gosec all present in the step list). Its
+win-devops leg is the one at `8fb4195` below — the node packs the working tree, so running it
+mid-cycle would have tested code that was not yet committed.
+
+NOT accepted at `8fb4195` (the API surface): the local fast gate PASSed and `win-devops`
+PASSed (`OVERALL PASS`, `2m15.219s`), but the Linux full gate came back **red** on its last
+step — `== gosec: FAILED (rc=1)` with `G703 (CWE-22): Path traversal via taint analysis
+(Confidence: HIGH, Severity: HIGH)` at `internal/api/web_ext.go:166`, a line this commit
+introduced. Two things are worth keeping in that record. The first is that the deep leg found
+it and the fast one could not: `check.ps1 fast` has no scanner step, so "LOCAL CI PASS" said
+nothing about it. The second is mine: the acceptance for that sha was written from the two
+legs that had returned, and the third's poll loop ran out its ~16 minutes without the verdict
+line — the gosec step was still executing — and then its cleanup gzip-and-delete ran
+regardless, so the log was archived before the pass/fail was read. The fix is the justified
+`#nosec` described above, and the evidence for it is a full Linux leg re-run at the sha that
+carries it, not a re-read of this paragraph.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

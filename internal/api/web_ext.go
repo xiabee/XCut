@@ -163,6 +163,10 @@ func (s *Server) subtitlesStatus(p *storage.Project) map[string]any {
 		if err != nil {
 			continue // a path the workspace refuses is not a caption file either way
 		}
+		// #nosec G703 -- p.ID came from a DB row lookup and SubtitlesPath builds the
+		// path through WS.SafeJoin, which rejects "..", rooted, absolute and
+		// drive-qualified forms before Join (pinned in internal/workspace tests), so no
+		// client-controlled traversal can reach this Stat.
 		if _, err := os.Stat(path); err == nil {
 			status[ext] = true
 		}

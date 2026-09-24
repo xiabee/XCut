@@ -6,6 +6,30 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **The web panel now says when the captions are sized for another frame, and offers the
+  fix.** `subs-status` reads `字幕按 1920x1080 排版，成片是 1080x1920` instead of the
+  "ready" sentence it used to give a mismatched project, and a `re-lay captions` button
+  appears next to it — visible only when the mismatch is fixable from the stored
+  transcript (`st.mismatch && st.transcript`), because without the words on disk the only
+  answer is the Transcribe button that is already there. The click posts
+  `/subtitles/restyle` and re-reads the status the endpoint returns, so the sentence the
+  user watches is the server's after the write. Verified in a browser against a running
+  server on a scratch workspace, three ways: mismatch with a transcript (button shown → click →
+  `styled_frame` 1080x1920, `mismatch` false, button gone, the file's own `PlayResX/Y`
+  agree), re-entry after a reload (the readout matches the files rather than the previous
+  click), and mismatch without a transcript (the warning shows, the button stays hidden).
+  Not verified: the failure banner (`Re-lay failed: {msg}`) — reaching it with the button
+  visible means a payload that passes the panel's check and fails the write, which is not a
+  state the staging produced.
+  Found on the way and fixed in the same commit: the Linux full leg's gosec pass flagged
+  `HIGH G703` on the status handler's `os.Stat` — the local fast gate has no scanner step, so
+  this is the deep leg earning its keep. The path is built by `SubtitlesPath` through
+  `WS.SafeJoin`, which rejects `..`, rooted, absolute and drive-qualified forms before any
+  `Join`, so the finding is the taint engine not modelling the guard; it carries the same
+  justified `#nosec G703` the sibling download handler already uses (the gate runs
+  `-nosec-require-justification`, so a bare suppression would not pass).
+
+### Added
 - **A stored transcript is a caption source: the tap can produce captions with no sidecar at
   all.** A project that had been transcribed once, whose caption files were then removed,
   answered `subtitles=skip (no AI sidecar configured …)` even though the words were still on
