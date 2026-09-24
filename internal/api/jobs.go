@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
@@ -228,8 +229,27 @@ func (s *Server) handleSubtitlesTranscribe(w http.ResponseWriter, r *http.Reques
 	s.writeJobAccepted(w, r, p.ID, id)
 }
 
+// resolveRenderOut anchors an API-supplied render output. The server's working
+// directory is an implementation detail the caller cannot see — a relative out
+// used to land wherever serve happened to be started — so a relative path
+// belongs to the workspace, where every other artifact this API names lives.
+// Absolute paths are the documented shape and pass through untouched; anything
+// that would escape the workspace is refused by SafeJoin.
+func (s *Server) resolveRenderOut(w http.ResponseWriter, r *http.Request, out string) (string, bool) {
+	if out == "" || filepath.IsAbs(out) {
+		return out, true
+	}
+	anchored, err := s.Pipe.WS.SafeJoin(out)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return "", false
+	}
+	return anchored, true
+}
+
 // POST /api/v1/projects/{id}/render {"out": "D:/videos/out.mp4", "subs": true}
-// (out optional; subs burns the project's subtitles into the output)
+// (out optional, absolute or workspace-relative; subs burns the project's
+// subtitles into the output)
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
@@ -250,6 +270,12 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = defaultOut
+	} else {
+		anchored, ok := s.resolveRenderOut(w, r, out)
+		if !ok {
+			return
+		}
+		out = anchored
 	}
 	subsPath := ""
 	if body.Subs {
@@ -296,9 +322,13 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if body.Style == "" {
 		body.Style = pipeline.DefaultExportStyle
 	}
+	anchoredOut, ok := s.resolveRenderOut(w, r, body.Out)
+	if !ok {
+		return
+	}
 	req := pipeline.ExportRequest{
 		Timeline: pipeline.TimelineRequest{Style: body.Style, Duration: body.Duration, Music: body.Music},
-		Out:      body.Out,
+		Out:      anchoredOut,
 	}
 	if body.BeatSnap != nil {
 		req.Timeline.BeatSnap = *body.BeatSnap
