@@ -46,7 +46,7 @@ func TestNeedsScoreScan(t *testing.T) {
 	}
 }
 
-func bareDeps(t *testing.T) (Deps, *storage.Project) {
+func bareDeps(t testing.TB) (Deps, *storage.Project) {
 	t.Helper()
 	root := t.TempDir()
 	cfg := config.Default()

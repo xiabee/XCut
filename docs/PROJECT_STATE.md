@@ -1949,6 +1949,21 @@ the bare payload: pre-envelope files are unbound, read as "no transcript", cost 
 re-transcription — which widens what the B5e remainder above already says about projects
 captioned before the transcript was kept (two kinds of "before", one remedy).
 
+**36: the sentence "a re-lay is cheaper than re-transcribing" got its measured half.** Three
+ledgers leaned on that claim with no number behind it. `BenchmarkReStyleCaptions` now runs the
+product path (read the envelope → re-validate → lay out for the reel's canvas → atomic write)
+and the result is in `docs/PERFORMANCE.md`: 11.4 ms/op at 200 cues, 40.3 ms/op at 3000, worst
+observed 51.2 ms — 0.1–0.6% of the tap's own measured 9.2 s. The benchmark asserts
+`worst <= 2 s` rather than merely printing, so an arm that drifts toward the cost of what it
+replaces fails a test instead of contradicting a paragraph. What stays unmeasured is written
+down in the same row: the cost of a re-transcription belongs to the user's sidecar and model,
+this repository has no number for it, and none was invented — the claim now resting on
+evidence is only "a re-lay is milliseconds". `bareDeps` widened from `*testing.T` to
+`testing.TB` so a benchmark can stage through the same helper the tests use (import, analyze,
+build a real reel) rather than a second, thinner staging path that would quietly measure a
+different thing; the bench also refuses to time anything unless the staged payload actually
+reads as re-layable.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
