@@ -39,6 +39,42 @@
 }
 
 * { box-sizing: border-box; }
+/* Light scheme: same token names, daylight values. `:root` above stays dark —
+   it is what renders before the script resolves the theme and what a no-JS
+   client gets; the script sets data-theme explicitly (auto follows the system
+   via prefers-color-scheme). The guard test refuses token drift between the
+   two blocks. */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f6;
+  --bg-glow-1: rgba(16, 165, 110, .05);
+  --bg-glow-2: rgba(2, 132, 199, .04);
+  --panel: #ffffff;
+  --panel-2: #f5f7fb;
+  --panel-3: #eaeef5;
+  --line: #d8dfe9;
+  --line-soft: #e4e9f1;
+  --hairline: rgba(255, 255, 255, .6);
+  --fg: #1b2530;
+  --dim: #51637a;
+  --faint: #8695a7;
+  --acc: #0e9f6e;
+  --acc-2: #0d9488;
+  --acc-grad: linear-gradient(135deg, #12b981 0%, #0d9488 100%);
+  --acc-soft: rgba(14, 159, 110, .12);
+  --acc-line: rgba(14, 159, 110, .4);
+  --err: #d5453c;
+  --err-soft: rgba(213, 69, 60, .1);
+  --warn: #b78612;
+  --warn-soft: rgba(183, 134, 18, .1);
+  --shadow: 0 10px 28px rgba(23, 43, 77, .12), 0 2px 6px rgba(23, 43, 77, .08);
+  --shadow-pop: 0 14px 36px rgba(23, 43, 77, .16);
+  --ring: 0 0 0 3px var(--acc-soft);
+  --r: 12px;
+  --r-sm: 8px;
+  --sp: 8px;
+  --fast: 130ms cubic-bezier(.4, 0, .2, 1);
+}
 /* Author display values (flex/grid on .editor, .syswarn, …) must never
    resurrect an element the markup hid with the hidden attribute. */
 [hidden] { display: none !important; }

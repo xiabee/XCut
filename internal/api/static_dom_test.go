@@ -287,6 +287,51 @@ func TestInspectorInputsStayInsideTheirLabels(t *testing.T) {
 	}
 }
 
+// TestThemeTokensCoverBothSchemes: the light block overrides by token NAME,
+// so a token added to the dark :root block but missed in [data-theme="light"]
+// silently keeps its dark value on a light background — usually unreadable.
+// The two blocks must define the same set of custom properties.
+func TestThemeTokensCoverBothSchemes(t *testing.T) {
+	css := staticFile(t, "static/style.css")
+	tokenRe := regexp.MustCompile(`--([a-z0-9-]+):`)
+	blockRe := regexp.MustCompile(`(?s)(:root|:root\[data-theme="dark"\]|\[data-theme="light"\]) \{(.*?)\}`)
+	dark := map[string]bool{}
+	light := map[string]bool{}
+	found := 0
+	for _, m := range blockRe.FindAllStringSubmatch(css, -1) {
+		names := map[string]bool{}
+		for _, tk := range tokenRe.FindAllStringSubmatch(m[2], -1) {
+			names[tk[1]] = true
+		}
+		switch m[1] {
+		case ":root":
+			dark = names
+			found++
+		case `[data-theme="light"]`:
+			light = names
+			found++
+		}
+	}
+	if found != 2 || len(dark) == 0 {
+		t.Fatalf("theme blocks not found (found=%d, dark tokens=%d) — the extractor or the stylesheet rotted", found, len(dark))
+	}
+	var missing []string
+	for name := range dark {
+		if !light[name] {
+			missing = append(missing, name)
+		}
+	}
+	for name := range light {
+		if !dark[name] {
+			missing = append(missing, "+"+name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		t.Errorf("the theme token sets drifted (%d token(s)): %s — a token only one scheme defines renders unreadable in the other", len(missing), strings.Join(missing, ", "))
+	}
+}
+
 func dedupe(in []string) []string {
 	seen := map[string]bool{}
 	var out []string

@@ -47,6 +47,33 @@ function setLang(l) {
   refreshROIStatus();
 }
 
+/* ---------- theme ---------- */
+// The stylesheet's :root block is dark: that is what renders before this runs
+// and what a script-less client gets. applyTheme resolves the knob ("auto"
+// follows prefers-color-scheme) into an explicit data-theme attribute, so the
+// two token blocks in the CSS cannot disagree about which one is showing.
+function applyTheme(v) {
+  const sysLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  const mode = (v === "light" || v === "dark") ? v : (sysLight ? "light" : "dark");
+  document.documentElement.dataset.theme = mode;
+  document.documentElement.style.colorScheme = mode;
+}
+function setTheme(v) {
+  try { localStorage.setItem("xcut_theme", v); } catch (_) { /* private mode etc. */ }
+  applyTheme(v);
+}
+let themePref = "auto";
+try { themePref = localStorage.getItem("xcut_theme") || "auto"; } catch (_) { /* private mode etc. */ }
+$("theme").value = themePref;
+applyTheme(themePref);
+$("theme").addEventListener("change", (e) => setTheme(e.target.value));
+if (window.matchMedia) {
+  const mq = window.matchMedia("(prefers-color-scheme: light)");
+  const followSystem = () => { if (($("theme").value || "auto") === "auto") applyTheme("auto"); };
+  if (mq.addEventListener) mq.addEventListener("change", followSystem);
+  else if (mq.addListener) mq.addListener(followSystem); // older WebView2
+}
+
 /* ---------- remote sessions (D12 follow-up) ----------
  * A serve reachable from another machine answers 401 until it holds proof.
  * The token is typed once, exchanged for a session id, and then dropped: the
