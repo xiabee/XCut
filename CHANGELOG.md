@@ -31,6 +31,12 @@ sections are tagged; anything above the newest one is unreleased.
   everywhere; the win32 halves are best-effort like the icon plumbing.
 
 ### Fixed
+- **hevc_nvenc reels tag their track `hvc1`**, without which Apple players refuse an
+  otherwise valid HEVC MP4.
+- **The app comes back to the project the user left open.** A reload used to drop the
+  user on the empty state with the timeline, jobs and captions one picker click away;
+  the remembered project is restored on load, forgotten silently if it was deleted
+  elsewhere, and cleared when its project is deleted.
 - **A drag that reorders the reel no longer destroys the ruler it sits on.** The strip
   positioned blocks by `timeline_start` while only the save recomputed it: reordering
   flipped the array, every block kept its stale position, and the ruler — reading the new
