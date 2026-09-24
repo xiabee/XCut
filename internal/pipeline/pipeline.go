@@ -78,6 +78,14 @@ func NewDeps(ctx context.Context, db *storage.DB, ws *workspace.Workspace, cfg *
 // selection note is returned once with the first resolution and logged —
 // "no hardware encoder usable" is a fact the user should see, not a silence
 // they discover as "it still works, only slow".
+// EncoderFor resolves the configured video encoder against this machine.
+// Exported for the CLI's completion line: the completion line says which
+// encoder wrote the reel, so the GPU knob's effect is visible without
+// digging through logs. Uses the same per-process cache as the render body.
+func (d Deps) EncoderFor(ctx context.Context) render.Encoder {
+	return d.encoderFor(ctx)
+}
+
 func (d Deps) encoderFor(ctx context.Context) render.Encoder {
 	if d.enc == nil {
 		enc, note := d.resolveEncoder(ctx)
@@ -942,7 +950,7 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 		}
 		progress(1.0)
 		fi, _ := os.Stat(outPath)
-		d.Log.Debug("render done", "out", outPath, "bytes", fileSize(fi), "duration_ms", time.Since(started).Milliseconds())
+		d.Log.Debug("render done", "out", outPath, "bytes", fileSize(fi), "duration_ms", time.Since(started).Milliseconds(), "encoder", enc.Name)
 		return nil
 	}
 }

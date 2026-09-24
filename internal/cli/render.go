@@ -72,6 +72,10 @@ func cmdRender(a *App, args []string) error {
 	}
 
 	started := time.Now()
+	// Resolved before the render (and cached there): the completion line says
+	// which encoder wrote the reel, so the GPU knob's effect is visible
+	// without digging through logs.
+	enc := d.EncoderFor(a.Ctx)
 	err = d.RenderProject(p, outPath, subsPath, func(pct int) {})
 	if err != nil {
 		return err
@@ -81,7 +85,7 @@ func cmdRender(a *App, args []string) error {
 	if fi != nil {
 		size = fi.Size()
 	}
-	fmt.Fprintf(a.Stdout, "rendered %s (%.1f MB) in %.1fs\n",
-		outPath, float64(size)/(1<<20), time.Since(started).Seconds())
+	fmt.Fprintf(a.Stdout, "rendered %s (%.1f MB) in %.1fs [%s]\n",
+		outPath, float64(size)/(1<<20), time.Since(started).Seconds(), enc.Name)
 	return nil
 }
