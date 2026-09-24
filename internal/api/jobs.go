@@ -249,7 +249,8 @@ func (s *Server) resolveRenderOut(w http.ResponseWriter, r *http.Request, out st
 
 // POST /api/v1/projects/{id}/render {"out": "D:/videos/out.mp4", "subs": true}
 // (out optional, absolute or workspace-relative; subs burns the project's
-// subtitles into the output)
+// subtitles into the output. The acceptance echoes the resolved "out" — the
+// caller should not have to guess where the workspace root is.)
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
@@ -291,7 +292,9 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	s.writeJobAccepted(w, r, p.ID, id)
+	// The resolved destination rides the acceptance: a caller that asked for
+	// "reel.mp4" should not have to guess where the workspace root is.
+	s.writeJobAccepted(w, r, p.ID, id, map[string]any{"out": out})
 }
 
 // POST /api/v1/projects/{id}/export {"style":"beat_shortform","duration":30,
@@ -341,5 +344,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	s.writeJobAccepted(w, r, p.ID, id, map[string]any{"steps": steps})
+	extra := map[string]any{"steps": steps}
+	if anchoredOut != "" {
+		// The caller chose a destination; echo where it will land. An omitted
+		// out stays omitted — the tap's default is its own decision.
+		extra["out"] = anchoredOut
+	}
+	s.writeJobAccepted(w, r, p.ID, id, extra)
 }

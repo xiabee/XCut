@@ -151,6 +151,29 @@ func TestRelativeRenderOutAnchorsToTheWorkspace(t *testing.T) {
 	}
 }
 
+// TestRenderAcceptanceEchoesTheResolvedOut: the 202 body names the resolved
+// destination, so a caller that asked for a relative out learns where the
+// workspace root put it without probing the filesystem.
+func TestRenderAcceptanceEchoesTheResolvedOut(t *testing.T) {
+	root := t.TempDir()
+	s := newAnchorServer(t, root)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	out := postJSON(t, ts, "/api/v1/projects", `{"name":"echo"}`)
+	id := out["project"].(map[string]any)["id"].(string)
+
+	code, body := postRenderOut(t, ts, id, `{"out":"echoed-reel.mp4"}`)
+	if code >= 300 {
+		t.Fatalf("relative render out refused: %d %v", code, body)
+	}
+	got, _ := body["out"].(string)
+	if got != filepath.Join(root, "echoed-reel.mp4") {
+		t.Fatalf("acceptance out = %q, want the workspace-anchored path %q", got, filepath.Join(root, "echoed-reel.mp4"))
+	}
+}
+
 // TestRenderAndExportRefuseRelativeTraversal: `..` in a relative out must be
 // refused before any job runs, from both endpoints that carry an out.
 func TestRenderAndExportRefuseRelativeTraversal(t *testing.T) {
