@@ -29,6 +29,8 @@
 | ✂️ **可视化时间线** | 片段色块按时长比例渲染、缩略图、拖动排序、边缘手柄裁剪、转场徽标（cut / fade / xfade）、检查器编辑与快捷键 |
 | 🏸 **懂球的风格引擎** | 羽毛球 rally 模式：击球驱动的打分、球场 ROI 运动分析、多样性去重；每个片段都带"为什么入选"的解释 |
 | 🎤 **字幕与卡拉 OK** | 经 AI sidecar 语音转写 → SRT、样式化字幕 ASS，或逐字填充的卡拉 OK ASS，一键烧录进成片 |
+| ⚡ **GPU 加速渲染** | `render.encoder: auto` 自动探测本机硬件编码器（NVENC/AMF/QSV/VAAPI），不可用自动回退 libx264；doctor 报告姿态 |
+| 🌗 **亮暗双主题** | 跟随系统（auto）/ 暗色 / 亮色手动可切，刷新后回到离开时的工程 |
 | 🔒 **本地优先** | 仅监听本机回环、无遥测；AI 是可选 sidecar 增强，永远不是地基 |
 | 📦 **资源有界** | 任务、进程、缓存、临时文件、日志全部有配置上限；空闲约 15 MB 内存、约 0% CPU |
 
@@ -313,6 +315,7 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 | `server.auth_token` | （空） | 非本机对端的 bearer token，≥24 字符（或 `XCUT_AUTH_TOKEN`） |
 | `workers.audio` | `auto` | `auto`/`ffmpeg`/`rust` 音频分析器 |
 | `workers.ai_bin` | `xcut-ai-sidecar` | AI sidecar 二进制（能力自动探测） |
+| `render.encoder` | `auto` | 成片视频编码器：`auto` 以真实小编码探测硬件（NVENC/AMF/QSV/VAAPI，按平台排序），全部不可用回退 `libx264`；也可具名指定。CRF 自动映射 NVENC `-cq`（实测 +8 齐平）；hevc 输出自带 hvc1 标签 |
 | `ffmpeg.bin` / `ffmpeg.ffprobe_bin` | `ffmpeg` / `ffprobe` | 工具链覆盖（或 `XCUT_FFMPEG`/`XCUT_FFPROBE`） |
 
 </details>
