@@ -152,6 +152,7 @@ window.XCUT_I18N = {
     "srt + styled ass ready": "srt + 排版字幕已就绪",
     "srt ready": "srt 已就绪",
     "re-lay captions": "按当前画幅重排字幕",
+    "captions were transcribed from other media — transcribe again": "字幕是由别的素材转写的 — 请重新转写",
     "captions styled for {styled}, reel is {reel}": "字幕按 {styled} 排版，成片是 {reel}",
     "captions re-lay queued": "字幕重排已排队",
     "Re-lay failed: {msg}": "重排失败：{msg}",

@@ -1411,6 +1411,15 @@ async function refreshSubtitlesStatus() {
     // on disk to be laid out again: without them there is nothing to offer but a
     // transcription, which is the Transcribe button's job.
     restyleBtn.hidden = !(st.mismatch && st.transcript);
+    if (st.media_stale) {
+      // The frame may match and the words still be from another clip: nothing here
+      // can fix that, so the panel says who can.
+      restyleBtn.hidden = true;
+      status.textContent = t("captions were transcribed from other media — transcribe again");
+      links.innerHTML = "";
+      previewBtn.hidden = !st.srt;
+      return;
+    }
     status.textContent = st.mismatch
       ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
       : (st.ass

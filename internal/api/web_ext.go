@@ -177,6 +177,10 @@ func (s *Server) subtitlesStatus(p *storage.Project) map[string]any {
 	status["mismatch"] = st.Mismatch()
 	status["karaoke"] = st.Karaoke
 	status["transcript"] = s.Pipe.HasStoredTranscript(p.ID)
+	// A separate fact from `transcript`: the captions may fit the frame perfectly and
+	// still be a transcript of media the project no longer has. The panel cannot fix
+	// that (only a sidecar can), so the sentence has to name the remedy instead.
+	status["media_stale"] = s.Pipe.CaptionsPredateCurrentMedia(p.ID)
 	return status
 }
 
@@ -205,8 +209,14 @@ func (s *Server) handleSubtitlesRestyle(w http.ResponseWriter, r *http.Request) 
 	// refusal rather than as a job that went to the wall a moment later. The job
 	// re-reads the same file when it runs — this check is courtesy, not the guard.
 	if !s.Pipe.HasStoredTranscript(p.ID) {
-		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound,
-			"no stored transcript for this project (transcribe first)", nil))
+		// Two different reasons, and the user's next action is the same (transcribe)
+		// while the reason they are told is not: nothing on disk, or words that
+		// belong to media this project no longer has.
+		msg := "no stored transcript for this project (transcribe first)"
+		if s.Pipe.CaptionsPredateCurrentMedia(p.ID) {
+			msg = "the stored transcript was heard from different media (transcribe again)"
+		}
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound, msg, nil))
 		return
 	}
 	id, err := s.Pipe.RestyleProjectAsync(p)

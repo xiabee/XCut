@@ -116,6 +116,29 @@ func (d Deps) HasStoredTranscript(projectID string) bool {
 	return asset.ID == boundID
 }
 
+// CaptionsPredateCurrentMedia reports that the stored transcript names an asset the project
+// no longer resolves to: the captions on disk were heard from other media.
+//
+// It answers only when the binding is known. A project with no transcript file, or one
+// written before bindings existed, says nothing here — absence of a record is not evidence
+// of a change, and treating it as one would have the tap re-transcribe work it has no
+// reason to doubt.
+func (d Deps) CaptionsPredateCurrentMedia(projectID string) bool {
+	_, boundID, err := d.storedTranscriptRecord(projectID)
+	if err != nil || boundID == "" {
+		return false
+	}
+	p, err := d.DB.GetProject(d.Ctx, projectID)
+	if err != nil || p == nil {
+		return false
+	}
+	asset, err := d.subtitleAsset(p, "")
+	if err != nil {
+		return false
+	}
+	return asset.ID != boundID
+}
+
 // writeStyledSubtitles lays a transcript out as the project's styled caption file, and
 // reports whether one was written. One function holds the rule because two callers must
 // not disagree about it: transcription writes this file, and a reel that changed shape

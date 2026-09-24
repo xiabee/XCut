@@ -2001,6 +2001,26 @@ was the third time in one session of using an anchor that was *inside* a paragra
 time it spliced `## Version / HEAD` into running prose. Each was caught by re-reading the
 region and repaired by targeted edit — `grep -c` for the heading is now the check, not a glance.
 
+**39: the frame was never the whole question.** Every caption arm asked whether the box fits
+the reel; none asked whether the words belong to the media in it, so a project that swapped its
+clip kept burning the old transcript at exactly the right size — a defect none of the mismatch
+work could see, and the one place where "reuse" was a comfortable lie. `transcript.json`'s
+binding is the witness, and it is now consulted everywhere the frame was: the tap
+re-transcribes when a sidecar can answer for the new audio, says so in its plan line when one
+cannot, and the panel gets a sentence naming the only remedy (`字幕是由别的素材转写的 —
+请重新转写`) with the re-lay button hidden, because re-laying is not the fix here.
+
+Kept separate on purpose: `mismatch` and `media_stale` are different facts and can disagree in
+either direction; an **unbound** payload (anything transcribed before bindings) is silence, not
+evidence, and the case that pins it also asserts the plan stays the plain reuse sentence. The
+refusal at the endpoint distinguishes the two reasons too — "nothing on disk" and "words from
+other media" read the same in code and differently to a person. Teeth were checked by mutation
+on each of the three, and one of those checks exposed a soft assertion of mine: the two
+stale-media log lines shared a substring, so a mutation that skipped the sidecar entirely still
+satisfied the test — the messages were made distinct before the assertion was trusted. Verified
+in a browser on a real server: stale binding → the new sentence and no button; binding
+restored → `srt + 排版字幕已就绪` on re-entry.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

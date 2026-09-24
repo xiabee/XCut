@@ -87,6 +87,23 @@ sections are tagged; anything above the newest one is unreleased.
   because the endpoint is its caller.
 
 ### Fixed
+- **Captions heard from another clip can no longer pass as this project's.** The frame
+  comparison answers whether the box fits; nothing answered whether the words belong to the
+  media in front of them, so a project that replaced its clip kept burning the old
+  transcript's text at exactly the right size — the one case all the mismatch arms were built
+  around and still could not see. The binding written with the payload is the witness, so
+  `transcript.json`'s `asset_id` is now asked wherever the frame was: with a sidecar the tap
+  re-transcribes (plan sentence `re-transcribed: these captions were heard from different
+  media: `), without one it burns and says so in the log and the plan rather than reporting a
+  comfortable "reuse". Three things it deliberately does not claim: an **unbound** payload (a
+  project transcribed before bindings existed) testifies to nothing and is never treated as
+  changed media; the two facts stay separate on the wire (`mismatch` and `media_stale` can
+  disagree in either direction); and the panel's new sentence names the only remedy there is —
+  transcribe again — because a re-lay cannot fix this one. Teeth: removing the transcription
+  arm is caught by the body's own log line (the two stale-media messages were made distinct
+  precisely because an earlier assertion was satisfied by *either*), dropping the
+  `media_stale` key reads as `<nil>` in the wire case, and letting an unbound payload count as
+  stale fails both the predicate and the plan.
 - **The caption re-lay goes through the queue, where the transcription lock is.** The
   endpoint added two cycles ago wrote `subtitles.ass` from the request handler — synchronously,
   outside `job.exclusiveTypes`, which is the mechanism that keeps two subtitle writers off one

@@ -1063,3 +1063,224 @@ func TestTranscriptionBindsThePayloadToTheAssetHeard(t *testing.T) {
 		t.Fatalf("stored envelope carries no segments: %s", raw)
 	}
 }
+
+// TestExportRetranscribesCaptionsHeardFromOtherMedia: the binding added for the re-lay asks
+// a question the frame comparison cannot — whether the words belong to this media at all.
+// Captions that match the reel's frame *perfectly* can still be a transcript of a clip that
+// is not in the project anymore, and reusing those is worse than any of the mismatch arms:
+// the box is the right size for the wrong speech. With a sidecar the tap re-transcribes; the
+// plan says so instead of reporting a comfortable "reuse".
+func TestExportRetranscribesCaptionsHeardFromOtherMedia(t *testing.T) {
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	var log bytes.Buffer
+	d.Log = slog.New(slog.NewTextHandler(&log, nil))
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = fakeTranscriptSidecar(t)
+	if err := d.TranscribeProject(p, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Captions and reel agree on the frame; only the binding knows the words are stale.
+	if st := d.CaptionState(p.ID); st.Mismatch() {
+		t.Fatalf("the fixture's captions disagree with the reel (%s): %v", st.frames(), st)
+	}
+	if !d.HasStoredTranscript(p.ID) {
+		t.Fatal("the staged transcript should be bound to this project's asset to begin with")
+	}
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec.AssetID = "asst_a_clip_that_is_gone"
+	gone, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tp, gone, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     true,
+		Out:      filepath.Join(root, "stale-media.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if !strings.HasPrefix(got.Reason, ExportRetranscribeStaleMedia) {
+		t.Fatalf("captions heard from other media were planned as %q / %q, want a re-transcription",
+			got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export ended %s: %s", j.Status, j.ErrorMessage)
+	}
+	// The plan is not the deed: the body has to reach the sidecar too, and say why.
+	if !strings.Contains(log.String(), "re-transcribing them") {
+		t.Errorf("the body never said it was re-transcribing over another clip's words; log:\n%s", log.String())
+	}
+}
+
+// TestExportSaysWhenItBurnsAnotherClipsCaptionsWithNoSidecar: the other half of the same
+// rule. Nothing can be done about captions heard from a clip the project no longer has —
+// but a silent "reuse" would let the reel ship with the wrong words and no trace of the
+// decision in the record.
+func TestExportSaysWhenItBurnsAnotherClipsCaptionsWithNoSidecar(t *testing.T) {
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	var log bytes.Buffer
+	d.Log = slog.New(slog.NewTextHandler(&log, nil))
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = fakeTranscriptSidecar(t)
+	if err := d.TranscribeProject(p, ""); err != nil {
+		t.Fatal(err)
+	}
+	breakTheBinding(t, d, p.ID)
+	d.Cfg.Workers.AIBin = ""
+	hideTheSidecarKeepFFmpeg(t)
+
+	_, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     true,
+		Out:      filepath.Join(root, "stale-nosidecar.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if !strings.HasPrefix(got.Reason, ExportStaleMediaSubtitles) {
+		t.Fatalf("the plan read %q / %q, want the sentence that names the media", got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if !strings.Contains(log.String(), "no sidecar to re-transcribe") {
+		t.Errorf("the body never put the decision on the record; log was:\n%s", log.String())
+	}
+}
+
+// TestUnboundTranscriptIsNotHeldAgainstTheProject: no binding is not the same as a wrong
+// one. A payload written before bindings existed (or hand-placed) gives the tap no
+// evidence, and evidence-free is not a reason to spend a transcription — or to warn.
+func TestUnboundTranscriptIsNotHeldAgainstTheProject(t *testing.T) {
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = fakeTranscriptSidecar(t)
+	if err := d.TranscribeProject(p, ""); err != nil {
+		t.Fatal(err)
+	}
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec.AssetID = "" // the shape every project had before the binding existed
+	unbound, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tp, unbound, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d.CaptionsPredateCurrentMedia(p.ID) {
+		t.Error("an unbound payload was read as evidence that the media changed")
+	}
+	if _, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     true,
+		Out:      filepath.Join(root, "unbound.mp4"),
+	}); err != nil {
+		t.Fatal(err)
+	} else if got := stepNamed(steps, "subtitles"); got.Reason != ExportReuseSubtitles {
+		t.Errorf("unbound captions planned %q, want the plain reuse sentence", got.Reason)
+	}
+}
+
+// breakTheBinding points the stored transcript at an asset the project does not have,
+// which is what "the media changed underneath the captions" looks like from disk.
+func breakTheBinding(t *testing.T, d Deps, projectID string) {
+	t.Helper()
+	tp, err := d.transcriptPath(projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec transcriptRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec.AssetID = "asst_a_clip_that_is_gone"
+	gone, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tp, gone, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}

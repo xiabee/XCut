@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -228,5 +229,63 @@ func waitForJobState(t *testing.T, s *Server, jobID, want string, wait time.Dura
 			t.Fatalf("job never reached %s", want)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestSubtitlesStatusNamesStaleMedia: the panel's sentence is chosen from this key, so it
+// is asserted on the wire — the raw JSON field, written by repointing the stored envelope at
+// an asset the project does not have. Reading a struct field instead would let a renamed tag
+// pass while the browser saw nothing.
+func TestSubtitlesStatusNamesStaleMedia(t *testing.T) {
+	s, pid := stagedReel(t, "stalemedia")
+	fakeSidecarScript(t, s, false)
+	_, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
+	awaitJob(t, s, out["job_id"].(string))
+
+	rec, out := do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
+	if rec.Code != http.StatusOK || out["media_stale"] != false || out["transcript"] != true {
+		t.Fatalf("fresh captions read %v / %v, want a usable transcript and nothing stale",
+			out["transcript"], out["media_stale"])
+	}
+
+	// The documented on-disk location, spelled out here rather than borrowed from an
+	// accessor: the file name is part of what OPERATIONS promises, and this is the case
+	// that would notice it move.
+	tp := filepath.Join(s.Pipe.WS.Root, "projects", pid, "transcript.json")
+	raw, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["asset_id"] == nil || env["asset_id"] == "" {
+		t.Fatalf("the stored envelope carries no asset_id to repoint: %s", raw)
+	}
+	env["asset_id"] = "asst_a_clip_that_is_gone"
+	gone, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tp, gone, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
+	if out["media_stale"] != true {
+		t.Errorf("captions from another clip read media_stale %v, want true", out["media_stale"])
+	}
+	// The two facts stay two facts: the frame still fits, so `mismatch` must not
+	// flip, and the payload is still on disk while no longer being usable here.
+	if out["mismatch"] != false {
+		t.Errorf("a media change was reported as a frame mismatch: %v", out["mismatch"])
+	}
+	if out["transcript"] != false {
+		t.Errorf("a transcript bound to other media still read as re-layable: %v", out["transcript"])
+	}
+	// And the endpoint refuses the re-lay it can no longer vouch for.
+	if rec, _ := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles/restyle", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("a re-lay of another clip's captions answered %d, want 404", rec.Code)
 	}
 }

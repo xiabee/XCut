@@ -63,6 +63,15 @@ const (
 	// layout can be redone for the reel's own frame without a sidecar, and without
 	// the minutes of transcription a sidecar would cost.
 	ExportRelaidSubtitles = "re-laid out for the reel's own frame from the stored transcript: "
+	// ExportRetranscribeStaleMedia and ExportStaleMediaSubtitles are the answers to the
+	// question the frame comparison cannot ask: whether the words belong to this media at
+	// all. Captions can match the reel's frame perfectly and still be a transcript of a
+	// clip that is no longer in the project — the right size around the wrong speech,
+	// which no amount of re-laying fixes. The binding written with the payload is what
+	// makes it knowable, so the tap re-transcribes where it can and says so where it
+	// cannot, instead of reporting a comfortable "reuse".
+	ExportRetranscribeStaleMedia = "re-transcribed: these captions were heard from different media: "
+	ExportStaleMediaSubtitles    = "burned as they stand — they were heard from different media and there is no sidecar to re-transcribe: "
 	// ExportCaptionsFromTranscript is the same artifact used for the other direction:
 	// the captions are gone but the words are not. Only reached with no sidecar,
 	// because with one the fresh transcription is the answer to a question the stored
@@ -215,6 +224,14 @@ func (d Deps) subtitlesReuseStep(projectID string) ExportStep {
 			return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportFallbackSubtitles + st.frames()}
 		}
 		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportStaleSubtitles + st.frames()}
+	case d.CaptionsPredateCurrentMedia(projectID):
+		// The frames agree, so every arm above passed — and the captions are still a
+		// transcript of a clip that is not in this project: the right box around the
+		// wrong speech. Only the binding written with the payload can see this.
+		if worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "" {
+			return ExportStep{Step: "subtitles", Action: "create", Reason: ExportRetranscribeStaleMedia}
+		}
+		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportStaleMediaSubtitles}
 	default:
 		return ExportStep{Step: "subtitles", Action: "reuse", Reason: ExportReuseSubtitles}
 	}
@@ -242,6 +259,10 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 		if req.Subs {
 			st := d.CaptionState(project.ID)
 			sidecar := worker.ResolveAIBin(d.Cfg.Workers.AIBin) != ""
+			// Whether the captions on disk are a transcript of *this* project's media is a
+			// separate question from whether they fit its frame — the binding written with
+			// the payload is the only witness, and an unbound payload testifies to nothing.
+			staleMedia := d.CaptionsPredateCurrentMedia(project.ID)
 			switch {
 			case st.Mismatch() && d.HasStoredTranscript(project.ID):
 				// The plan said it could lay the same words out for this frame, and the
@@ -268,11 +289,15 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 				subsPath = d.existingSubtitlesPath(project.ID)
 				d.Log.Info("captions written from the stored transcript with no sidecar configured",
 					"project", project.ID, "subs", subsPath)
-			case (st.Path == "" || st.Mismatch()) && sidecar:
+			case (st.Path == "" || st.Mismatch() || staleMedia) && sidecar:
 				// Nothing yet, or something styled for another frame: with a sidecar
 				// the words can be laid out again, and a transcript that fails here
 				// fails the tap rather than quietly shipping the ill-fitted file the
 				// plan promised to replace.
+				if staleMedia {
+					d.Log.Warn("captions were heard from different media, re-transcribing them",
+						"project", project.ID, "subs", subsPath)
+				}
 				if err := d.subtitlesBody(project, "")(jctx, stage(0.5, 0.8)); err != nil {
 					return err
 				}
@@ -295,6 +320,13 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 						"styled", fmt.Sprintf("%dx%d", st.StyledW, st.StyledH),
 						"reel", fmt.Sprintf("%dx%d", st.ReelW, st.ReelH))
 				}
+			case staleMedia:
+				// Frames agree, so no arm above fires; the binding says the words came
+				// from a clip this project no longer has, and with no sidecar the tap
+				// cannot ask for new ones. Burning them is a decision, so it is written
+				// down instead of passing in silence.
+				d.Log.Warn("captions were heard from different media and there is no sidecar to re-transcribe",
+					"project", project.ID, "subs", subsPath)
 			}
 		}
 		progress(0.8)
@@ -340,6 +372,9 @@ func (d Deps) ReelSubtitles(projectID string) (path, note string, err error) {
 		return st.plainFallback(), ExportFallbackSubtitles + st.frames(), nil
 	case st.Mismatch():
 		return st.Path, ExportStaleSubtitles + st.frames(), nil
+	case d.CaptionsPredateCurrentMedia(projectID):
+		// The render was not going to be the one to find this out later.
+		return st.Path, ExportStaleMediaSubtitles, nil
 	}
 	p, err := d.ResolveSubtitlesPath(projectID)
 	if err != nil {
