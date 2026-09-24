@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -103,6 +104,14 @@ func cmdClient(a *App, args []string) error {
 	w.SetTitle("xcut — local-first auto editing")
 	w.SetSize(1500, 940, webview2.HintNone)
 	setWindowIcon(w.Window())
+	// The client remembers its window: restore the saved placement now, then
+	// keep the save current while the window lives (boundsFile stops the
+	// tracker when the run loop exits).
+	boundsFile := filepath.Join(a.Cfg.Workspace, "client-window.json")
+	restoreWindowBounds(w.Window(), boundsFile)
+	stopTracking := make(chan struct{})
+	defer close(stopTracking)
+	trackWindowBounds(w.Window(), boundsFile, stopTracking)
 	w.Navigate(url)
 
 	// External exits (Ctrl+C, a fatal serve error) terminate the UI loop;
