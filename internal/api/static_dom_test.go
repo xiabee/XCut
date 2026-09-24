@@ -271,6 +271,22 @@ func TestEverySubmitFormHasAHandler(t *testing.T) {
 	}
 }
 
+// TestInspectorInputsStayInsideTheirLabels pins the pairing between a field's
+// text and its control in the runtime-built inspector: field() hangs every
+// input inside a label, and the xfade-duration input used to be re-parented
+// bare onto the inspector box — its label text stayed behind in the grid as
+// decoration, so clicking it focused nothing and the input had no accessible
+// name for the screen-reader path.
+func TestInspectorInputsStayInsideTheirLabels(t *testing.T) {
+	js := staticFile(t, "static/app.js")
+	if strings.Contains(js, "box.appendChild(tdur)") && !strings.Contains(js, "box.appendChild(tdur.parentElement)") {
+		t.Error("the xfade duration input is appended bare to the inspector box — its label is stranded in the grid; append tdur.parentElement instead")
+	}
+	if !strings.Contains(js, "tdur.parentElement") {
+		t.Error("the xfade duration input no longer travels inside its label — inspector fields must reach the DOM with their text attached")
+	}
+}
+
 func dedupe(in []string) []string {
 	seen := map[string]bool{}
 	var out []string

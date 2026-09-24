@@ -1219,7 +1219,12 @@ function renderInspector() {
   trow.append(tspan, tsel);
   const tdur = field(t("xfade duration (s)"), "number", (tr.duration || 0).toFixed(2), { step: "0.1", min: "0" });
   box.appendChild(trow);
-  box.appendChild(tdur);
+  // field() hangs the input inside a label in the grid; moving the bare input
+  // would strand that text as decoration — the label travels with its control,
+  // styled like the transition row above it.
+  const tdurLabel = tdur.parentElement;
+  tdurLabel.className = "field";
+  box.appendChild(tdurLabel);
 
   // Camera motion (运镜) for this one clip. The page names the mode and stores what
   // comes back; the arithmetic stays on the server, because the reel builder and the
