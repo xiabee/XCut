@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|path] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -50,7 +50,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|path] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
 	}
 	inputs := pos
 
@@ -186,6 +186,35 @@ func cmdAuto(a *App, args []string) error {
 		db.Close()
 		if err != nil {
 			return err
+		}
+	case "auto":
+		// The render's question, asked here: what should burn for this project, after
+		// anything that can be fixed from disk is fixed. It does not transcribe —
+		// that is `--subs on` just below, and a flag named for using what is already
+		// there would be a lie if it spent minutes of Whisper instead.
+		fmt.Fprintf(a.Stdout, "==> subtitles (resolved from this project)\n")
+		db, err := a.OpenDB()
+		if err != nil {
+			return err
+		}
+		p, err := requireProject(db, a.Ctx, projectName)
+		if err != nil {
+			db.Close()
+			return err
+		}
+		d := a.Pipeline(db)
+		note := ""
+		subsPath, note, err = d.ReelSubtitles(p.ID)
+		db.Close()
+		if err != nil {
+			if xcerr.IsCode(err, xcerr.CodeNotFound) {
+				return xcerr.E(xcerr.CodeNotFound,
+					"this project has no subtitles to burn — re-run with --subs on to transcribe, or pass --subs <file>", err)
+			}
+			return err
+		}
+		if note != "" {
+			fmt.Fprintf(a.Stdout, "subtitles: %s\n", note)
 		}
 	default:
 		subsPath = subsFlag // a file the caller already has, burned as it stands

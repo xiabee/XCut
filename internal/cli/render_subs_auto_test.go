@@ -74,6 +74,22 @@ func TestRenderSubsAutoFixesAReStyledProject(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(root, "tall.mp4")); serr != nil {
 		t.Errorf("no reel where the render said it wrote one: %v", serr)
 	}
+
+	// The same answer through the one-shot, on the project it now fits: the captions
+	// match the reel, so this must resolve and render without re-transcribing (the
+	// sidecar is taken away below to make that impossible to miss).
+	t.Setenv("XCUT_AI_BIN", "")
+	out = run(0, "auto", fixture, "--project", "restyled", "--style", "beat_shortform",
+		"--duration", "4", "--subs", "auto", "--out", filepath.Join(root, "again.mp4"))
+	if !strings.Contains(out, "==> subtitles (resolved from this project)") {
+		t.Errorf("the one-shot never said it resolved the project's own captions:\n%s", out)
+	}
+	if strings.Contains(out, "==> subtitles (transcribed") {
+		t.Errorf("--subs auto transcribed when a sidecar was unreachable:\n%s", out)
+	}
+	if got := readASSFrame(t, files[0]); got != "1080x1920" {
+		t.Errorf("the one-shot left the captions at %s, want the reel's 1080x1920", got)
+	}
 }
 
 // readASSFrame asks the file through the product's own reader, the same one the tap
@@ -90,4 +106,36 @@ func readASSFrame(t *testing.T, path string) string {
 		t.Fatalf("%s declares no frame (PlayResX/Y missing)", filepath.Base(path))
 	}
 	return fmt.Sprintf("%dx%d", w, h)
+}
+
+// TestAutoSubsAutoRefusesWithoutCaptions: `auto` is a promise about what is already there.
+// A one-shot that has never been transcribed has nothing to burn, and the honest answer is
+// the flag that would make captions — not a silent transcription (that would be a surprise
+// wearing a default), and not the raw "no subtitles for this project" the pipeline says to
+// someone who asked a different question.
+func TestAutoSubsAutoRefusesWithoutCaptions(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	fixture, err := testmedia.Generate(root, "scenes.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"init"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init exited %d:\n%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code := Run([]string{"auto", fixture, "--project", "bare", "--style", "generic_highlight",
+		"--duration", "4", "--subs", "auto", "--out", filepath.Join(root, "reel.mp4")}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("an unresolved --subs auto on a project with no captions exited 0:\n%s", stdout.String())
+	}
+	combined := stdout.String() + stderr.String()
+	if !strings.Contains(combined, "--subs on") {
+		t.Errorf("the refusal does not name the flag that makes captions:\n%s", combined)
+	}
 }

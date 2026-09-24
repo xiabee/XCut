@@ -1982,6 +1982,14 @@ mock. And `TestUsageDocsMirrorTheBinary` failed the first run — `docs/USAGE.md
 binary for `render` — which is that guard doing its job on a change that would otherwise have
 shipped a stale help page.
 
+Accepted at `9f0f097` (the CLI arm): local fast gate PASS (`steps not run: none`), Linux full
+gate PASS — `673 passed, 11 skipped`, `gosec: clean (severity=high, any confidence)`,
+`not run: nothing` — where the +1 over the previous leg is this cycle's end-to-end case,
+*ran* rather than skipped on that host (skips stayed at 11, so the ffmpeg-and-python staging was
+satisfied there too). Archived at `~/ci/evidence/xcut-9f0f097-gate.log.gz` after the verdict was
+read. `win-devops` was not re-run: the Windows surface touched here is a CLI flag and a pipeline
+method, both exercised by the fast gate on this host.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
