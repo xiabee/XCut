@@ -1882,6 +1882,12 @@ all 30 arriving; a single word wider than the frame still arrives broken rather 
 `internal/subs`, `pipeline`, `api` and `cli` green after. The lesson for the ledger: a green
 suite over a generated artifact is evidence about the assertions, not about the artifact.
 
+Accepted at `3bb1c11` (the wrap fix): local fast gate PASS (`steps not run: none`, 6 skips)
+and the `win-devops` node PASS (`OVERALL PASS`, `exit=0`, `duration=2m20.557s`). The Linux full leg was last run one commit earlier at `03638bf` (above) and
+not re-run here: what this commit changes is `internal/subs` layout code, which the fast gate
+and the Windows node both execute, and no platform-conditional path is touched — stated
+rather than left to be inferred from silence.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
