@@ -216,8 +216,38 @@ go test -count=1 -json ./... >"$test_json" 2>"$test_err"
 test_exit=$?
 set -e
 if [ "$test_exit" -ne 0 ]; then
-    echo "go test FAILED (exit $test_exit). Failing output:"
-    grep '"Action":"fail"' "$test_json" | tail -60
+    # The message matters more than the verdict here: `Action":"fail"` events carry a
+    # test's name and elapsed time and nothing else, so a red on a host that cannot be
+    # reproduced against is a red with no diagnosis. What the test said lives in the
+    # `output` events, so those are printed for the failing names.
+    echo "go test FAILED (exit $test_exit). Failing tests, and what they said:"
+    fail_names=$(mktemp)
+    awk '/"Action":"fail"/ && /"Test":"/ {
+            if (match($0, /"Test":"[^"]*"/)) print substr($0, RSTART + 8, RLENGTH - 9)
+        }' "$test_json" | sort -u >"$fail_names"
+    grep '"Action":"fail"' "$test_json" | tail -20
+    awk -v NAMES="$fail_names" '
+        BEGIN { while ((getline l < NAMES) > 0) want[l] = 1 }
+        /"Action":"output"/ {
+            name = ""
+            if (match($0, /"Test":"[^"]*"/)) name = substr($0, RSTART + 8, RLENGTH - 9)
+            if (!(name in want)) next
+            pkg = ""
+            if (match($0, /"Package":"[^"]*"/)) {
+                pkg = substr($0, RSTART + 11, RLENGTH - 12)
+                sub(/.*\//, "", pkg)
+            }
+            out = $0
+            sub(/^.*"Output":"/, "", out)
+            sub(/"$/, "", out)
+            gsub(/\\n/, "\n", out)
+            gsub(/\\t/, "\t", out)
+            gsub(/\\u003c/, "<", out)
+            gsub(/\\u003e/, ">", out)
+            printf "  %s/%s: %s\n", pkg, name, out
+        }
+    ' "$test_json" | tail -120
+    rm -f "$fail_names"
     echo "--- stderr tail:"
     tail -20 "$test_err"
     rm -f "$test_json" "$test_err"

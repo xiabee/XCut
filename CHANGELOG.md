@@ -162,6 +162,20 @@ sections are tagged; anything above the newest one is unreleased.
   plain `.srt`.
 
 ### Added
+- **A red `go test` on the Linux leg now says what failed.** One run of `check.sh full` at
+  `063faec` came back with `internal/api` failing `TestExportReusesWhatTheProjectAlreadyHas`
+  in 0.04 s — and no message anywhere, because the script's failure branch printed the JSON
+  `fail` events, which carry a name and an elapsed time and nothing else; what the test *said*
+  is in the `output` events, which were dropped. The log survived only because that branch had
+  just learned to archive after reading a verdict line, so there was something left to read.
+  The step now collects the failing test names and prints their `Output` lines (unescaping
+  `\n`, `\t` and `<`/`>`) — the difference between a diagnosable red and a phantom, which is
+  what this one is: re-running the identical `go test -count=1 -json ./...` on the same
+  snapshot passes, twice, so there is nothing to fix yet. The reporting block is checked
+  against a synthetic event stream on both hosts (one failing test with a message, one passing
+  test with noise: the message must appear, the noise must not), and the first version of it
+  failed that control — an `awk -F'"'` field walk that returned the `:` between key and value
+  and printed nothing.
 - **A stored transcript now says which asset it was heard from, and a reel only re-lays its
   own speech.** `transcript.json` gained an envelope (`{"asset_id": …, "transcript": …}`)
   written with the asset the sidecar actually read, and `HasStoredTranscript` — the question
