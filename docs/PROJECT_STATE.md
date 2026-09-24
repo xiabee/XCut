@@ -2053,6 +2053,30 @@ gh release create v0.1.10-alpha dist/xcut-v0.1.10-alpha-* dist/XCut-v0.1.10-alph
 (the 443 SSH remote because port 22 is closed here; `gh` timed out mid-upload once before, so
 verify the asset count after it returns rather than trusting the command's exit code).
 
+**…and the candidate above is already stale, which is exactly why this line exists.** Two
+commits have landed since `230fb5d`, and one of them (`0b25559`) changes shipped UI code:
+the artifacts in `dist/` carry the early-return bug below. Whoever publishes runs
+`build-release.ps1`/`make-installer.ps1`/`make-setup.ps1` again against the new HEAD and
+re-executes the three platform checks — the notes and digests are outputs of that build, not
+reusable across it.
+
+**41: the stale-media readout stopped eating the download links.** The branch added in cycle 39
+returned early and cleared `links.innerHTML` with the rest, so the one state where a user
+might most want to fetch the caption file (it is from another clip, and they now know it) lost
+the links to it. Verified in a browser on a staged project: sentence names the remedy, both
+`?format=srt|ass` links present, preview available, re-lay button still hidden.
+
+**42: the gate can now read its own JavaScript.** Nothing in the toolchain parsed `app.js` —
+a missing brace would compile, vet, test and ship, and cycle 41's own editing came within one
+`}` of being exactly that incident. `node --check` over `internal/api/static/*.js` runs in both
+gate twins with a floor on the file count, and the absence of a usable node is recorded as
+`js-parse(no-node)` in the not-run list rather than passed over. Proven on both sides: a
+deliberately broken `app.js` fails the local gate naming `app.js:1806`, a restored one reports
+`2 UI scripts parse (v24.18.0)`, and a `node` that cannot run (exit 127 shim, on the Linux
+node) prints the not-run note and leaves `not_run=[ js-parse(no-node)]` — Git Bash did not
+shadow its own node with an extensionless shim, so that half is asserted where PATH semantics
+are POSIX, not where they happened to be convenient.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

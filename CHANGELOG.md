@@ -87,6 +87,20 @@ sections are tagged; anything above the newest one is unreleased.
   because the endpoint is its caller.
 
 ### Fixed
+- **The gate reads the embedded UI's JavaScript now, and a stale caption readout keeps its
+  download links.** Nothing in the toolchain parsed `internal/api/static/app.js`: a missing
+  brace there compiles, vets, passes every Go test and ships, with the only symptom being a
+  panel that stopped updating — which this session came one closing `}` of doing on its own
+  change. Both gate twins now run `node --check` over the UI scripts, with a floor on the file
+  count (a step that finds no files is not checking anything) and a `js-parse(no-node)` entry
+  in the not-run list when a host's node cannot run, so the absence is a recorded gap rather
+  than a green. Checked on both sides: a deliberately broken `app.js` fails the local gate
+  naming `app.js:1806`, the restored file reports `2 UI scripts parse (v24.18.0)`, and a shim
+  `node` that exits 127 on the Linux node yields `not_run=[ js-parse(no-node)]`. Related,
+  from the same week of work: the caption panel's new "these words are from another clip"
+  branch had returned early and cleared `subs-links` with it, removing the only useful action
+  in that state — fetching the files. Verified in a browser: the sentence, both file links,
+  the transcript preview, and the re-lay button still correctly hidden.
 - **Captions heard from another clip can no longer pass as this project's.** The frame
   comparison answers whether the box fits; nothing answered whether the words belong to the
   media in front of them, so a project that replaced its clip kept burning the old
