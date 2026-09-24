@@ -10,11 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // requirePython locates the reference sidecar script (the protocol contract
@@ -82,32 +79,6 @@ func TestAISidecarAnalyzeNotImplemented(t *testing.T) {
 		map[string]any{"analyzer": "whisper"}, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected structured not_implemented error")
-	}
-}
-
-// TestCallBoundedRejectsOversized: a worker spraying unbounded output must
-// fail with a resource error instead of growing host memory. The sidecar is
-// driven with a tiny cap via an oversized raw response from python.
-func TestCallBoundedRejectsOversized(t *testing.T) {
-	requirePython(t)
-	dir := t.TempDir()
-	script := filepath.Join(dir, "spammer.py")
-	code := "import sys\nsys.stdout.write('{\"protocol\":1,\"ok\":true,\"op\":\"x\",\"result\":\"' + 'a'*100000 + '\"}')\n"
-	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := callBounded(context.Background(), script,
-		Request{Protocol: Protocol, Op: "x"}, 10*time.Second, 1024)
-	if err == nil {
-		t.Fatal("oversized response must fail")
-	}
-	// Name the refusal, not just the failure: any error at all would pass a bare
-	// err != nil, and a timeout is not the same story as a budget.
-	if code := xcerr.CodeOf(err); code != xcerr.CodeResourceLimit {
-		t.Fatalf("oversized response reported %s, want resource_limit: %v", code, err)
-	}
-	if !strings.Contains(err.Error(), "worker response exceeded 1024 bytes") {
-		t.Errorf("message = %q, want it to name the budget it hit", err)
 	}
 }
 

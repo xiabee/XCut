@@ -43,6 +43,32 @@ sections are tagged; anything above the newest one is unreleased.
   rung of the same roadmap item.
 
 ### Fixed
+- **The gate stopped deciding on a stopwatch.** `TestCallBoundedRejectsOversized` went red
+  on a fast gate at `c63e884` with `message = "resource_limit: worker call timed out:
+  context deadline exceeded", want it to name the budget it hit` after **14.84 s** against
+  its own 10 s budget, and passed in **0.28 s** run alone: the deadline was being spent on
+  starting a real python interpreter while the rest of `go test` competed for the CPU, and
+  the byte cap it existed to check never got to say anything. It is deleted rather than
+  retuned, because the same refusal is already checked without a stopwatch —
+  `TestOversizedResponseIsRefusedAndTheWorkerKilled` drives a flooding worker stub and
+  asserts strictly more (typed cause, the enforced byte count, and that the worker was
+  killed, by dialing the port it published). The `.py` resolution it also exercised is
+  reached by every sidecar case in the package.
+  The surviving case had the same window at a lower dose — a 30 s bound around a call whose
+  answer arrives only once the reader aborts the pipe — so the flood stub now **closes
+  stdout after the oversized answer and stays alive**, which takes the wall clock out of the
+  verdict while leaving the kill check its live process to see; the deadline is the
+  product's own default (`Call`, 10 min) instead of a tuned constant, and the case got
+  faster, not slower (5.90 s → **3.68 s**). Both guards were proven to have teeth before
+  that: weakening the size check reports `an oversized response reported analyzer_failure,
+  want resource_limit` in 5.36 s, and weakening the check *and* the read limit reports `a
+  128 KiB response was accepted under a 4 KiB budget` in 5.58 s — neither mutation waits on
+  the deadline, which is the point of the stub change. What is not claimed: the other
+  sidecar cases still start a real interpreter inside a 30 s-or-longer deadline, so a
+  loaded host can still make python-heavy tests slow; the window is documented here, not
+  closed.
+
+### Fixed
 - **A cancelled FFmpeg call is now actually over.** The per-call budget
   (`resource.analyzer_call_timeout`, probe and render deadlines) bounded the *process*:
   when a tool hands its own stdout to a helper and exits, exec keeps waiting for the pipe

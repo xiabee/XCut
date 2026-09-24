@@ -158,6 +158,12 @@ func TestHelperWorkerStub(t *testing.T) {
 			os.Stdout.WriteString("0123456789abcdef") // 128 KiB, well past any test budget
 		}
 		os.Stdout.WriteString(`"}}`)
+		// Close the answer, keep the process: stdout EOF means the reader can decide
+		// on the byte budget alone, while a live process is still what the kill check
+		// below can see. Without this line the verdict waits on the pipe, and the
+		// pipe waits on whatever the machine takes to spawn this binary — a deadline
+		// of any size is then a coin-flip, not a check.
+		os.Stdout.Close()
 		time.Sleep(10 * time.Minute)
 	case "garbage":
 		os.Stdout.WriteString("this is not a json envelope")
@@ -292,8 +298,11 @@ func TestOversizedResponseIsRefusedAndTheWorkerKilled(t *testing.T) {
 	t.Setenv("XCUT_TEST_WORKER_PORTFILE", portFile)
 
 	const budget = 4096
+	// The product's own default deadline: what is under test here is the byte
+	// budget, and a shorter one would put the machine's spawn time in the
+	// verdict instead.
 	_, err := callBounded(context.Background(), bin, Request{Protocol: Protocol, Op: "describe"},
-		30*time.Second, budget)
+		10*time.Minute, budget)
 	if err == nil {
 		t.Fatal("a 128 KiB response was accepted under a 4 KiB budget")
 	}

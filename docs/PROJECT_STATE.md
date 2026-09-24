@@ -1676,6 +1676,27 @@ the thing it claims — the reason `$NotRun +=` sits at script scope in `check.p
 than inside an `Invoke-Step` scriptblock, where it would append to a local copy and the
 line would go on printing `steps not run: none` on a host that skipped two steps.
 
+**One gate red, and what it was actually measuring.** The fast gate at `c63e884` came back
+FAILED on a docs-only commit: `TestCallBoundedRejectsOversized` reported
+`message = "resource_limit: worker call timed out: context deadline exceeded"` after
+14.84 s. Run alone it passes in 0.28 s, so the 10 s it was given had been spent starting a
+python interpreter while the rest of `go test` ran in parallel — the case was asserting
+which budget was hit, and the budget it hit was the machine's. It is **deleted**, not
+retuned: `TestOversizedResponseIsRefusedAndTheWorkerKilled` already checks that same
+`callBounded` refusal against a worker stub with a superset of the assertions (typed cause,
+enforced byte count, and a *refused connection* on the port the stub published, which is the
+only observation that distinguishes "killed" from "took too long"), and the `.py`
+interpreter resolution the python route exercised is on the path every sidecar case takes.
+The survivor's own window was closed in the same pass: its flood stub now closes stdout
+after writing the oversized answer and then stays alive, so the reader decides on bytes
+instead of waiting on a pipe whose drain depends on spawn cost, and the call carries the
+product's default 10-minute deadline rather than a hand-picked 30 s. Measured: 5.90 s →
+3.68 s green, `an oversized response reported analyzer_failure` in 5.36 s with the size
+check weakened, and `a 128 KiB response was accepted under a 4 KiB budget` in 5.58 s with
+both guards weakened — no mutation reaches the deadline, which is what the stub change buys.
+Open in this class: the remaining sidecar cases still start real python inside a 30 s-or-more
+deadline, so a saturated host can still make them slow.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
