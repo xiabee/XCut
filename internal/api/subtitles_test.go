@@ -165,6 +165,11 @@ func TestSubtitlesFlow(t *testing.T) {
 	if rec.Code != http.StatusOK || out["srt"] != true || out["ass"] != true {
 		t.Fatalf("status after transcribe: %d %v", rec.Code, out)
 	}
+	// The panel's ready sentence is chosen from this key, so a word-timed sidecar
+	// has to arrive as karaoke or the UI says "styled" over a file that sweeps.
+	if out["karaoke"] != true {
+		t.Errorf("a word-timed transcription reported karaoke %v, want true", out["karaoke"])
+	}
 	rec, _ = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles/file?format=srt", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "00:00:00,500 --> 00:00:01,500") {
 		t.Fatalf("srt download: %d %s", rec.Code, rec.Body.String())
@@ -207,6 +212,9 @@ func TestPlainTranscriptGetsStyledCaptions(t *testing.T) {
 	rec, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
 	if rec.Code != http.StatusOK || out["srt"] != true || out["ass"] != true {
 		t.Fatalf("status after transcribe: %d %v", rec.Code, out)
+	}
+	if out["karaoke"] != false {
+		t.Errorf("a transcript with no word timings reported karaoke %v, want false", out["karaoke"])
 	}
 	rec, _ = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles/file?format=ass", "")
 	body := rec.Body.String()

@@ -76,6 +76,17 @@ sections are tagged; anything above the newest one is unreleased.
   `styled_frame` reads 1080x1920, and the project's job list carries the `subtitles:succeeded`
   row. The panel's ready sentence still says "karaoke" for any `.ass`, which is a label defect
   this change did not introduce and does not fix.
+- **The panel no longer calls every styled file a karaoke one.** `subs-status` said
+  "srt + 卡拉 OK ass 已就绪" whenever an `.ass` existed, which told a reader their plain
+  captions were word sweeps — a sentence with no fact behind it, since the difference is
+  whether the file carries `{\k…}` sweeps at all. The status body now reports `karaoke`,
+  read from the styled file itself rather than from the transcript that once produced it
+  (a hand-edited or replaced `.ass` is what will burn), and the panel picks
+  "srt + 排版字幕已就绪" when there are none. Pinned on both sides of the wire: a
+  word-timed sidecar must arrive as `karaoke: true` and a line-timed one as `false`, beside
+  the existing file-content assertions, and removing the sweep scan turns both red.
+  Checked in the browser on a project whose captions were laid out without sweeps:
+  `srt + 排版字幕已就绪`.
 - **Latin captions stop breaking inside words.** The plain (no word timings) path divided a
   segment into rune chunks of the frame's width without looking for a space, so a
   40-character English line on a 1080×1920 reel reached the screen as `first line o\Nf

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -93,6 +94,11 @@ type CaptionState struct {
 	StyledH int
 	ReelW   int
 	ReelH   int
+	// Karaoke is whether the styled file sweeps its words (`{\k…}`), which is the
+	// difference between a caption the singer follows and one they read. Read off
+	// the file rather than the transcript that made it: a hand-edited or replaced
+	// `.ass` is what will burn, and the panel must describe that.
+	Karaoke bool
 }
 
 func (d Deps) CaptionState(projectID string) CaptionState {
@@ -105,11 +111,11 @@ func (d Deps) CaptionState(projectID string) CaptionState {
 				s.SRTPath = p
 			}
 		}
-		if f, err := os.Open(s.Path); err == nil {
-			if w, h, ok := subs.ReadASSFrame(f); ok {
+		if b, rerr := os.ReadFile(s.Path); rerr == nil {
+			if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); ok {
 				s.StyledW, s.StyledH = w, h
 			}
-			f.Close()
+			s.Karaoke = bytes.Contains(b, []byte(`{\k`))
 		}
 	}
 	// The same read the transcript stage does: the canvas is the timeline

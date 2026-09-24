@@ -149,6 +149,7 @@ window.XCUT_I18N = {
 
     "none yet — transcribe to create": "暂无 — 转写后生成",
     "srt + karaoke ass ready": "srt + 卡拉 OK ass 已就绪",
+    "srt + styled ass ready": "srt + 排版字幕已就绪",
     "srt ready": "srt 已就绪",
     "re-lay captions": "按当前画幅重排字幕",
     "captions styled for {styled}, reel is {reel}": "字幕按 {styled} 排版，成片是 {reel}",

@@ -175,6 +175,7 @@ func (s *Server) subtitlesStatus(p *storage.Project) map[string]any {
 	status["styled_frame"] = captionFrame(st.StyledW, st.StyledH)
 	status["reel_frame"] = captionFrame(st.ReelW, st.ReelH)
 	status["mismatch"] = st.Mismatch()
+	status["karaoke"] = st.Karaoke
 	status["transcript"] = s.Pipe.HasStoredTranscript(p.ID)
 	return status
 }

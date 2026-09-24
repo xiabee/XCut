@@ -1909,6 +1909,22 @@ the export tap still calls `RestyleSubtitles` inline inside its own job — corr
 the export job is itself exclusive, but the reason is worth knowing before anyone routes it
 through the queue as well.
 
+**34: the sentence beside it stopped being a guess.** The same panel said "karaoke ready" for
+any `.ass`, which was a claim about sweeps the file might not have; `CaptionState.Karaoke`
+reads the file for `{\k`, the status carries `karaoke`, and the ready line splits into
+karaoke/styled. Deliberately read from the file and not from the stored transcript — the thing
+that burns is the file. Both wire directions are asserted (word-timed sidecar → true,
+line-timed → false) and dropping the scan turns them and the pipeline case red; the browser
+pass on a sweep-free project reads `srt + 排版字幕已就绪`.
+
+Two process notes for the ledger, both about me. First: this cycle's first attempt at the API
+assertions used an anchor that appeared in *two* tests and `str.replace` rewrote both, putting
+`karaoke != true` into the case that must be false — caught by the red it produced, undone on
+that one file, and redone with anchors that each matched once (`hits 1`, `plain hits 1`,
+printed before writing). Second: `git checkout -- <file>` was that undo, which the shared
+worktree rule warns against; it was safe here only because the file had no other pending
+change, and the check afterwards was a grep for the inserted text rather than a trust.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

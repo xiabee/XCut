@@ -926,3 +926,50 @@ func TestExportStillFallsBackWithoutAStoredTranscript(t *testing.T) {
 		t.Errorf("the .srt the tap burned is gone: %v", serr)
 	}
 }
+
+// TestCaptionStateReportsWhetherTheStyledFileSweeps: the panel's ready sentence used to
+// say "karaoke" for any .ass, which told a singer their plain captions were lyric
+// highlights. The distinction is a fact about the file — a {\k} sweep is what libass
+// animates — so it is read from the file, and read even when the words that produced it
+// are gone or the file was replaced by hand.
+func TestCaptionStateReportsWhetherTheStyledFileSweeps(t *testing.T) {
+	d, p := bareDeps(t)
+	assPath, err := d.SubtitlesPath(p.ID, "ass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(assPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tr := &subs.Transcript{Segments: []subs.Segment{{
+		Start: 0.5, End: 2.5, Text: "la la",
+		Words: []subs.Word{{Start: 0.5, End: 1.0, Word: "la"}, {Start: 1.0, End: 2.5, Word: "la"}},
+	}}}
+
+	var karaoke strings.Builder
+	if err := subs.WriteKaraokeASS(tr, subs.KaraokeStyle{Width: 1080, Height: 1920}, &karaoke); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(assPath, []byte(karaoke.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st := d.CaptionState(p.ID); !st.Karaoke {
+		t.Errorf("a karaoke file read as not karaoke:\n%s", karaoke.String())
+	}
+
+	var plain strings.Builder
+	tr2 := &subs.Transcript{Segments: []subs.Segment{{Start: 0.5, End: 2.5, Text: "la la"}}}
+	if err := subs.WriteCaptionASS(tr2, subs.KaraokeStyle{Width: 1080, Height: 1920}, &plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(assPath, []byte(plain.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := d.CaptionState(p.ID)
+	if st.Karaoke {
+		t.Errorf("a styled file with no sweeps read as karaoke:\n%s", plain.String())
+	}
+	if st.StyledW != 1080 {
+		t.Errorf("the frame read %d, want 1080 beside the sweep check", st.StyledW)
+	}
+}

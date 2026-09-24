@@ -1413,7 +1413,9 @@ async function refreshSubtitlesStatus() {
     restyleBtn.hidden = !(st.mismatch && st.transcript);
     status.textContent = st.mismatch
       ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
-      : (st.ass ? t("srt + karaoke ass ready") : t("srt ready"));
+      : (st.ass
+        ? (st.karaoke ? t("srt + karaoke ass ready") : t("srt + styled ass ready"))
+        : t("srt ready"));
     const base = `/api/v1/projects/${currentProject.id}/subtitles/file?format=`;
     links.innerHTML = "";
     for (const [fmt, ok] of [["srt", st.srt], ["ass", st.ass]]) {
