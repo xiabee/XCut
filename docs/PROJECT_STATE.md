@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-24 01:27 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-25 02:45 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -2091,6 +2091,40 @@ was read. `win-devops` was not re-run. The two documentation commits after it (`
 this one) were pushed without a fresh local gate run: the first is prose only and the Linux
 leg had not started when it went out; that is stated rather than left to be inferred from the
 absence of a line.
+
+**Night 2026-09-24→25 (session #21, owner directive mid-night: GPU acceleration + a
+modern client).** Seven milestones, all landed with control-plane local gate + win-devops
+remote legs; final HEAD `6aa73b1`. **M-1** closed the manual-editing gap the ledger had
+carried for two sessions: a drag reorder left every strip block at its stale
+`timeline_start` and `totalDuration` — reading the new last row — collapsed the ruler
+from 12 s to 2 s and blew the widths up fivefold (reproduced in the browser at DOM
+level). The save's layout arithmetic is now one rule (`relayoutClips` + `xfadeOverlap`)
+shared by the four editing mutations, `totalDuration` is order-independent, and the
+xfade fits/degrade arms were re-verified in the browser end to end (e6262ad). **M-2**
+anchors an API render/export relative `out` at the workspace root through SafeJoin — a
+probe serve had dropped `reel-edited.mp4` into the repo checkout — refusing traversal
+before any job runs; CLI keeps cwd semantics (7524615). **M-3** re-attaches the
+inspector's xfade-duration input to its label (a2cf5e2). **M-4 is the owner's GPU
+directive:** `render.encoder` (default `auto`) probes the machine's hardware H.264
+encoders with a real tiny encode and drives every reel encode with the first that
+answers, degrading to libx264 with a logged reason; doctor reports the posture; CRF
+maps onto nvenc's `-cq` with a +8 offset that measurement showed is parity (raw CRF
+made 2.3× the bytes); proxies deliberately stay libx264 because their bytes feed the
+analyzers. Measured on the RTX 2070 laptop: ~31% faster encode at size/quality parity
+(99964c8; docs/PERFORMANCE.md). **M-5** gave the workspace a light scheme with an
+auto/dark/light picker that follows `prefers-color-scheme` (f7b159e) and **M-7**
+contrast-audited it — the first palette measured below AA and was fixed before it
+shipped (6aa73b1). **M-6** makes the desktop client remember its window, clamped to
+today's work area (35fd04e). Verification on final HEAD: control-plane fast gate PASS
+(685+/6), win-devops PASS per milestone, Linux full gate PASS on linux-ci (691 passed /
+11 skipped, `-race`, Rust, gosec clean, `not run: nothing`), soak 10 rounds errors=0
+with the busy gate 10/10. Two infrastructure facts for the operator: the `xnightops ci
+run` client wrapper exited 127 mid-flight three times tonight (verdicts had to be read
+from the control-plane/node logs — one swallow made an already-running node job look
+like a FAIL), and `push_snapshot` snapshots the **working tree**, so a remote dispatch
+with uncommitted WIP tests the WIP. The v0.1.10-alpha release candidate at `c4f0549`
+is now 14+ commits behind main and gets stale by the night; publishing stays the
+operator's call.
 
 ## Version / HEAD
 

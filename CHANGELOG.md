@@ -18,6 +18,17 @@ sections are tagged; anything above the newest one is unreleased.
   parity — passing CRF raw produced 2.3× the bytes (docs/PERFORMANCE.md carries the table).
   Proxies stay on libx264 on purpose: their bytes feed the analyzers, and an encoder change
   there would shift analysis results without an eval A/B to say whether it shifts them well.
+- **The client follows the system theme.** The workspace shipped dark-only; a light token
+  block now mirrors the dark set one-for-one (a guard test refuses token drift — it caught
+  four missing tokens on its first run), and a topbar picker offers auto / dark / light.
+  `auto` follows `prefers-color-scheme` (with a change listener for older WebView2) and the
+  choice persists in localStorage; dark stays what renders before any script. The light
+  accent/error/warning text tokens are contrast-audited against both the panel and the
+  background (first palette measured below AA and was fixed before shipping).
+- **The desktop client remembers its window.** Bounds are saved while the client runs and
+  restored at the next start, clamped to today's work area so a monitor unplugged since
+  last run cannot strand the window off-screen. Geometry is platform-neutral and tested
+  everywhere; the win32 halves are best-effort like the icon plumbing.
 
 ### Fixed
 - **A drag that reorders the reel no longer destroys the ruler it sits on.** The strip
