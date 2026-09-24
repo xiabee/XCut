@@ -2021,6 +2021,13 @@ satisfied the test — the messages were made distinct before the assertion was 
 in a browser on a real server: stale binding → the new sentence and no button; binding
 restored → `srt + 排版字幕已就绪` on re-entry.
 
+Accepted at `fce3704` (cycles 38–39 together): local fast gate PASS (`steps not run: none`),
+Linux full gate PASS — `678 passed, 11 skipped`, `gosec: clean (severity=high, any
+confidence)`, `not run: nothing`, five more cases than the previous leg and the same eleven
+skips — archived at `~/ci/evidence/xcut-fce3704-gate.log.gz` after the verdict line was read.
+`win-devops` was not re-run: the Windows-only surface since its `3bb1c11` pass is the caption
+arms, and those are exercised by the fast gate on this host, where they run.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
