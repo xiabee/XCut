@@ -6,6 +6,22 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **A reel that changes shape restyles its own captions — no sidecar needed.** Transcription
+  now keeps the transcript it was given (`projects/<id>/transcript.json`, not a
+  `subtitles.*` name so caption resolution can never mistake it for something to burn), and
+  the tap gained a fourth answer to a caption/canvas mismatch: lay the same words out again
+  for the reel's own frame (`Action: restyle`, reason
+  `re-laid out for the reel's own frame from the stored transcript: …`), which it prefers
+  over re-transcribing because the words are identical and Whisper minutes are not. The rule
+  lives in one place for the plan and the body, as the rest of `subsState` already does.
+  Re-lays out, does not repair: the stored transcript and the plain `.srt` are the bytes they
+  arrived as, asserted per file. Proven in both directions by mutation — hiding the payload
+  sends the tap back to the plain-transcript fallback, and a body that promises the restyle
+  without doing it leaves `1920x1080` on a reel that is `1080x1920`. What it replaces: the
+  mismatch used to be fixable only with a sidecar (minutes of compute) or degradable to the
+  plain `.srt`.
+
+### Added
 - **One tap, no sidecar, mismatched captions: the plain transcript now wins.** When a
   project's `.ass` declares a frame the reel is not (`PlayResX/Y` is what libass scales
   every pixel field by) and nothing can re-transcribe it, the tap burns the `.srt` of the

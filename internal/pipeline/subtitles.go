@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,112 @@ import (
 // SubtitlesPath is where a project's subtitles live (ext: "srt" or "ass").
 func (d Deps) SubtitlesPath(projectID, ext string) (string, error) {
 	return d.WS.SafeJoin(filepath.Join("projects", projectID, "subtitles."+ext))
+}
+
+// transcriptPath is where the project's stored transcript lives. It is deliberately
+// not a subtitles.* name: ResolveSubtitlesPath walks caption extensions, and a JSON
+// blob must never be a candidate to burn into the picture.
+func (d Deps) transcriptPath(projectID string) (string, error) {
+	return d.WS.SafeJoin(filepath.Join("projects", projectID, "transcript.json"))
+}
+
+// storedTranscript is the transcript an earlier transcription left behind, read back
+// through the same validation the sidecar's answer went through. Anything that cannot
+// be laid out again — missing, unreadable, invalid — reads as "there is none", which is
+// what the export then reports it has, rather than a tap failing over a file it never
+// needed in the first place.
+func (d Deps) storedTranscript(projectID string) *subs.Transcript {
+	p, err := d.transcriptPath(projectID)
+	if err != nil {
+		return nil
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return nil
+	}
+	t, err := subs.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
+// writeStyledSubtitles lays a transcript out as the project's styled caption file, and
+// reports whether one was written. One function holds the rule because two callers must
+// not disagree about it: transcription writes this file, and a reel that changed shape
+// re-lays the same words out — a restyle that derived the style differently would leave
+// the export reading its own output as a mismatch.
+//
+// The caption box is laid out against the reel's own canvas, not against a reference the
+// file invents: libass scales the whole script by PlayRes, so a 9:16 reel needs a 9:16
+// style or the text lands at the size and position meant for a different shape. With no
+// timeline yet there is no canvas to match, and the writer's shipped 1280×720 reference
+// stands.
+func (d Deps) writeStyledSubtitles(projectID string, t *subs.Transcript) (bool, error) {
+	assPath, err := d.SubtitlesPath(projectID, "ass")
+	if err != nil {
+		return false, err
+	}
+	style := subs.KaraokeStyle{}
+	if tp, terr := d.TimelinePath(projectID); terr == nil {
+		if tl, lerr := timeline.LoadFile(tp); lerr == nil {
+			style.Width, style.Height = tl.Canvas.Width, tl.Canvas.Height
+		}
+	}
+	var ass strings.Builder
+	switch {
+	case t.HasWordTimings():
+		if err := subs.WriteKaraokeASS(t, style, &ass); err != nil {
+			return false, err
+		}
+	case len(t.Segments) == 0:
+		// Nothing to lay out. An empty [Events] section would tell a later
+		// burn to draw nothing at all over the picture.
+	default:
+		// Missing word timings is not "no captions", only "no karaoke": a
+		// sidecar that knows where each line falls gets the same frame, the
+		// same wrap and the same dwell as one that knows each syllable.
+		if err := subs.WriteCaptionASS(t, style, &ass); err != nil {
+			return false, err
+		}
+	}
+	if ass.Len() > 0 {
+		if err := WriteAtomic(assPath, []byte(ass.String())); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	// Stale karaoke file must not outlive its data: resolution
+	// prefers .ass, so a scanner-blocked remove gets a short retry.
+	// If the file survives the retries it MUST be loud: any later
+	// subs-burn would publish the OLD karaoke content over the new
+	// transcript ("never a silent empty result" — this is the
+	// silent-wrong variant).
+	for i := 0; i < 4; i++ {
+		if os.Remove(assPath) == nil {
+			return false, nil
+		}
+		if _, statErr := os.Stat(assPath); statErr != nil {
+			return false, nil // already gone
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	d.Log.Warn("stale karaoke .ass survived removal — it still shadows the fresh .srt on burn; remove it manually or re-run transcription",
+		"path", assPath)
+	return false, nil
+}
+
+// restyleSubtitles lays the project's stored transcript out again for the canvas its
+// timeline now declares — the caption fix a sidecar would have made, without the
+// sidecar or the minutes of transcription it costs.
+func (d Deps) restyleSubtitles(projectID string) error {
+	t := d.storedTranscript(projectID)
+	if t == nil {
+		return xcerr.E(xcerr.CodeNotFound,
+			"no stored transcript to lay out again (transcribe first)", nil)
+	}
+	_, err := d.writeStyledSubtitles(projectID, t)
+	return err
 }
 
 // TranscribeProjectAsync runs speech-to-text over one of the project's
@@ -118,70 +225,25 @@ func (d Deps) subtitlesBody(project *storage.Project, assetID string) job.Runner
 		if err := WriteAtomic(srtPath, []byte(srt.String())); err != nil {
 			return err
 		}
-		assPath, aerr := d.SubtitlesPath(project.ID, "ass")
-		if aerr != nil {
-			return aerr
+		// The transcript is kept beside its two renderings. It is the only copy of
+		// the words the sidecar produced, and a reel that later changes shape can be
+		// laid out again from it instead of paying for another transcription.
+		payload, err := json.Marshal(t)
+		if err != nil {
+			return err
 		}
-		// The caption box is laid out against the reel's own canvas, not against
-		// a reference the file invents: libass scales the whole script by PlayRes,
-		// so a 9:16 reel needs a 9:16 style or the text lands at the size and
-		// position meant for a different shape. With no timeline yet there is no
-		// canvas to match, and the writer's shipped 1280×720 reference stands. It
-		// is read at generation time, so switching to a vertical style re-runs the
-		// transcript to restyle the captions — recorded as a remainder in
-		// docs/ROADMAP.md.
-		style := subs.KaraokeStyle{}
-		if tp, terr := d.TimelinePath(project.ID); terr == nil {
-			if tl, lerr := timeline.LoadFile(tp); lerr == nil {
-				style.Width, style.Height = tl.Canvas.Width, tl.Canvas.Height
-			}
+		tp, terr := d.transcriptPath(project.ID)
+		if terr != nil {
+			return terr
 		}
-		var ass strings.Builder
-		switch {
-		case t.HasWordTimings():
-			if err := subs.WriteKaraokeASS(t, style, &ass); err != nil {
-				return err
-			}
-		case len(t.Segments) == 0:
-			// Nothing to lay out. An empty [Events] section would tell a later
-			// burn to draw nothing at all over the picture.
-		default:
-			// Missing word timings is not "no captions", only "no karaoke": a
-			// sidecar that knows where each line falls gets the same frame, the
-			// same wrap and the same dwell as one that knows each syllable.
-			if err := subs.WriteCaptionASS(t, style, &ass); err != nil {
-				return err
-			}
+		if err := WriteAtomic(tp, payload); err != nil {
+			return err
 		}
-		if ass.Len() > 0 {
-			if err := WriteAtomic(assPath, []byte(ass.String())); err != nil {
-				return err
-			}
-		} else {
-			// Stale karaoke file must not outlive its data: resolution
-			// prefers .ass, so a scanner-blocked remove gets a short retry.
-			// If the file survives the retries it MUST be loud: any later
-			// subs-burn would publish the OLD karaoke content over the new
-			// transcript ("never a silent empty result" — this is the
-			// silent-wrong variant).
-			removed := false
-			for i := 0; i < 4; i++ {
-				if os.Remove(assPath) == nil {
-					removed = true
-					break
-				}
-				if _, statErr := os.Stat(assPath); statErr != nil {
-					removed = true
-					break // already gone
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
-			if !removed {
-				d.Log.Warn("stale karaoke .ass survived removal — it still shadows the fresh .srt on burn; remove it manually or re-run transcription",
-					"path", assPath)
-			}
+		styled, err := d.writeStyledSubtitles(project.ID, t)
+		if err != nil {
+			return err
 		}
-		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings(), "ass", ass.Len() > 0)
+		d.Log.Info("subtitles written", "project", project.ID, "segments", len(t.Segments), "language", t.Language, "karaoke", t.HasWordTimings(), "ass", styled)
 		progress(1.0)
 		return nil
 	}

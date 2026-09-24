@@ -16,7 +16,9 @@ subcommand: `xcut --workspace /data/xcut doctor`):
 <root>/
   config.json        defaults written by `xcut init` (0644; the token is not written)
   xcut.db            SQLite state: projects, assets, jobs, analysis cache index
-  projects/<id>/     timeline.json and whatever you render into the project dir
+  projects/<id>/     timeline.json, subtitles.ass/.srt plus the transcript.json they
+                     were laid out from (a reel that changes shape re-lays captions
+                     out of it, without a sidecar), and whatever you render here
   imports/<id>/      media copied in through the web upload (originals untouched)
   cache/             analysis artifacts + proxy videos, budgeted by resource.max_cache_gb
   temp/              per-job scratch, disposable, budgeted by resource.max_temp_gb

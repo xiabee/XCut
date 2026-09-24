@@ -278,6 +278,17 @@ Every item states how it is measured before it is built, because the eval harnes
       another frame is a defect while a plainer caption is a degradation
       (`ExportFallbackSubtitles`, decided 2026-09-24 — flip the one call site in
       `subsState.plainFallback` to prefer the styled file's look over its fit).
+      B5e closed the first half the same way it was written: the transcript is now
+      stored next to its two renderings (`projects/<id>/transcript.json`, deliberately
+      not a `subtitles.*` name so caption resolution can never pick it), and a mismatch
+      the sidecar used to be the only cure for is laid out again from it — a fourth
+      answer, planned and executed by one rule (`Action: restyle`,
+      `ExportRelaidSubtitles`), preferred over re-transcription because the words are
+      identical and Whisper minutes are not. Re-lays out rather than repairs: the
+      transcript and the `.srt` are the bytes they were, proven by mutation in both
+      directions (hide the payload and the tap falls back; promise the restyle and
+      withhold it and the ill-fitted frame is still on disk). What that costs: one more
+      artifact per project, kept by the same rules as the captions beside it.
       Measured: the generated ASS text is asserted (the wire format, not a
       struct), including a long-lyric case that must wrap rather than overflow.
 - [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion

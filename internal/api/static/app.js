@@ -1727,7 +1727,7 @@ function renderExportSteps(steps) {
   // it cannot name is still a stage the user needs to see.
   el.textContent = steps.map((s) => {
     const name = { timeline: t("reel"), subtitles: t("captions"), render: t("render") }[s.step] || s.step;
-    const did = { reuse: t("reused"), create: t("built"), skip: t("skipped") }[s.action] || s.action;
+    const did = { reuse: t("reused"), create: t("built"), restyle: t("relaid"), skip: t("skipped") }[s.action] || s.action;
     return s.reason ? `${name}: ${did} (${s.reason})` : `${name}: ${did}`;
   }).join(" · ");
   el.hidden = false;

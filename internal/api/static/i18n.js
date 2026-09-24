@@ -190,6 +190,7 @@ window.XCUT_I18N = {
     "render": "渲染",
     "reused": "沿用现有",
     "built": "本次生成",
+    "relaid": "按新画幅重排",
     "skipped": "跳过",
     "The one-tap export failed: {msg}": "一键成片失败：{msg}"
   }

@@ -1603,7 +1603,8 @@ exists), and ROADMAP B5 records the decision plus the one call site to flip if t
 look is wanted over the fit. The other half of B5's open question stays open, unchanged: a
 true restyle needs the transcript payload stored, because re-wrapping inside the `.ass`
 means reading the format back and a header-only rescale would keep a wrap computed for the
-old width.
+old width. **[Closed the next cycle, as written here: the payload is now stored, so nothing
+has to be read back out of the `.ass` — see the paragraph before `## Version / HEAD`.]**
 
 Measured on the new case: green as written (`3.11s`), and red in exactly the two places it
 should be — with the body's call site stubbed out, the log assertions fail ("the body never
@@ -1696,6 +1697,34 @@ check weakened, and `a 128 KiB response was accepted under a 4 KiB budget` in 5.
 both guards weakened — no mutation reaches the deadline, which is what the stub change buys.
 Open in this class: the remaining sidecar cases still start real python inside a 30 s-or-more
 deadline, so a saturated host can still make them slow.
+
+**B5e: the transcript stays on disk, so a shape change stops costing a transcription.** The
+sentence above closed with a decision that was still open — a mismatched `.ass` could be
+fixed only by re-running Whisper through a sidecar, because the words were not kept
+anywhere. They are now: transcription writes the payload it was given to
+`projects/<id>/transcript.json`, a name chosen so that `ResolveSubtitlesPath` (which walks
+`ass` then `srt`) can never mistake it for a caption to burn, and read back through
+`subs.Parse` — the same validation the sidecar's answer passed, which is what lets a stored
+file that cannot be laid out read as "there is none" rather than failing a tap that has a
+plain `.srt` to fall back on. The tap gained a fourth answer, planned and executed by the
+one rule `subsState` exists to hold in one place: `Action: restyle` with
+`ExportRelaidSubtitles`, and it is taken **before** the sidecar arm, because the words a
+restyle uses are byte-identical to the words a re-transcription would rediscover.
+`writeStyledSubtitles` is the layout rule both callers share (transcribe, restyle),
+including the stale-`.ass` removal that keeps an emptied transcript from shadowing its own
+`.srt`; `restyleSubtitles` is unexported because the tap is its only caller. The web readout
+names the new verb (`relaid` / 按新画幅重排) rather than falling through to the raw word.
+
+Measured on the two new cases, both green as written (`3.27s`, `3.47s`) and red where they
+must be: hide the payload and the plan drops to the plain-transcript answer with the
+ill-fitted file untouched; keep the promise in the plan and withhold it in the body and the
+assertion quotes `captions after the restyle declare 1920x1080 … want the reel's
+1080x1920`. Both also assert the files the restyle did not use — transcript and `.srt` —
+are the bytes they were, so "re-laid out" cannot quietly mean "re-transcribed". What is
+still open here: the stored payload is only as good as the transcription that wrote it, so
+projects captioned before this change restyle only after one more run; and a mismatch with
+no captions at all still goes to the sidecar, which is the one case where re-transcribing
+is the only way to get words at all.
 
 ## Version / HEAD
 

@@ -553,3 +553,186 @@ func TestExportBurnsThePlainTranscriptWhenTheStyledOneCannotFit(t *testing.T) {
 		t.Errorf("the fallback rewrote the file it decided not to use: %dx%d ok=%v", w, h, ok)
 	}
 }
+
+// restyledReel stages a project whose captions were transcribed against one canvas and
+// whose reel then changed shape, with the sidecar out of reach for the tap that follows:
+// AIBin emptied and PATH narrowed to the directory holding ffmpeg, so a tap that still
+// tried to re-transcribe fails for a reason this staging did not intend instead of
+// quietly succeeding through something it forgot to hide. Clearing PATH entirely is not
+// an option — it hides ffmpeg too, and the render then dies for an unrelated reason.
+func restyledReel(t *testing.T) (Deps, *storage.Project, *bytes.Buffer, string, string) {
+	t.Helper()
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	var log bytes.Buffer
+	d.Log = slog.New(slog.NewTextHandler(&log, nil))
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Captions laid out for a horizontal reel, written by the real transcription path so
+	// the stored transcript is the product's own artifact and not one this test typed out.
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = fakeTranscriptSidecar(t)
+	if err := d.TranscribeProject(p, ""); err != nil {
+		t.Fatal(err)
+	}
+	assPath, err := d.SubtitlesPath(p.ID, "ass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srtPath, err := d.SubtitlesPath(p.ID, "srt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1920 || h != 1080 {
+		t.Fatalf("the fixture's captions declare %dx%d (ok=%v), want the 1920x1080 reel they were written for",
+			w, h, ok)
+	}
+	// The reel changes shape after the captions exist.
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: DefaultExportStyle, Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = ""
+	ffmpegPath, ferr := exec.LookPath("ffmpeg")
+	if ferr != nil {
+		t.Skipf("no ffmpeg to keep on PATH: %v", ferr)
+	}
+	ffdir := filepath.Dir(ffmpegPath)
+	if _, perr := os.Stat(filepath.Join(ffdir, "ffprobe")); perr != nil {
+		if _, xerr := os.Stat(filepath.Join(ffdir, "ffprobe.exe")); xerr != nil {
+			t.Skipf("ffprobe does not sit beside ffmpeg (%s), so narrowing PATH would break the render", ffdir)
+		}
+	}
+	t.Setenv("PATH", ffdir)
+	return d, p, &log, assPath, srtPath
+}
+
+// TestExportRelaysOutStoredCaptionsWithoutTheSidecar is the cheap half of the caption
+// mismatch fix. The words are already on disk where the last transcription left them, so
+// the tap lays them out again for the reel's own frame instead of paying for another
+// transcription — and, since the mismatch used to be unfixable without a sidecar,
+// instead of passing the ill-fitted file over for a plain .srt. That the job finishes at
+// all with no sidecar resolvable is part of the claim: re-transcription was not an option
+// this run could have taken.
+func TestExportRelaysOutStoredCaptionsWithoutTheSidecar(t *testing.T) {
+	d, p, log, assPath, srtPath := restyledReel(t)
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(tp)
+	if err != nil {
+		t.Fatalf("transcription stored no transcript to re-lay out: %v", err)
+	}
+	srtBefore, err := os.ReadFile(srtPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     true,
+		Out:      filepath.Join(t.TempDir(), "restyle.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action != "restyle" || !strings.HasPrefix(got.Reason, ExportRelaidSubtitles) {
+		t.Fatalf("the tap planned %q / %q, want a restyle from the stored transcript", got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+
+	// The file that burns is the styled one, now sized for the reel it lands on.
+	b, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1080 || h != 1920 {
+		t.Errorf("captions after the restyle declare %dx%d (ok=%v), want the reel's 1080x1920", w, h, ok)
+	}
+	// Restyle re-lays out; it does not re-transcribe. The transcript the tap read is the
+	// bytes it was, and the plain sibling it did not need is untouched too.
+	if after, rerr := os.ReadFile(tp); rerr != nil || !bytes.Equal(stored, after) {
+		t.Errorf("the restyle rewrote the transcript it read (rerr=%v)", rerr)
+	}
+	if after, rerr := os.ReadFile(srtPath); rerr != nil || !bytes.Equal(srtBefore, after) {
+		t.Error("the restyle rewrote the .srt it did not use")
+	}
+	text := log.String()
+	for _, want := range []string{"re-laid out for the reel's canvas", filepath.Base(assPath)} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the body never put %q on the record; the log was: %s", want, text)
+		}
+	}
+}
+
+// TestExportStillFallsBackWithoutAStoredTranscript is the other half of the same
+// sentence: the restyle arm is keyed to the transcript file, not to captions merely being
+// present. Delete it and an unfixable mismatch goes back to burning the plain .srt with
+// the ill-fitted file left alone — which is what the new arm would otherwise be
+// indistinguishable from.
+func TestExportStillFallsBackWithoutAStoredTranscript(t *testing.T) {
+	d, p, _, assPath, srtPath := restyledReel(t)
+	tp, err := d.transcriptPath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(tp); err != nil {
+		t.Fatal(err)
+	}
+
+	_, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     true,
+		Out:      filepath.Join(t.TempDir(), "fallback.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action != "reuse" || !strings.HasPrefix(got.Reason, ExportFallbackSubtitles) {
+		t.Fatalf("with no transcript on disk the tap planned %q / %q, want the plain-transcript answer",
+			got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	b, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1920 || h != 1080 {
+		t.Errorf("with nothing to restyle from the ill-fitted file was still rewritten: %dx%d ok=%v, want the 1920x1080 it arrived as",
+			w, h, ok)
+	}
+	if _, serr := os.Stat(srtPath); serr != nil {
+		t.Errorf("the .srt the tap burned is gone: %v", serr)
+	}
+}

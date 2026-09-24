@@ -39,7 +39,7 @@ const DefaultExportStyle = "beat_shortform"
 // so, instead of the reel quietly having no captions.
 type ExportStep struct {
 	Step   string `json:"step"`   // timeline | subtitles | render
-	Action string `json:"action"` // reuse | create | skip
+	Action string `json:"action"` // reuse | create | restyle | skip
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -57,6 +57,11 @@ const (
 	// tap either fixes it or says that it cannot.
 	ExportRestyleSubtitles = "re-transcribed for the reel's own frame: "
 	ExportStaleSubtitles   = "burned as they stand, there is no sidecar to lay them out again: "
+	// ExportRelaidSubtitles is the fix the tap used to be only able to offer the
+	// expensive way: the words are already on disk next to the captions, so the
+	// layout can be redone for the reel's own frame without a sidecar, and without
+	// the minutes of transcription a sidecar would cost.
+	ExportRelaidSubtitles = "re-laid out for the reel's own frame from the stored transcript: "
 	// ExportFallbackSubtitles is the third answer to a mismatch, and the one that used to
 	// be missing: a plain .srt carries no PlayRes pair and no pre-computed wrap, so
 	// libass lays it out against the canvas it is burned onto. Captioned plain beats
@@ -174,6 +179,10 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 func (d Deps) subtitlesReuseStep(projectID string) ExportStep {
 	st := d.subsState(projectID)
 	switch {
+	case st.mismatch() && d.storedTranscript(projectID) != nil:
+		// The words are already on disk, so the fix costs a layout pass instead of a
+		// transcription: this is the arm that used to be the sidecar's alone.
+		return ExportStep{Step: "subtitles", Action: "restyle", Reason: ExportRelaidSubtitles + st.frames()}
 	case st.mismatch() && worker.ResolveAIBin(d.Cfg.Workers.AIBin) != "":
 		return ExportStep{Step: "subtitles", Action: "create", Reason: ExportRestyleSubtitles + st.frames()}
 	case st.mismatch():
@@ -212,6 +221,21 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 			st := d.subsState(project.ID)
 			sidecar := worker.ResolveAIBin(d.Cfg.Workers.AIBin) != ""
 			switch {
+			case st.mismatch() && d.storedTranscript(project.ID) != nil:
+				// The plan said it could lay the same words out for this frame, and the
+				// words are still there: do it here rather than trusting the plan's
+				// reading of a moment ago. A restyle that fails fails the tap — the
+				// alternative is burning the ill-fitted file the plan just promised to
+				// replace.
+				if err := d.restyleSubtitles(project.ID); err != nil {
+					return err
+				}
+				subsPath = d.existingSubtitlesPath(project.ID)
+				d.Log.Info("captions re-laid out for the reel's canvas from the stored transcript",
+					"project", project.ID,
+					"styled", fmt.Sprintf("%dx%d", st.styledW, st.styledH),
+					"reel", fmt.Sprintf("%dx%d", st.reelW, st.reelH),
+					"subs", subsPath)
 			case (st.path == "" || st.mismatch()) && sidecar:
 				// Nothing yet, or something styled for another frame: with a sidecar
 				// the words can be laid out again, and a transcript that fails here
