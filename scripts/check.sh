@@ -151,6 +151,34 @@ elif [ "$idle_rc" -ne 0 ]; then
     exit 1
 fi
 
+# The web UI is embedded JavaScript no Go toolchain parses: a missing brace in
+# app.js compiles, vets, tests and ships, and the panel simply stops updating. Ask
+# node, and say so when node is absent — a step that cannot fail is not a guard.
+echo "== js parse"
+JS_COUNT=$(find internal/api/static -name '*.js' -type f | wc -l | tr -d ' ')
+if [ "$JS_COUNT" -lt 2 ]; then
+    echo "only $JS_COUNT UI scripts found — this step is not reading what it claims" >&2
+    exit 1
+fi
+if NODE_V=$(node --version 2>/dev/null) && [ -n "$NODE_V" ]; then
+    JS_BAD=""
+    for f in internal/api/static/*.js; do
+        if ! err=$(node --check "$f" 2>&1); then
+            JS_BAD="$JS_BAD
+  $(basename "$f"): $(printf '%s' "$err" | head -2 | tr '
+' ' ')"
+        fi
+    done
+    if [ -n "$JS_BAD" ]; then
+        echo "JavaScript syntax errors:$JS_BAD" >&2
+        exit 1
+    fi
+    echo "   $JS_COUNT UI scripts parse ($NODE_V)"
+else
+    echo "   node is not runnable on this host — the step did not run" >&2
+    NOT_RUN="$NOT_RUN js-parse(no-node)"
+fi
+
 echo "== go vet"
 go vet ./...
 

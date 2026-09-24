@@ -179,6 +179,33 @@ foreach ($f in $psFiles) {
 if ($psBad.Count -gt 0) { throw "PowerShell syntax errors:`n  $($psBad -join "`n  ")" }
 Write-Host "   $($psFiles.Count) scripts parse"
 
+# The web UI is embedded Go-free JavaScript that no Go toolchain parses: a missing
+# brace in app.js compiles, vets, tests and ships, and the panel just stops updating.
+# Ask node, and record the absence rather than passing silently — a host without node
+# has not checked anything, and a step that cannot fail is not a guard.
+Write-Host "== js parse"
+$jsFiles = @(Get-ChildItem -Path "internal/api/static" -Filter "*.js" -File)
+if ($jsFiles.Count -lt 2) {
+    throw "only $($jsFiles.Count) UI scripts found — this step is not reading what it claims"
+}
+$node = $null
+try { $node = (& node --version 2>$null) } catch { $node = $null }
+if (-not $node) {
+    Write-Warning "node is not runnable on this host — the js-parse step did not run"
+    $NotRun += " js-parse(no-node)"
+} else {
+    $jsBad = @()
+    foreach ($f in $jsFiles) {
+        $check = & node --check $f.FullName 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $first = ($check | Select-Object -First 1)
+            $jsBad += "$($f.Name): $first"
+        }
+    }
+    if ($jsBad.Count -gt 0) { throw "JavaScript syntax errors:`n  $($jsBad -join "`n  ")" }
+    Write-Host "   $($jsFiles.Count) UI scripts parse ($($node.Trim()))"
+}
+
 Invoke-Step "go vet" { go vet ./... }
 Invoke-Step "go build" { go build ./... }
 # The Rust toolchain decision, asked once and reused: a healthy MSVC setup links
