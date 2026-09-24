@@ -6,6 +6,21 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **A stored transcript is a caption source: the tap can produce captions with no sidecar at
+  all.** A project that had been transcribed once, whose caption files were then removed,
+  answered `subtitles=skip (no AI sidecar configured …)` even though the words were still on
+  disk in `transcript.json`. It now answers `create` —
+  `written out from the transcript this project already keeps, no sidecar needed` — and
+  writes the styled file for the reel's own frame. Deliberately narrower than the mismatch
+  arm above it: with a sidecar configured the plan still says *transcribe*, because a stored
+  payload cannot tell the tap whether the project's asset is still the one that was spoken
+  over, while a mismatch is a question about the frame and not about the words. The rebuild
+  produces the `.ass` burn prefers; it does not resurrect the `.srt`, which is said in the
+  case rather than assumed. Proven both ways: disabling the body arm leaves `no styled
+  captions were written` (while the plan still promises them, which is the split the test
+  exists to catch), and the sidecar case asserts the new arm did **not** win there.
+
+### Added
 - **The caption frame is now something a client can see and fix without rendering.**
   `GET /api/v1/projects/{id}/subtitles` reports `styled_frame`, `reel_frame`, `mismatch`
   and `transcript` (whether the words are still on disk to be laid out again), and

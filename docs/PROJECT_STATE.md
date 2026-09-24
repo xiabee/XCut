@@ -1802,6 +1802,23 @@ nothing to compare, and a withheld fact for a status endpoint. The reel's canvas
 unconditionally now and `mismatch` still says false. That one was not a mutation catch; the
 fixture's own claim failed first, which is the cheaper way to find it.
 
+**A transcript on disk is a caption source.** The state "transcribed once, caption files
+since removed, no sidecar configured" answered `subtitles=skip` although the words were
+sitting in `transcript.json` — the tap had learned to *repair* captions from them but not to
+*make* them. It now does, planned as `create` with its own sentence (`written out from the
+transcript this project already keeps, no sidecar needed`) and executed by the same
+`writeStyledSubtitles` the repair uses, sized for the reel's canvas. The precedence is
+deliberate and asymmetric with the mismatch arm: with a sidecar configured the plan still
+promises a transcription, because a stored payload cannot say whether the project's asset is
+still the one that was spoken over — a mismatch asks only about the frame, where the words
+are already agreed. Two cases hold the line: disabling the body arm leaves `no styled
+captions were written` while the plan goes on promising them (the plan/body split is what
+the tap has been wrong about before), and the sidecar case asserts the new arm did not take
+it over. What the rebuild does not do is bring the `.srt` back — the styled file is what
+burn prefers, and the case says so rather than leaving it to be assumed. Still open in this
+arc: a project captioned before the transcript was stored has no payload to rebuild from, so
+it keeps needing a sidecar exactly as it did.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged

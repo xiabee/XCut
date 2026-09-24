@@ -610,6 +610,17 @@ func restyledReel(t *testing.T) (Deps, *storage.Project, *bytes.Buffer, string, 
 		t.Fatal(err)
 	}
 	d.Cfg.Workers.AIBin = ""
+	hideTheSidecarKeepFFmpeg(t)
+	return d, p, &log, assPath, srtPath
+}
+
+// hideTheSidecarKeepFFmpeg removes every way a sidecar can resolve while leaving the
+// render runnable. Clearing PATH outright would hide ffmpeg too, and the tap would then
+// die for a reason the case is not about; AIBin alone is not enough either, because a
+// real xcut-ai on PATH would answer and the test would pass on a machine nobody is
+// shipping to.
+func hideTheSidecarKeepFFmpeg(t *testing.T) {
+	t.Helper()
 	ffmpegPath, ferr := exec.LookPath("ffmpeg")
 	if ferr != nil {
 		t.Skipf("no ffmpeg to keep on PATH: %v", ferr)
@@ -621,7 +632,6 @@ func restyledReel(t *testing.T) (Deps, *storage.Project, *bytes.Buffer, string, 
 		}
 	}
 	t.Setenv("PATH", ffdir)
-	return d, p, &log, assPath, srtPath
 }
 
 // TestExportRelaysOutStoredCaptionsWithoutTheSidecar is the cheap half of the caption
@@ -688,6 +698,136 @@ func TestExportRelaysOutStoredCaptionsWithoutTheSidecar(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("the body never put %q on the record; the log was: %s", want, text)
 		}
+	}
+}
+
+// TestExportWritesCaptionsFromTheStoredTranscriptWithNoSidecar is the state the tap
+// used to call "no captions": the project was transcribed once, its caption files were
+// removed, and nothing is configured to speak to a speechrecognizer. The words are still
+// on disk, so the honest plan line is not the skip line — and the reel that comes out
+// carries the sentences the sidecar heard, sized for its own frame.
+func TestExportWritesCaptionsFromTheStoredTranscriptWithNoSidecar(t *testing.T) {
+	d, p, log, assPath, srtPath := restyledReel(t)
+	// restyledReel leaves the reel disagreeing with the captions; here they are meant to
+	// agree, so rebuild at the shape the captions were laid out for and drop the files.
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{assPath, srtPath} {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !d.HasStoredTranscript(p.ID) {
+		t.Fatal("the staging left no transcript, so this case would prove nothing")
+	}
+
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     true,
+		Out:      filepath.Join(t.TempDir(), "fromtranscript.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action != "create" || !strings.HasPrefix(got.Reason, ExportCaptionsFromTranscript) {
+		t.Fatalf("the tap planned %q / %q, want captions written from the stored transcript",
+			got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	b, err := os.ReadFile(assPath)
+	if err != nil {
+		t.Fatalf("no styled captions were written: %v", err)
+	}
+	if w, h, ok := subs.ReadASSFrame(bytes.NewReader(b)); !ok || w != 1920 || h != 1080 {
+		t.Errorf("the rebuilt .ass declares %dx%d (ok=%v), want the reel's 1920x1080", w, h, ok)
+	}
+	// The words, not just a file: a header-only rebuild would satisfy the frame check
+	// above while burning an empty caption track.
+	for _, want := range []string{"第一句台词", "第二句台词"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the rebuilt captions lost %q:\n%s", want, b)
+		}
+	}
+	// What this does NOT do is bring back the .srt: the artifact a transcript rebuilds
+	// is the styled one, which is also what burn prefers. Asserting the plain file was
+	// rewritten would pin a promise the feature never made.
+	if text := log.String(); !strings.Contains(text, "captions written from the stored transcript") {
+		t.Errorf("the body never said where the captions came from; the log was: %s", text)
+	}
+}
+
+// TestExportStillTranscribesWhenASidecarIsConfigured keeps the new arm from eating the
+// old one. With a sidecar available the plan goes on saying it will transcribe, because a
+// stored payload cannot tell the tap whether the project's asset is still the one that was
+// spoken over — the question a mismatch does not ask.
+func TestExportStillTranscribesWhenASidecarIsConfigured(t *testing.T) {
+	root := t.TempDir()
+	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
+		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, TimelineRequest{Style: "generic_highlight", Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	d.Cfg.Workers.AIBin = fakeTranscriptSidecar(t)
+	if err := d.TranscribeProject(p, ""); err != nil {
+		t.Fatal(err)
+	}
+	assPath, err := d.SubtitlesPath(p.ID, "ass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srtPath, err := d.SubtitlesPath(p.ID, "srt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{assPath, srtPath} {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     true,
+		Out:      filepath.Join(root, "re.mp4"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stepNamed(steps, "subtitles")
+	if got.Action != "create" || strings.HasPrefix(got.Reason, ExportCaptionsFromTranscript) {
+		t.Errorf("with a sidecar configured the plan read %q / %q, want a transcription",
+			got.Action, got.Reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	// The transcription really ran: the two files the test removed are back.
+	if _, err := os.Stat(assPath); err != nil {
+		t.Errorf("the sidecar arm planned a transcription and left no .ass: %v", err)
 	}
 }
 

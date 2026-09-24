@@ -62,6 +62,13 @@ const (
 	// layout can be redone for the reel's own frame without a sidecar, and without
 	// the minutes of transcription a sidecar would cost.
 	ExportRelaidSubtitles = "re-laid out for the reel's own frame from the stored transcript: "
+	// ExportCaptionsFromTranscript is the same artifact used for the other direction:
+	// the captions are gone but the words are not. Only reached with no sidecar,
+	// because with one the fresh transcription is the answer to a question the stored
+	// payload cannot answer — whether the project's asset is still the one that was
+	// spoken over. A mismatch is different: the words are agreed, only the frame is
+	// wrong, so the stored payload is preferred there even when a sidecar exists.
+	ExportCaptionsFromTranscript = "written out from the transcript this project already keeps, no sidecar needed"
 	// ExportFallbackSubtitles is the third answer to a mismatch, and the one that used to
 	// be missing: a plain .srt carries no PlayRes pair and no pre-computed wrap, so
 	// libass lays it out against the canvas it is burned onto. Captioned plain beats
@@ -162,10 +169,14 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 	switch {
 	case !req.Subs:
 		steps[1] = ExportStep{Step: "subtitles", Action: "skip", Reason: ExportSkipNotAsked}
-	case subsPath == "" && worker.ResolveAIBin(d.Cfg.Workers.AIBin) == "":
-		steps[1] = ExportStep{Step: "subtitles", Action: "skip", Reason: ExportSkipNoSidecar}
 	case subsPath != "":
 		steps[1] = d.subtitlesReuseStep(project.ID)
+	case d.HasStoredTranscript(project.ID) && worker.ResolveAIBin(d.Cfg.Workers.AIBin) == "":
+		// No captions, no sidecar, and the words still on disk: captions are
+		// available after all, which is the one thing the skip line below cannot say.
+		steps[1] = ExportStep{Step: "subtitles", Action: "create", Reason: ExportCaptionsFromTranscript}
+	case worker.ResolveAIBin(d.Cfg.Workers.AIBin) == "":
+		steps[1] = ExportStep{Step: "subtitles", Action: "skip", Reason: ExportSkipNoSidecar}
 	}
 	id, err := d.Queue.RunAsync(d.Ctx, job.TypeExport, project.ID, job.ClassCPUHeavy,
 		map[string]any{"style": req.Timeline.Style, "subs": req.Subs, "out": req.Out},
@@ -241,6 +252,16 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 					"styled", fmt.Sprintf("%dx%d", st.StyledW, st.StyledH),
 					"reel", fmt.Sprintf("%dx%d", st.ReelW, st.ReelH),
 					"subs", subsPath)
+			case st.Path == "" && !sidecar && d.HasStoredTranscript(project.ID):
+				// The captions were removed (or never written by this run) and there is
+				// no sidecar to ask — but the words are still here, so "no captions"
+				// would be a choice the tap is not obliged to make.
+				if err := d.RestyleSubtitles(project.ID); err != nil {
+					return err
+				}
+				subsPath = d.existingSubtitlesPath(project.ID)
+				d.Log.Info("captions written from the stored transcript with no sidecar configured",
+					"project", project.ID, "subs", subsPath)
 			case (st.Path == "" || st.Mismatch()) && sidecar:
 				// Nothing yet, or something styled for another frame: with a sidecar
 				// the words can be laid out again, and a transcript that fails here
