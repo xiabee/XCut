@@ -1412,19 +1412,18 @@ async function refreshSubtitlesStatus() {
     // transcription, which is the Transcribe button's job.
     restyleBtn.hidden = !(st.mismatch && st.transcript);
     if (st.media_stale) {
-      // The frame may match and the words still be from another clip: nothing here
-      // can fix that, so the panel says who can.
-      restyleBtn.hidden = true;
+      // The frame may match and the words still be from another clip: nothing here can
+      // fix that, so the panel says who can. What it does *not* do is take the download
+      // links away — the early return this replaced left a user looking at a stale
+      // transcript with no way to fetch the files they could still read.
       status.textContent = t("captions were transcribed from other media — transcribe again");
-      links.innerHTML = "";
-      previewBtn.hidden = !st.srt;
-      return;
+    } else {
+      status.textContent = st.mismatch
+        ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
+        : (st.ass
+          ? (st.karaoke ? t("srt + karaoke ass ready") : t("srt + styled ass ready"))
+          : t("srt ready"));
     }
-    status.textContent = st.mismatch
-      ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
-      : (st.ass
-        ? (st.karaoke ? t("srt + karaoke ass ready") : t("srt + styled ass ready"))
-        : t("srt ready"));
     const base = `/api/v1/projects/${currentProject.id}/subtitles/file?format=`;
     links.innerHTML = "";
     for (const [fmt, ok] of [["srt", st.srt], ["ass", st.ass]]) {
