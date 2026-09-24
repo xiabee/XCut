@@ -65,7 +65,7 @@ open the desktop editing client (native window over the local server)
 
 ## xcut auto
 ```
-usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h]
+usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h] [--encoder name]
 
 one-shot: import → analyze → timeline → (captions) → render
 ```
@@ -156,7 +156,7 @@ point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
 ## xcut render
 ```
-usage: xcut render <project> [--out path] [--subs file|auto]
+usage: xcut render <project> [--out path] [--subs file|auto] [--encoder name]
 
 render a project timeline to MP4
 ```

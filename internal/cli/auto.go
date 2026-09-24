@@ -3,14 +3,16 @@ package cli
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
+	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h] [--encoder name]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -27,6 +29,7 @@ func cmdAuto(a *App, args []string) error {
 	outPath := ""
 	subsFlag := ""      // "" or "off" = no captions; "on" = transcribe this run; a path = burn that file
 	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
+	encoderFlag := ""   // hardware/software encoder override for this run's render
 	pos, err := parseCommandArgs(args, map[string]*string{
 		"style":      &styleName,
 		"duration":   &durationFlag,
@@ -36,9 +39,18 @@ func cmdAuto(a *App, args []string) error {
 		"out":        &outPath,
 		"subs":       &subsFlag,
 		"score-crop": &scoreCropFlag,
+		"encoder":    &encoderFlag,
 	})
 	if err != nil {
 		return err
+	}
+	if encoderFlag != "" {
+		enc := strings.ToLower(strings.TrimSpace(encoderFlag))
+		if !config.ValidEncoderName(enc) {
+			return xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("invalid --encoder %q (want one of: %s)", enc, strings.Join(config.EncoderNames, ", ")), nil)
+		}
+		a.Cfg.Render.Encoder = enc
 	}
 	duration, err := parseDurationFlag(durationFlag)
 	if err != nil {

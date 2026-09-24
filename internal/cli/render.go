@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xiabee/XCut/internal/config"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -14,15 +15,30 @@ func init() {
 	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path] [--subs file|auto]"), cmdRender)
 }
 
+func init() {
+	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path] [--subs file|auto] [--encoder name]"), cmdRender)
+}
+
 func cmdRender(a *App, args []string) error {
 	outPath := ""
 	subsPath := ""
-	pos, err := parseCommandArgs(args, map[string]*string{"out": &outPath, "subs": &subsPath})
+	encoderFlag := ""
+	pos, err := parseCommandArgs(args, map[string]*string{"out": &outPath, "subs": &subsPath, "encoder": &encoderFlag})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return xcerr.E(xcerr.CodeValidation, "usage: xcut render <project> [--out path] [--subs file|auto]", nil)
+		return xcerr.E(xcerr.CodeValidation, "usage: xcut render <project> [--out path] [--subs file|auto] [--encoder name]", nil)
+	}
+	// The CLI flag is the highest config layer by the documented precedence:
+	// it overrides render.encoder from the workspace for this render only.
+	if encoderFlag != "" {
+		enc := strings.ToLower(strings.TrimSpace(encoderFlag))
+		if !config.ValidEncoderName(enc) {
+			return xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("invalid --encoder %q (want one of: %s)", enc, strings.Join(config.EncoderNames, ", ")), nil)
+		}
+		a.Cfg.Render.Encoder = enc
 	}
 
 	db, err := a.OpenDB()
