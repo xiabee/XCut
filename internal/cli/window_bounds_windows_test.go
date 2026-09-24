@@ -5,6 +5,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -81,6 +82,12 @@ func newHiddenTestWindow(t *testing.T) uintptr {
 }
 
 func TestRestoreWindowBoundsMovesARealWindow(t *testing.T) {
+	// A window belongs to the OS thread that created it: MoveWindow sends
+	// synchronous messages to that thread's procedure, so the whole test
+	// must run pinned — under -race the scheduler migrates goroutines freely
+	// and an unpinned test deadlocks in the cross-thread message wait.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	hwnd := newHiddenTestWindow(t)
 
 	dir := t.TempDir()
