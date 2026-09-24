@@ -216,6 +216,47 @@ func TestSignInOutElementsExist(t *testing.T) {
 // keeping the form, and the path-import button silently reloaded the page for
 // three sessions until a real browser drive hit it. Existence of an id (the
 // check above) cannot see an unwired form; this can.
+// TestTheStripPreviewsTheSaveLayout pins the one-rule contract between the
+// editing strip and the save. The strip's blocks are positioned by
+// timeline_start, and nothing recompiled that claim: a drag reorder used to
+// flip the array while every block kept its stale position, and because
+// totalDuration read the new last row's stale timeline_start, the ruler
+// collapsed to that clip alone and blew every width up fivefold — the strip
+// destroyed by the very gesture that edits it. Every mutation path must run
+// the same relayoutClips the save writes, and the save must not keep a
+// private copy of the layout arithmetic for them to drift apart again.
+func TestTheStripPreviewsTheSaveLayout(t *testing.T) {
+	js := staticFile(t, "static/app.js")
+	if n := strings.Count(js, "function relayoutClips("); n != 1 {
+		t.Fatalf("relayoutClips is defined %d times, want exactly one", n)
+	}
+	// drop reorder, trim-handle release, inspector Apply, remove/undo remove.
+	if n := strings.Count(js, "relayoutClips(clipEdits)"); n != 4 {
+		t.Errorf("relayoutClips(clipEdits) is called %d times, want 4 (drop, trim release, Apply, remove) — an editing path that skips it previews a layout the save will not write", n)
+	}
+	if n := strings.Count(js, "relayoutClips(kept)"); n != 1 {
+		t.Errorf("saveTimeline must derive the document's layout from relayoutClips(kept), found %d call(s)", n)
+	}
+	// The fits tolerance must live only in xfadeOverlap: a second copy of the
+	// comparison is how the strip and the save learned to disagree before.
+	if n := strings.Count(js, "playDur(prev) + 1e-9"); n != 1 {
+		t.Errorf("the xfade fits-comparison appears %d times, want 1 (inside xfadeOverlap only)", n)
+	}
+	// totalDuration must be order-independent: the last row of the working
+	// copy is wherever the last drag left it, not the reel's end.
+	start := strings.Index(js, "function totalDuration(")
+	if start < 0 {
+		t.Fatal("totalDuration vanished — the ruler and the trim maths both read it")
+	}
+	body := js[start:]
+	if end := strings.Index(body, "\n}"); end >= 0 {
+		body = body[:end]
+	}
+	if strings.Contains(body, "[list.length - 1]") {
+		t.Errorf("totalDuration reads the last array row again — a drag reorder collapses the ruler to that row's stale timeline_start:\n%s", body)
+	}
+}
+
 func TestEverySubmitFormHasAHandler(t *testing.T) {
 	html := staticFile(t, "static/index.html")
 	js := staticFile(t, "static/app.js")

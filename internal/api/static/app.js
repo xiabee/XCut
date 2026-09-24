@@ -762,8 +762,45 @@ const playDur = (c) => (c.source_end - c.source_start) / (c.speed > 0 ? c.speed 
 function totalDuration(clips) {
   const list = clips || clipEdits;
   if (!list || list.length === 0) return 0;
-  const last = list[list.length - 1];
-  return last.timeline_start + playDur(last);
+  // The reel's length is the furthest clip end, not the last row's end: the
+  // working copy is reordered by drag before it is saved, and reading the
+  // last row's timeline_start collapsed the ruler to that clip alone.
+  let end = 0;
+  for (const c of list) {
+    if (c._removed) continue;
+    const e = c.timeline_start + playDur(c);
+    if (e > end) end = e;
+  }
+  return end;
+}
+
+// xfadeOverlap is the join rule in one place: an xfade shares the previous
+// clip's tail with this clip's head only when the window fits both; every
+// other join is back-to-back. The strip's preview and the save's layout
+// must not be able to disagree about where a clip starts.
+function xfadeOverlap(prev, cur) {
+  const t = prev && prev.transition;
+  if (!t || t.type !== "xfade") return 0;
+  const d = Number(t.duration) || 0;
+  if (d <= 0 || d > playDur(prev) + 1e-9 || d > playDur(cur) + 1e-9) return 0;
+  return d;
+}
+
+// relayoutClips recomputes timeline_start over the kept clips, in array
+// order — the same layout saveTimeline writes. Every editing mutation
+// (drag reorder, trim, apply, remove) runs it, so the strip previews the
+// document the save will produce. A transition whose window no longer
+// fits keeps its badge until the save drops it and says so.
+function relayoutClips(list) {
+  if (!Array.isArray(list)) return;
+  let prevEnd = 0;
+  let prev = null;
+  for (const c of list) {
+    if (c._removed) continue;
+    c.timeline_start = prev === null ? 0 : prevEnd - xfadeOverlap(prev, c);
+    prevEnd = c.timeline_start + playDur(c);
+    prev = c;
+  }
 }
 
 // renderFootageNote tells apart the two reasons a reel came out short: the
@@ -974,6 +1011,7 @@ function renderTimeline() {
       else if (dragIndex < selectedIndex && selectedIndex <= i) selectedIndex--;
       else if (i <= selectedIndex && selectedIndex < dragIndex) selectedIndex++;
       dragIndex = -1;
+      relayoutClips(clipEdits);
       renderTimeline();
     });
     attachTrim(block, hL, hR, i, -1, px, total);
@@ -1043,6 +1081,7 @@ function attachTrim(block, handle, other, i, dir, px, total) {
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      relayoutClips(clipEdits);
       renderTimeline();
     };
     window.addEventListener("pointermove", move);
@@ -1248,6 +1287,7 @@ function renderInspector() {
         return;
       }
     }
+    relayoutClips(clipEdits);
     renderTimeline();
   });
   const btnPreview = document.createElement("button");
@@ -1259,6 +1299,7 @@ function renderInspector() {
   btnRemove.addEventListener("click", () => {
     c._removed = !c._removed;
     selectedIndex = -1;
+    relayoutClips(clipEdits);
     renderTimeline();
   });
   apply.append(btnApply, btnPreview, btnRemove);
@@ -1287,45 +1328,30 @@ async function saveTimeline() {
   // Optimistic concurrency: send the revision we read; a mismatch (another
   // tab saved, or the timeline was regenerated) is refused with 409.
   doc.revision = timelineDoc.revision || 0;
-  let dropped = 0;
-  let prevEnd = 0;
-  const outs = [];
-  kept.forEach((c, i) => {
+  // The document carries the layout the strip already previews — relayoutClips
+  // is the same rule every editing mutation runs, so the save cannot disagree
+  // with what the user saw when they decided to save.
+  relayoutClips(kept);
+  const outs = kept.map((c, i) => {
     const copy = { ...c };
     delete copy._removed;
     copy.id = `clip_${i + 1}`;
-    let start = prevEnd;
-    if (i > 0) {
-      // The join between kept[i-1] and kept[i] is described by the
-      // PREVIOUS clip's transition. An xfade join shares a blend window
-      // (the previous clip's tail overlaps this clip's head by the
-      // transition duration); every other join is back-to-back (a fade
-      // needs no overlap). Preserve the transition when its window still
-      // fits both clips after the edit — reordering can change the
-      // neighbors — and degrade loudly to a cut when an xfade does not,
-      // instead of silently stripping every transition in the document.
-      const prev = kept[i - 1];
-      const t = prev.transition;
-      if (t && t.type === "xfade") {
-        const fits = t.duration > 0 &&
-          t.duration <= playDur(prev) + 1e-9 && t.duration <= playDur(c) + 1e-9;
-        if (fits) {
-          start = prevEnd - t.duration;
-        } else {
-          dropped++;
-          delete outs[i - 1].transition;
-        }
-      }
-    }
-    copy.timeline_start = start;
-    // A trailing xfade has nothing to blend with (the renderer would
-    // refuse the save) — degrade it too.
-    if (i === kept.length - 1 && copy.transition && copy.transition.type === "xfade") {
+    return copy;
+  });
+  // The join between kept[i-1] and kept[i] is described by the PREVIOUS
+  // clip's transition. An xfade whose blend window no longer fits both clips
+  // (reordering can change the neighbors) is degraded loudly — counted and
+  // named in the banner — instead of silently stripping every transition.
+  // A trailing xfade has nothing to blend with (the renderer would refuse
+  // the save) — degraded too.
+  let dropped = 0;
+  outs.forEach((copy, i) => {
+    const t = copy.transition;
+    if (!t || t.type !== "xfade") return;
+    if (i === outs.length - 1 || xfadeOverlap(copy, outs[i + 1]) === 0) {
       dropped++;
       delete copy.transition;
     }
-    outs.push(copy);
-    prevEnd = start + playDur(c);
   });
   doc.tracks[0].clips = outs;
   try {
