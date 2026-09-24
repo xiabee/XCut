@@ -171,6 +171,27 @@ func (d Deps) TranscribeProject(project *storage.Project, assetID string) error 
 	return err
 }
 
+// RestyleProjectAsync queues a caption re-lay as a **subtitles** job rather than its own
+// type. That is the point: `subtitles` is exclusive per project so no second transcription
+// can start beside a running one, and a re-lay writes the same `.ass` a transcription
+// writes — as its own type it would sit outside that lock, and the two writers would take
+// turns on one file (the transcription's stale-cleanup can even remove the frame the re-lay
+// just wrote). The payload says which of the two the row was.
+func (d Deps) RestyleProjectAsync(project *storage.Project) (string, error) {
+	return d.Queue.RunAsync(d.Ctx, job.TypeSubtitles, project.ID, job.ClassCPULight,
+		map[string]any{"restyle": true}, d.restyleBody(project))
+}
+
+func (d Deps) restyleBody(project *storage.Project) job.Runner {
+	return func(jctx context.Context, progress func(float64)) error {
+		if err := d.RestyleSubtitles(project.ID); err != nil {
+			return err
+		}
+		progress(1.0)
+		return nil
+	}
+}
+
 // ResolveSubtitlesPath returns the project's subtitle file for burn-in:
 // styled ASS (karaoke or captions) when present, plain SRT otherwise.
 // Not-found when the project has none yet.

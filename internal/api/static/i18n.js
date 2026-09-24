@@ -152,7 +152,7 @@ window.XCUT_I18N = {
     "srt ready": "srt 已就绪",
     "re-lay captions": "按当前画幅重排字幕",
     "captions styled for {styled}, reel is {reel}": "字幕按 {styled} 排版，成片是 {reel}",
-    "captions re-laid out for this reel": "字幕已按当前成片重排",
+    "captions re-lay queued": "字幕重排已排队",
     "Re-lay failed: {msg}": "重排失败：{msg}",
     "download .{fmt}": "下载 .{fmt}",
     "status unavailable": "状态不可用",

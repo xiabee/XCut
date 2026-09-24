@@ -189,22 +189,31 @@ func captionFrame(w, h int) string {
 	return fmt.Sprintf("%dx%d", w, h)
 }
 
-// handleSubtitlesRestyle lays the project's stored captions out again for the reel's own
-// frame. It is the caption half of what the export tap does inline, offered on its own so
-// a project that changed shape can be fixed without rendering anything, and without the
-// sidecar: the words are already on disk.
+// handleSubtitlesRestyle queues a re-lay of the project's stored captions for the reel's
+// own frame. It is the caption half of what the export tap does inline, offered on its own
+// so a project that changed shape can be fixed without rendering anything, and without the
+// sidecar: the words are already on disk. Queued rather than done in the request, because a
+// re-lay writes the same file a transcription writes and the queue is where that pair is
+// kept from stepping on each other.
 func (s *Server) handleSubtitlesRestyle(w http.ResponseWriter, r *http.Request) {
 	p := s.requireProjectRow(w, r)
 	if p == nil {
 		return
 	}
-	if err := s.Pipe.RestyleSubtitles(p.ID); err != nil {
+	// Asked before queueing, so the client that has nothing to re-lay hears it as a
+	// refusal rather than as a job that went to the wall a moment later. The job
+	// re-reads the same file when it runs — this check is courtesy, not the guard.
+	if !s.Pipe.HasStoredTranscript(p.ID) {
+		s.writeErr(w, r, xcerr.E(xcerr.CodeNotFound,
+			"no stored transcript for this project (transcribe first)", nil))
+		return
+	}
+	id, err := s.Pipe.RestyleProjectAsync(p)
+	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	// The same body as GET, so the caller sees the frame it asked for rather than
-	// polling for the write to land.
-	writeJSON(w, http.StatusOK, s.subtitlesStatus(p))
+	s.writeJobAccepted(w, r, p.ID, id)
 }
 
 // handleSubtitlesFile downloads one subtitle artifact (?format=ass|srt,

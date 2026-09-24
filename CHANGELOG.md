@@ -59,6 +59,23 @@ sections are tagged; anything above the newest one is unreleased.
   because the endpoint is its caller.
 
 ### Fixed
+- **The caption re-lay goes through the queue, where the transcription lock is.** The
+  endpoint added two cycles ago wrote `subtitles.ass` from the request handler — synchronously,
+  outside `job.exclusiveTypes`, which is the mechanism that keeps two subtitle writers off one
+  file. With a transcription running, a re-lay could land in the middle of it and be deleted by
+  that job's stale-cleanup (a transcription removes the styled file when its own transcript has
+  nothing to lay out), leaving the panel saying "re-laid out" over a missing artifact.
+  `POST …/subtitles/restyle` now queues a **subtitles** job (`{"restyle": true}` in its payload,
+  so `xcut jobs` shows what ran) and answers `202` like its sibling; the missing-transcript
+  refusal is checked at the door so that case stays a `404` with the actionable sentence rather
+  than becoming a job that fails a moment later. Proven in both directions: a re-lay beside a
+  transcription that is *known to be running* gets `409`, and the same request once the slot is
+  free is accepted and succeeds — under a build where the re-lay joins any other job type, the
+  first assertion fails with `accepted (202 …), want 409`. Re-verified in the browser after the
+  contract change: click → `字幕重排已排队`, the panel's own job poller then refreshes it to ready,
+  `styled_frame` reads 1080x1920, and the project's job list carries the `subtitles:succeeded`
+  row. The panel's ready sentence still says "karaoke" for any `.ass`, which is a label defect
+  this change did not introduce and does not fix.
 - **Latin captions stop breaking inside words.** The plain (no word timings) path divided a
   segment into rune chunks of the frame's width without looking for a space, so a
   40-character English line on a 1080×1920 reel reached the screen as `first line o\Nf

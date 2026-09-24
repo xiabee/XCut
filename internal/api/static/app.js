@@ -1470,15 +1470,14 @@ $("btn-subs-restyle").addEventListener("click", async () => {
   const pid = currentProject.id;
   busy(true);
   try {
-    const st = await api(`/api/v1/projects/${pid}/subtitles/restyle`, { method: "POST" });
+    await api(`/api/v1/projects/${pid}/subtitles/restyle`, { method: "POST" });
     if (projectChangedSince(pid)) return; // the answer belongs to a project no longer shown
-    // The endpoint answers with the same body the panel polls, so the readout is the
-    // server's after the write, not a client-side guess that it worked.
-    $("subs-status").textContent = st.mismatch
-      ? tf("captions styled for {styled}, reel is {reel}", { styled: st.styled_frame, reel: st.reel_frame })
-      : t("captions re-laid out for this reel");
-    $("btn-subs-restyle").hidden = !(st.mismatch && st.transcript);
-    refreshSubtitlesStatus();
+    // A queued job, not the new frame: the re-lay writes the same file a transcription
+    // does, so it goes through the queue that keeps those two apart. The job poller
+    // already refreshes this panel when a subtitles job ends, which is where the
+    // after-the-write sentence comes from.
+    $("subs-status").textContent = t("captions re-lay queued");
+    $("btn-subs-restyle").hidden = true;
   } catch (e) {
     banner(tf("Re-lay failed: {msg}", { msg: e.message }));
   } finally { busy(false); }

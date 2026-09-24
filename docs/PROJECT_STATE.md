@@ -1883,10 +1883,31 @@ all 30 arriving; a single word wider than the frame still arrives broken rather 
 suite over a generated artifact is evidence about the assertions, not about the artifact.
 
 Accepted at `3bb1c11` (the wrap fix): local fast gate PASS (`steps not run: none`, 6 skips)
-and the `win-devops` node PASS (`OVERALL PASS`, `exit=0`, `duration=2m20.557s`). The Linux full leg was last run one commit earlier at `03638bf` (above) and
-not re-run here: what this commit changes is `internal/subs` layout code, which the fast gate
-and the Windows node both execute, and no platform-conditional path is touched — stated
-rather than left to be inferred from silence.
+and the `win-devops` node PASS (`OVERALL PASS`, `exit=0`, `duration=2m20.557s`). The Linux
+full leg was last run one commit earlier at `03638bf` (above) and not re-run here: what this
+commit changes is `internal/subs` layout code, which the fast gate and the Windows node both
+execute, and no platform-conditional path is touched — stated rather than left to be inferred
+from silence.
+
+**The re-lay joined the lock it was written beside.** `POST …/subtitles/restyle` came in two
+cycles ago and wrote `subtitles.ass` straight from the request — outside `job.exclusiveTypes`,
+which is exactly what keeps one subtitle writer away from another. The failure it allows is
+concrete: a transcription in flight deletes the styled file when its own transcript turns out
+to have nothing to lay out, so a re-lay landing in that window could be removed by the job it
+was racing while the panel still read "re-laid out". The endpoint now queues a
+`TypeSubtitles` job (payload `{"restyle": true}`, so the row says what ran) and answers `202`;
+the missing-transcript case is refused at the door so it stays a `404` a client can act on
+instead of a job that fails a moment later. Its test asserts both directions — `409` beside a
+transcription *observed* in `running` state (the precondition is waited for, not timed), and
+`202`+success once the slot frees — and the mutation that moves the re-lay to any other job
+type is caught by the first, reading `accepted (202 …), want 409`. The browser pass was redone
+after the contract changed, because the old one proved a synchronous readout that no longer
+exists: click → `字幕重排已排队` → the panel's job poller refreshes to ready, `styled_frame`
+1080x1920, `subtitles:succeeded` in the project's job list. Two things this leaves standing:
+the panel's ready sentence says "karaoke" for any `.ass` (pre-existing, now more visible), and
+the export tap still calls `RestyleSubtitles` inline inside its own job — correct there, since
+the export job is itself exclusive, but the reason is worth knowing before anyone routes it
+through the queue as well.
 
 ## Version / HEAD
 
