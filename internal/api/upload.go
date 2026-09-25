@@ -121,6 +121,17 @@ func ensureInsideImports(importsDir, finalPath string) error {
 }
 
 func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
+	// The upload's one response is written only after the whole body copy
+	// and the import probe — far past the server's absolute WriteTimeout,
+	// which the net/http server arms once when the request headers are
+	// read. Without the write-idle re-arm the transfer would land the file
+	// and create the asset row while the 201 died on the expired deadline:
+	// the browser reports "network error" and the user's retry duplicates
+	// the import. Same treatment the streaming endpoints get: every
+	// response write re-arms the deadline, a reader that stops consuming
+	// still trips the window one span after the last delivered byte.
+	w = &writeIdleWriter{ResponseWriter: w, rc: http.NewResponseController(w), window: streamIdleWindow}
+
 	p, err := s.DB.GetProject(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.writeErr(w, r, err)

@@ -173,7 +173,9 @@ func TestProjectDeleteRemovesImports(t *testing.T) {
 // trickleBody emits total bytes, pausing delay every napBytes: a slow
 // producer that still makes progress (the disk-paced case — the server
 // accepts bytes only as fast as it can write them). Pacing counts BYTES,
-// not Read calls: the transport chooses its own buffer sizes.
+// not Read calls: the transport chooses its own buffer sizes. It
+// fabricates its bytes (no real content), which is what the stalled /
+// progressing cases want — the probe refuses them either way.
 type trickleBody struct {
 	total    int
 	napBytes int
@@ -287,6 +289,128 @@ func TestUploadRearmsReadDeadline(t *testing.T) {
 		t.Fatalf("stalled upload reached the probe stage — idle window did not fire")
 	} else {
 		t.Logf("stalled upload cut with message %q", msg)
+	}
+}
+
+// pacingFor returns the per-nap delay that spreads nap-sized chunks over
+// total of transfer time: a fixture of any size gets the same flight time,
+// so the bound below is exceeded by construction, not by fixture luck.
+func pacingFor(bodyLen, napBytes int, total time.Duration) time.Duration {
+	if bodyLen <= 0 {
+		return total
+	}
+	d := time.Duration(float64(total) * float64(napBytes) / float64(bodyLen))
+	if d < time.Millisecond {
+		d = time.Millisecond
+	}
+	return d
+}
+
+// pacedBody streams real content (probe-passing media) at a paced rate:
+// at most napBytes per Read, one delay nap between them. The per-Read cap
+// keeps the byte accounting exact whatever buffer sizes the transport
+// picks, so the flight time below is by construction, not by fixture luck.
+type pacedBody struct {
+	data     []byte
+	napBytes int
+	delay    time.Duration
+	sent     int
+	sinceNap int
+}
+
+func (b *pacedBody) Read(p []byte) (int, error) {
+	if b.sent >= len(b.data) {
+		return 0, io.EOF
+	}
+	if b.sinceNap >= b.napBytes {
+		time.Sleep(b.delay)
+		b.sinceNap = 0
+	}
+	n := len(p)
+	if n > b.napBytes {
+		n = b.napBytes
+	}
+	if n > len(b.data)-b.sent {
+		n = len(b.data) - b.sent
+	}
+	copy(p, b.data[b.sent:b.sent+n])
+	b.sent += n
+	b.sinceNap += n
+	return n, nil
+}
+
+// TestUploadResponseSurvivesServerWriteTimeout: the upload's 201 is written
+// only after the whole body copy and the import probe — both far past the
+// server's absolute WriteTimeout, which net/http arms once when the request
+// headers are read (the read-deadline heartbeat does not touch it). Without
+// the write-idle re-arm the transfer lands the file and creates the asset
+// row while the response dies on the expired deadline: the browser answers
+// "network error" and the user's retry lands a duplicate import. Real TCP
+// server with a 400 ms WriteTimeout against a paced ~1 s transfer, and real
+// media so the probe passes and the response is the 201 a browser waits for.
+func TestUploadResponseSurvivesServerWriteTimeout(t *testing.T) {
+	s := testServer(t)
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	pid := seedUploadProject(t, s, "upload-write")
+
+	root := t.TempDir()
+	src, err := testmedia.Generate(root, "clip.mp4", testmedia.DefaultFixture(), 160, 120, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const writeTO = 400 * time.Millisecond
+	hs := &http.Server{
+		Handler:           s.Handler(),
+		ReadHeaderTimeout: time.Second,
+		WriteTimeout:      writeTO,
+	}
+	go func() { _ = hs.Serve(ln) }()
+	t.Cleanup(func() { _ = hs.Close() })
+
+	// Paced so the transfer spends ~1.2 s in flight whatever the generator
+	// produced — past the 400 ms bound by a 3x margin, so the deadline
+	// armed at header-read is already expired by the time the handler's
+	// only response write happens.
+	slow := &pacedBody{data: body, napBytes: 4 << 10, delay: pacingFor(len(body), 4<<10, 1200*time.Millisecond)}
+	path := "http://" + ln.Addr().String() + "/api/v1/projects/" + pid + "/assets/upload?filename=slow.mp4"
+	req, err := http.NewRequest(http.MethodPost, path, slow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("upload response lost after a %s transfer (server WriteTimeout %s): %v",
+			time.Since(start).Round(time.Millisecond), writeTO, err)
+	}
+	defer resp.Body.Close()
+	if elapsed := time.Since(start); elapsed < writeTO {
+		t.Fatalf("transfer finished in %s, below the %s bound — pacing broken, the case proves nothing",
+			elapsed.Round(time.Millisecond), writeTO)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		t.Fatalf("upload: %d %s", resp.StatusCode, raw)
+	}
+	var out struct {
+		Asset map[string]any `json:"asset"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("201 body unreadable: %v", err)
+	}
+	if out.Asset["id"] == nil || out.Asset["id"] == "" {
+		t.Fatalf("201 carried no asset id: %v", out.Asset)
 	}
 }
 

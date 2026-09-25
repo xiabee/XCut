@@ -51,6 +51,12 @@ func (w *writeIdleWriter) Flush() {
 	}
 }
 
+// Unwrap lets http.ResponseController reach the real connection through
+// this wrapper — the upload path hands the wrapped writer to its
+// read-deadline heartbeat, which dies silently (best-effort by contract)
+// if the chain stops here.
+func (w *writeIdleWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 // mediaContentTypes pins the type for the containers XCut actually serves.
 // http.ServeContent falls back to the platform's MIME table, and that answer
 // differs by host — Go's built-in table labels .webm "audio/webm" while a
