@@ -215,6 +215,16 @@ func (in *Installer) runErr(ctx context.Context) error {
 	if err := os.MkdirAll(in.TargetDir, 0o755); err != nil {
 		return xcerr.E(xcerr.CodeInternal, "cannot create the install directory", err)
 	}
+	// A crashed previous attempt can orphan <tool>.partial beside the
+	// target: extractFile names its temp file after the destination, and a
+	// kill between create and rename leaves ~100 MB of ffmpeg that no other
+	// sweeper covers — the workspace cleanup never looks next to the exe.
+	// The scratch zip two steps down already lived by this exact rule.
+	if stale, gerr := filepath.Glob(filepath.Join(in.TargetDir, "*.partial")); gerr == nil {
+		for _, p := range stale {
+			_ = os.Remove(p) // crashed-attempt litter; the fresh extract rewrites whatever it needs
+		}
+	}
 	if in.ScratchDir != "" {
 		if err := os.MkdirAll(in.ScratchDir, 0o755); err != nil {
 			return xcerr.E(xcerr.CodeInternal, "cannot create the download directory", err)

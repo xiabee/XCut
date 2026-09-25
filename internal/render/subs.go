@@ -50,8 +50,14 @@ func BurnSubtitles(ctx context.Context, tools media.Tools, encoder, inputPath, s
 	)
 	if _, errOut, err := media.Run(ctx, tools.FFmpeg, args...); err != nil {
 		if ctx.Err() != nil {
+			_ = os.Remove(partial)
 			return xcerr.E(xcerr.CodeCancelled, "subtitle burn cancelled", ctx.Err())
 		}
+		// The partial is this function's litter on every other exit arm;
+		// the run-failure arm was the one place it survived (recovered only
+		// by the next cleanup pass, and only because the suffix rule
+		// happens to match).
+		_ = os.Remove(partial)
 		return xcerr.E(xcerr.CodeRenderFailure, "subtitle burn failed", fmt.Errorf("%v: %s", err, media.Tail(errOut, 500)))
 	}
 

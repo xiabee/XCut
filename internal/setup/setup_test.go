@@ -419,3 +419,41 @@ func TestRealZipLayoutExtracts(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallSweepsCrashedAttemptPartials: a previous attempt killed between
+// "create temp" and "rename" leaves <tool>.partial beside the target —
+// ~100 MB of ffmpeg that no workspace sweeper covers (cleanup walks the
+// workspace, the install lives next to the exe). The planted name is one the
+// fresh install does NOT rewrite (an older pin carried ffplay; this one does
+// not) — a same-name partial would be consumed by the extract itself, which
+// is the self-healing case, not the orphan this sweep exists for.
+func TestInstallSweepsCrashedAttemptPartials(t *testing.T) {
+	requireWindowsInstaller(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "bin")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial := filepath.Join(target, "ffplay.exe.partial")
+	if err := os.WriteFile(partial, []byte("half-extracted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keeper := filepath.Join(target, "README.txt")
+	if err := os.WriteFile(keeper, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := installerFor(t, buildZip(t, root), target, filepath.Join(root, "scratch"))
+	if err := in.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, in, PhaseDone)
+
+	if _, err := os.Stat(partial); !os.IsNotExist(err) {
+		t.Fatal("the crashed attempt's partial survived the next install")
+	}
+	b, err := os.ReadFile(keeper)
+	if err != nil || string(b) != "keep me" {
+		t.Fatalf("the sweep touched a non-partial file: %v %q", err, b)
+	}
+}

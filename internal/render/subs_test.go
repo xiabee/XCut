@@ -95,3 +95,36 @@ func TestBurnSubtitlesMissingSubs(t *testing.T) {
 		t.Fatal("missing subs must fail")
 	}
 }
+
+// TestBurnFailureLeavesNoPartial: the run-failure arm must clean up its own
+// partial like every other exit arm does — with the stand-in FFmpeg failing
+// the run (after a real probe), the sibling .subs.partial must be gone when
+// the error returns.
+func TestBurnFailureLeavesNoPartial(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "fx.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs := filepath.Join(dir, "subs.srt")
+	srt := "1\n00:00:01,000 --> 00:00:03,000\nhello subs\n"
+	if err := os.WriteFile(subs, []byte(srt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A real ffprobe answers the pre-flight probe; the stand-in FFmpeg then
+	// creates the output (a real ffmpeg dies mid-encode with the file already
+	// opened) and fails the run — see XCUT_FAKE_FFMPEG_CREATE in main_test.go.
+	t.Setenv("XCUT_FAKE_FFMPEG", "1")
+	t.Setenv("XCUT_FAKE_FFMPEG_CREATE", filepath.Join(dir, "burned.mp4")+".subs.partial")
+	tools := media.Tools{FFmpeg: os.Args[0], FFprobe: "ffprobe", Threads: 2}
+	out := filepath.Join(dir, "burned.mp4")
+	if err := BurnSubtitles(context.Background(), tools, "", src, subs, out); err == nil {
+		t.Fatal("the stand-in FFmpeg must fail the burn")
+	}
+	if _, err := os.Stat(out + ".subs.partial"); !os.IsNotExist(err) {
+		t.Fatal("the failed burn left its partial behind")
+	}
+}

@@ -27,6 +27,12 @@ func TestMain(m *testing.M) {
 				f.Close()
 			}
 		}
+		// XCUT_FAKE_FFMPEG_CREATE names a file the child creates before
+		// failing: the "died mid-encode with the output already opened"
+		// case whose litter the cleanup arms must answer for.
+		if p := os.Getenv("XCUT_FAKE_FFMPEG_CREATE"); p != "" {
+			_ = os.WriteFile(p, []byte("partial bytes"), 0o644)
+		}
 		var flood strings.Builder
 		flood.WriteString("START-MARKER ")
 		for flood.Len() < 3000 {
