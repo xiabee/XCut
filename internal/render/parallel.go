@@ -81,7 +81,16 @@ func normalizeClips(ctx context.Context, tl *timeline.Timeline, clips []timeline
 						return
 					}
 				}
+				// OnProgress is delivered under the lock: callers code
+				// against a serial callback (the pipeline's
+				// monotonic-percentage closure reads and writes its `last`
+				// unsynchronized), and done.Add inside the lock keeps the
+				// delivered counts strictly increasing. This is the call
+				// site that raced exactly that closure — caught by the
+				// gate's race subset.
+				mu.Lock()
 				opts.OnProgress(int(done.Add(1)), total)
+				mu.Unlock()
 			}
 		}()
 	}
