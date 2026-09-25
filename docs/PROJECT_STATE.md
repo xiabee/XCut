@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-25 02:45 +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-26 00:0x +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `
 
@@ -2140,6 +2140,44 @@ FAIL), and `push_snapshot` snapshots the **working tree**, so a remote dispatch 
 uncommitted WIP tests the WIP. The v0.1.10-alpha release candidate at `c4f0549` is
 now ~20 commits behind main and gets stale by the night; publishing stays the
 operator's call.
+
+**Same night, later (the ledger paragraph above was written at the ten-milestone
+mark).** Four more milestones closed the night at `27ed02a`, all on the same
+channels: **M-11** names the encoder that wrote the reel on the render
+completion line (3c75c6d); **M-12** echoes the resolved absolute `out` in the
+render/export acceptance responses so a caller never guesses where the file
+went (d3a0d59); **M-13** re-did the window-placement verification over a real
+hidden window driven through a win32 pipe — which caught the headless-session
+clamp being a no-op, fixed in `eeb92cf` — and **M-13b** pinned the placement
+test to its OS thread after `-race` exposed a `LockOSThread` deadlock (27ed02a); **M-14** exposed `render.encoder` on the CLI (`xcut render
+--encoder`, `xcut auto --encoder`, 9c0eccb). Final-night verification on
+`27ed02a`: control-plane fast gate PASS (690 passed / 6 skipped), Linux full
+gate PASS (693 passed / 11 skipped, `-race`, Rust, gosec clean, `not run:
+nothing`), soak 80 rounds errors=0, shuffled full suite ×2 green; worktree
+clean, origin synced. **A correction to this file's own freshness:** this
+session paragraph is being completed the following night (2026-09-26) — the
+interim state was carried by `docs/NIGHTLY_PROGRESS.md` (gitignored, by
+design) and the last committed paragraph below understated the night by four
+milestones and one HEAD.
+
+**Night 2026-09-25→26 (session #22) opens with a lost-response defect in the
+upload path.** The upload handler's only response is written after the whole
+body copy and the import probe — but `net/http` arms the server's absolute
+`WriteTimeout` (60 s) once when the request headers are read, and the
+upload's read-deadline heartbeat never touched the write side. A transfer
+over 60 s (the exact case the idle-window design exists for: multi-GiB on a
+slow disk, or a remote D14 client) landed its file, created the asset row,
+and then wrote its 201 against an expired deadline: the browser answered
+"network error", and the user's retry landed a duplicate import
+(`name-1.ext`, second asset row) — a wrong result dressed as a flaky
+network. The streaming endpoints already had the cure
+(`writeIdleWriter`, per-write re-arm); the upload handler now wraps its
+writer in the same thing, and the wrapper gained `Unwrap` so the read
+heartbeat reaches the connection through it. Pinned by a real-TCP case with
+a 400 ms `WriteTimeout` against a paced ~1.2 s real-media upload: the 201
+must arrive readable, with its asset id — the mutation (wrap removed) fails
+exactly the way the defect did (transport EOF after the file landed).
+Accepted at `0f4e99c`.
 
 ## Version / HEAD
 
