@@ -736,9 +736,30 @@ async function watchUntilDone(jobID) {
       if (projectChangedSince(pid)) return; // A's job ending must not touch B's editor
       if (job.status === "succeeded" && job.type === "timeline") await refreshTimeline();
       if (job.status === "succeeded" && job.type === "render") showPlayer();
+      if (job.status === "succeeded" && job.type === "export") await followExportRender(pid);
       if (job.type === "subtitles") await refreshSubtitlesStatus();
     }
   }, 1000);
+}
+
+// The tap's render is a row of its own — the export job queues it and
+// returns, so the export row going terminal is not the reel. Follow the
+// render row the tap just queued: prefer one still in flight (the child
+// always is when the export row turns terminal), falling back to the first
+// listed render (the endpoint is newest-first) in case it finished before we
+// looked. Its success is what a player refresh means. Without this the
+// player kept showing the pre-export reel — or nothing at all — while the
+// jobs list already said done, which is a wrong reel a user could publish.
+async function followExportRender(pid) {
+  try {
+    const { jobs } = await api(`/api/v1/projects/${pid}/jobs`);
+    if (projectChangedSince(pid)) return;
+    const render = jobs.find((j) => j.type === "render" && !["succeeded", "failed", "cancelled"].includes(j.status))
+      || jobs.find((j) => j.type === "render");
+    if (render) watchUntilDone(render.id);
+  } catch (_) {
+    // The jobs poller keeps the loop (and the busy state) alive.
+  }
 }
 
 function showPlayer() {
@@ -1821,7 +1842,9 @@ $("btn-export").addEventListener("click", async () => {
     renderExportSteps(res.steps);
     await refreshJobs();
     watchUntilDone(jobIdOf(res.job_id));
-    showPlayerSoon();
+    // No showPlayerSoon here: the reel the player would load is the OLD one
+    // (or a 404) until the tap's child render finishes — the watcher above
+    // follows that render and calls showPlayer when the real reel exists.
   } catch (e) {
     busy(false);
     banner(tf("The one-tap export failed: {msg}", { msg: e.message }));

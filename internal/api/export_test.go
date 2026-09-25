@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xiabee/XCut/internal/storage"
 )
 
 // The export tap answers with a plan before any of it runs: which stages will
@@ -168,6 +171,82 @@ func slowSidecar(t *testing.T, seconds int) string {
 		t.Fatal(err)
 	}
 	return bin
+}
+
+// TestExportQueuesTheChildRenderAsTheNewestRow: the client follows the tap's
+// child render by reading the FIRST render-typed row from the project's jobs
+// list — newest-first is the endpoint's order (created_at DESC, id DESC), so
+// an older reel's job row must never be mistaken for the row this tap queued.
+func TestExportQueuesTheChildRenderAsTheNewestRow(t *testing.T) {
+	s, pid := stagedReel(t, "export-follow")
+	ctx := context.Background()
+	// Yesterday's terminal render row: a reel the tap did not queue. It is
+	// terminal on purpose — an active one would 409 the tap's own child.
+	old, err := s.DB.CreateJob(ctx, "render", pid, "CPU_HEAVY", `{"out":"old.mp4"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.FinishJob(ctx, old.ID, "failed", "render_failure", "superseded by the test's fixture"); err != nil {
+		t.Fatal(err)
+	}
+	// created_at carries second resolution: without a full second between the
+	// seeded row and the tap's child, the id tie-break orders them
+	// arbitrarily and "newest first" means nothing.
+	time.Sleep(1100 * time.Millisecond)
+
+	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/export", "")
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("export: %d %v", rec.Code, out)
+	}
+	awaitJob(t, s, out["job_id"].(string))
+
+	jobs, err := s.DB.ListJobs(ctx, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstRender *storage.Job
+	oldIndex, childIndex := -1, -1
+	for i := range jobs {
+		if jobs[i].Type != "render" {
+			continue
+		}
+		if firstRender == nil {
+			firstRender = &jobs[i]
+		}
+		if jobs[i].ID == old.ID {
+			oldIndex = i
+		} else {
+			childIndex = i
+		}
+	}
+	if firstRender == nil {
+		t.Fatal("no render row exists after the tap — it queued none")
+	}
+	if childIndex < 0 {
+		t.Fatal("the tap's child render row is missing")
+	}
+	if oldIndex >= 0 && childIndex > oldIndex {
+		t.Fatal("the seeded old render row lists ahead of the tap's child — newest-first among renders is the client's load-bearing assumption")
+	}
+}
+
+// TestTheExportWatcherFollowsTheChildRender: the client's one tap must end at
+// the reel the tap produced — the watcher follows the child render row, and
+// the stale-player shortcut is gone from the export path (it pointed the
+// player at the pre-export reel, or a 404, minutes before the real reel
+// existed). The render button keeps its shortcut: the reel it names arrives
+// in seconds and its own watcher corrects the player on completion.
+func TestTheExportWatcherFollowsTheChildRender(t *testing.T) {
+	_, js, _ := i18nAssets(t)
+	if n := strings.Count(js, `type === "export"`); n != 1 {
+		t.Fatalf("app.js switches on the export terminal state %d times, want exactly 1", n)
+	}
+	if !strings.Contains(js, "followExportRender(pid)") || !strings.Contains(js, `jobs.find((j) => j.type === "render" && !`) {
+		t.Fatal("the export watcher must follow an in-flight render row (the tap's child), newest-first as fallback")
+	}
+	if n := strings.Count(js, "showPlayerSoon()"); n != 2 {
+		t.Fatalf("showPlayerSoon appears %d times, want exactly 2 (definition + render button) — the export path must not point the player at the old reel", n)
+	}
 }
 
 // TestTheClientPostsTheTapWhereTheServerAnswers: the button and the route are one
