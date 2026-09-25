@@ -2893,3 +2893,29 @@ every leg (the fast gate included)
    tunnel-only today. Owner-level call, and the only survivor of the old
    remote-access thread.
 
+
+**Session #22 addendum (this host, real-footage day):** the highlight
+algorithm caught up with operator feedback from real badminton footage
+(E:\TEMP\Badminton, 35 files / 268 GB): rally clips are now END-ANCHORED —
+the window ends at the segment's last hit plus the rally tail (so a
+last-second dive and the shuttle landing stay inside the clip) instead of the
+head-anchored first-N-seconds window; the badminton preset's max clip went
+8 → 10 s and its diversity min_gap now matches rally_gap (2.5 s — end-anchored
+clips reach deeper into the inter-rally gap; 4.0 silently dropped the third
+rally of a 3-rally reel). Segments carry their hit timestamps
+(`Segment.Hits`) and every clip records its end anchor
+(`end_anchor` metadata: scoreboard point end / last hit + landing tail /
+segment head). `resource.profile` (auto | manual) sizes the concurrency knobs
+from the machine — children = clamp(logical/4, 2, 4), threads =
+clamp((logical/2)/children, 2, 8), a RAM guard (children × 1.5 GB ≤ RAM/2),
+analysis workers follow; `manual` keeps user values byte-for-byte. Render
+normalization is clip-parallel (workers ride `max_ffmpeg_processes`) with an
+fps-first filter chain (59.94 → 30 drops frames before the resample):
+session-0218's 120 s reel renders in 31.2 s vs 105.3 s serial ≈ 3.4×.
+Timeline placement validation uses a placement tolerance (1e-4) matching the
+document's own 4-decimal rounding — a legit back-to-back join no longer
+fails as a "0 s gap" after seven clips. All nine date directories re-rendered
+with v2 into E:\TEMP\Badminton\output (12 reels incl. A/B artifacts; every
+one probe-verified). The cli one-shot gate flake (a different auto/render
+test each run under full parallel load) reproduces on a pristine
+origin/main worktree and is documented above — it is not mine.

@@ -1,0 +1,92 @@
+[13:28:05] v2 re-edit started
+[13:28:05] === session-2024-08-18 ===
+time=2026-09-25T13:28:05.309+08:00 level=INFO msg="job started" job_id=job_faf7747ffb518226 type=timeline project_id=prj_9d185b38625e39a4
+time=2026-09-25T13:28:05.409+08:00 level=INFO msg="event segmentation" asset_id=asst_286c33f8a210217e config=badminton_highlight onsets=175 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=4 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=4
+time=2026-09-25T13:28:05.482+08:00 level=INFO msg="event segmentation" asset_id=asst_6f7102837fa43cd6 config=badminton_highlight onsets=764 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=12 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=12
+time=2026-09-25T13:28:05.555+08:00 level=INFO msg="event segmentation" asset_id=asst_d4044c5bae545d53 config=badminton_highlight onsets=1482 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=14 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=14
+time=2026-09-25T13:28:05.558+08:00 level=INFO msg="job succeeded" job_id=job_faf7747ffb518226 type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 90.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_9d185b38625e39a4\timeline.json
+time=2026-09-25T13:28:05.869+08:00 level=INFO msg="job started" job_id=job_4732c7d33168fe01 type=render project_id=prj_9d185b38625e39a4
+time=2026-09-25T13:29:08.409+08:00 level=INFO msg="job succeeded" job_id=job_4732c7d33168fe01 type=render
+rendered E:\TEMP\Badminton\output\2024.08.18-highlights.mp4 (29.3 MB) in 62.8s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2024.08.18-highlights.mp4 (timeline 0s + render 63s)
+[13:29:08] === session-2024-06-27 ===
+time=2026-09-25T13:29:08.560+08:00 level=INFO msg="job started" job_id=job_3c294ad1be6025ff type=timeline project_id=prj_cf320e64d129a01f
+time=2026-09-25T13:29:08.679+08:00 level=INFO msg="event segmentation" asset_id=asst_00712bde5b5d4af6 config=badminton_highlight onsets=2984 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=34 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=8 segments=26
+time=2026-09-25T13:29:08.757+08:00 level=INFO msg="event segmentation" asset_id=asst_232e27fd94e97ccf config=badminton_highlight onsets=1086 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=13 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=13
+time=2026-09-25T13:29:08.758+08:00 level=ERROR msg="job failed" job_id=job_3c294ad1be6025ff type=timeline error_code=validation err="validation: timeline validation failed: track \"v1\" clip[6] \"clip_9\": leaves a 0s gap after the previous clip (ends 60, starts 60) — the renderer joins clips back-to-back, so gaps cannot be honored"
+xcut timeline: timeline validation failed: track "v1" clip[6] "clip_9": leaves a 0s gap after the previous clip (ends 60, starts 60) — the renderer joins clips back-to-back, so gaps cannot be honored
+  TIMELINE FAILED
+[13:29:08] === session-2024-08-07 ===
+time=2026-09-25T13:29:08.873+08:00 level=INFO msg="job started" job_id=job_82259f5aea182107 type=timeline project_id=prj_25f35f9f99f0b2b9
+time=2026-09-25T13:29:08.975+08:00 level=INFO msg="event segmentation" asset_id=asst_ba2a51d349b413a1 config=badminton_highlight onsets=505 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=10 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=10
+time=2026-09-25T13:29:09.062+08:00 level=INFO msg="event segmentation" asset_id=asst_e1bd580a76dd21a0 config=badminton_highlight onsets=3262 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=40 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=2 segments=38
+time=2026-09-25T13:29:09.140+08:00 level=INFO msg="event segmentation" asset_id=asst_e3a3aee9106f1fb6 config=badminton_highlight onsets=1468 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=17 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=17
+time=2026-09-25T13:29:09.143+08:00 level=INFO msg="job succeeded" job_id=job_82259f5aea182107 type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 10.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_25f35f9f99f0b2b9\timeline.json
+time=2026-09-25T13:29:09.455+08:00 level=INFO msg="job started" job_id=job_31ea67ff45b8b16c type=render project_id=prj_25f35f9f99f0b2b9
+time=2026-09-25T13:29:57.872+08:00 level=INFO msg="job succeeded" job_id=job_31ea67ff45b8b16c type=render
+rendered E:\TEMP\Badminton\output\2024.08.07-highlights.mp4 (21.6 MB) in 48.6s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2024.08.07-highlights.mp4 (timeline 1s + render 48s)
+[13:29:57] === session-2024-08-09 ===
+time=2026-09-25T13:29:58.038+08:00 level=INFO msg="job started" job_id=job_f513003ec8531292 type=timeline project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T13:29:58.150+08:00 level=INFO msg="event segmentation" asset_id=asst_3b77797819142154 config=badminton_highlight onsets=1756 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=25 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=7 segments=18
+time=2026-09-25T13:29:58.230+08:00 level=INFO msg="event segmentation" asset_id=asst_6a9630572fcfe99b config=badminton_highlight onsets=1431 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=21 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=21
+time=2026-09-25T13:29:58.308+08:00 level=INFO msg="event segmentation" asset_id=asst_e89b682836613997 config=badminton_highlight onsets=1165 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=17 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=2 segments=15
+time=2026-09-25T13:29:58.311+08:00 level=INFO msg="job succeeded" job_id=job_f513003ec8531292 type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 50.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_0ae829c03e50c7cf\timeline.json
+time=2026-09-25T13:29:58.636+08:00 level=INFO msg="job started" job_id=job_ddbd13311fa5b7dc type=render project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T13:30:47.520+08:00 level=INFO msg="job succeeded" job_id=job_ddbd13311fa5b7dc type=render
+rendered E:\TEMP\Badminton\output\2024.08.09-highlights.mp4 (29.9 MB) in 49.1s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2024.08.09-highlights.mp4 (timeline 1s + render 49s)
+[13:30:47] === session-2024-07-21 ===
+time=2026-09-25T13:30:47.666+08:00 level=INFO msg="job started" job_id=job_ab21145b5abf394e type=timeline project_id=prj_df0101315e6ac649
+time=2026-09-25T13:30:47.778+08:00 level=INFO msg="event segmentation" asset_id=asst_670441fed59be996 config=badminton_highlight onsets=1348 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=16 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=5 segments=11
+time=2026-09-25T13:30:47.861+08:00 level=INFO msg="event segmentation" asset_id=asst_80c3f111dc285028 config=badminton_highlight onsets=2671 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=29 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=29
+time=2026-09-25T13:30:47.951+08:00 level=INFO msg="event segmentation" asset_id=asst_0516d95abf6164af config=badminton_highlight onsets=3197 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=34 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=34
+time=2026-09-25T13:30:47.954+08:00 level=INFO msg="job succeeded" job_id=job_ab21145b5abf394e type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 10.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_df0101315e6ac649\timeline.json
+time=2026-09-25T13:30:48.281+08:00 level=INFO msg="job started" job_id=job_154d9f4d3862b8f0 type=render project_id=prj_df0101315e6ac649
+time=2026-09-25T13:31:38.514+08:00 level=INFO msg="job succeeded" job_id=job_154d9f4d3862b8f0 type=render
+rendered E:\TEMP\Badminton\output\2024.07.21-highlights.mp4 (28.8 MB) in 50.5s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2024.07.21-highlights.mp4 (timeline 0s + render 51s)
+[13:31:38] === session-2024-06-26 ===
+time=2026-09-25T13:31:38.663+08:00 level=INFO msg="job started" job_id=job_58bd5a237143f909 type=timeline project_id=prj_7d889d5390410229
+time=2026-09-25T13:31:38.770+08:00 level=INFO msg="event segmentation" asset_id=asst_34e48fecaf76e33e config=badminton_highlight onsets=1230 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=15 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=6 segments=9
+time=2026-09-25T13:31:38.854+08:00 level=INFO msg="event segmentation" asset_id=asst_b2d0cda451a6139b config=badminton_highlight onsets=2671 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=31 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=9 segments=22
+time=2026-09-25T13:31:38.941+08:00 level=INFO msg="event segmentation" asset_id=asst_b75369c21ceb4a9d config=badminton_highlight onsets=3153 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=38 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=15 segments=23
+time=2026-09-25T13:31:39.033+08:00 level=INFO msg="event segmentation" asset_id=asst_caaa0efda9417c66 config=badminton_highlight onsets=3364 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=40 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=27 segments=13
+time=2026-09-25T13:31:39.035+08:00 level=INFO msg="job succeeded" job_id=job_58bd5a237143f909 type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 20.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_7d889d5390410229\timeline.json
+time=2026-09-25T13:31:39.350+08:00 level=INFO msg="job started" job_id=job_1ba99cc84cbb0731 type=render project_id=prj_7d889d5390410229
+time=2026-09-25T13:32:28.557+08:00 level=INFO msg="job succeeded" job_id=job_1ba99cc84cbb0731 type=render
+rendered E:\TEMP\Badminton\output\2024.06.26-highlights.mp4 (19.4 MB) in 49.4s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2024.06.26-highlights.mp4 (timeline 1s + render 49s)
+[13:32:28] === session-0504 ===
+time=2026-09-25T13:32:28.718+08:00 level=INFO msg="job started" job_id=job_4c3374dc1291b070 type=timeline project_id=prj_15ef5eb54bf28479
+time=2026-09-25T13:32:28.823+08:00 level=INFO msg="event segmentation" asset_id=asst_c761799bab90832d config=badminton_highlight onsets=548 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=12 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=12
+time=2026-09-25T13:32:28.826+08:00 level=INFO msg="job succeeded" job_id=job_4c3374dc1291b070 type=timeline
+style: badminton_highlight
+timeline: 12 clips, 120.0s total, canvas 1280x720@30
+pacing: 12 shots, mean 10.0s, median 10.0s, longest 10.0s, top shot starts at 100.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_15ef5eb54bf28479\timeline.json
+time=2026-09-25T13:32:29.142+08:00 level=INFO msg="job started" job_id=job_7a7c770252f3c46f type=render project_id=prj_15ef5eb54bf28479
+time=2026-09-25T13:33:17.549+08:00 level=INFO msg="job succeeded" job_id=job_7a7c770252f3c46f type=render
+rendered E:\TEMP\Badminton\output\2025.05.04-highlights.mp4 (21.7 MB) in 48.6s [h264_nvenc]
+  DONE -> /e/TEMP/Badminton/output/2025.05.04-highlights.mp4 (timeline 0s + render 49s)
+[13:33:17] v2 re-edit complete

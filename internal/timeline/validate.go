@@ -23,6 +23,12 @@ func FixedLookup(durations map[string]float64) MediaLookup {
 
 const eps = 1e-6
 
+// placementEps is the tolerance for timeline-start placement checks (gap,
+// overlap, xfade join). The document itself is rounded to 4 decimals, so
+// consecutive back-to-back placements legitimately differ from their exact
+// sum by up to 5e-5 — the schema's own rounding granularity, not a defect.
+const placementEps = 1e-4
+
 // maxTimelineSeconds caps the total timeline length (24h). Anything beyond
 // is a hand-editing accident, not a highlight cut: it would pin a render
 // job for many hours and fill the temp budget before failing.
@@ -124,19 +130,19 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			// so a placement gap could never be honored and would only
 			// surface as a confusing duration mismatch after rendering.
 			end := c.TimelineStart + c.Duration()
-			if ci > 0 && c.TimelineStart < prevEnd-eps {
+			if ci > 0 && c.TimelineStart < prevEnd-placementEps {
 				xfade := prev != nil && prev.Transition != nil &&
 					prev.Transition.Type == "xfade" && prev.Transition.Duration > 0
 				overlap := prevEnd - c.TimelineStart
 				if !xfade {
 					errs = append(errs, fmt.Sprintf("%s: overlaps previous clip (starts %s, previous ends %s)", ctx, secs(c.TimelineStart), secs(prevEnd)))
-				} else if diff := overlap - prev.Transition.Duration; diff > eps || diff < -eps {
+				} else if diff := overlap - prev.Transition.Duration; diff > placementEps || diff < -placementEps {
 					errs = append(errs, fmt.Sprintf("%s: xfade overlap %s does not match transition duration %s", ctx, secs(overlap), secs(prev.Transition.Duration)))
 				} else if xfade && prev.Transition.Duration > c.Duration()+eps {
 					errs = append(errs, fmt.Sprintf("%s: xfade duration %s exceeds this clip's length %s", ctx, secs(prev.Transition.Duration), secs(c.Duration())))
 				}
 			}
-			if ci > 0 && c.TimelineStart > prevEnd+eps {
+			if ci > 0 && c.TimelineStart > prevEnd+placementEps {
 				errs = append(errs, fmt.Sprintf("%s: leaves a %ss gap after the previous clip (ends %s, starts %s) — the renderer joins clips back-to-back, so gaps cannot be honored", ctx, secs(c.TimelineStart-prevEnd), secs(prevEnd), secs(c.TimelineStart)))
 			}
 			// A flush join carrying an xfade is the mirror of the gap rule:
@@ -145,7 +151,7 @@ func (t *Timeline) Validate(lookup MediaLookup) error {
 			// overlap the transition declares.
 			if ci > 0 && prev != nil && prev.Transition != nil &&
 				prev.Transition.Type == "xfade" && prev.Transition.Duration > 0 &&
-				c.TimelineStart >= prevEnd-eps && c.TimelineStart <= prevEnd+eps {
+				c.TimelineStart >= prevEnd-placementEps && c.TimelineStart <= prevEnd+placementEps {
 				errs = append(errs, fmt.Sprintf("%s: xfade on a flush join would blend into the previous clip's tail and shorten the output — overlap this clip's start by the transition duration (%ss), or use cut/fade", ctx, secs(prev.Transition.Duration)))
 			}
 			if end > prevEnd {
