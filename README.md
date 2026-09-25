@@ -242,6 +242,13 @@ Web UI 支持中英文：顶栏选择器即时切换，偏好持久化，首次�
 而非悄悄丢弃。输出经 ffprobe 校验后原子发布；若 `--out` 会覆盖任何源
 素材，渲染直接拒绝。
 
+**渲染是片段级并行的**：片段之间相互独立，渲染器按
+`resource.max_ffmpeg_processes` 同时归一化多个片段（fps 重采样放在
+缩放之前，59.94→30 fps 时省掉一半像素重采样），再流拷贝拼接。实测
+一条 120 s / 15 片段的成片：串行 105 s → 4 槽位 **43 s（2.4×）**，
+画面逐帧等价（docs/PERFORMANCE.md）。CPU 编码与 NVENC 在并行下持平
+——瓶颈在源解码；调高 `max_ffmpeg_processes` 即可继续吃多核。
+
 ## 🎤 字幕（KTV/吉他弹唱）
 
 语音转文字是 AI 能力，因此遵循 sidecar 规则：核心绝不运行或下载模型。
@@ -295,7 +302,7 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 |---|---|---|
 | `workspace` | `~/.xcut` | 数据目录（数据库、缓存、临时、工程） |
 | `resource.max_concurrent_jobs` | 2 | 并行任务硬上限 |
-| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限 |
+| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限（**同时决定渲染时多少片段并行归一化**——实测 4 槽位把 2 分钟成片的渲染从 105 s 提到 43 s，见 docs/PERFORMANCE.md） |
 | `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
 | `resource.max_analysis_workers` | 2 | 一次分析同时推进多少个素材（子进程数仍受 `max_ffmpeg_processes` 限制） |
 | `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |

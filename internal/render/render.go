@@ -41,6 +41,12 @@ type Options struct {
 	// Checked after every clip; 0 disables the check. The caller derives it
 	// from resource.max_temp_gb minus current temp/ usage.
 	TempBudgetBytes int64
+	// ClipWorkers is how many clips normalize concurrently. Each worker
+	// drives one ffmpeg child, so the global process limiter
+	// (resource.max_ffmpeg_processes) stays the true ceiling; this only
+	// decides how many workers queue on it. 0 = follow the process limit
+	// (2 with the shipped defaults); 1 = the serial path.
+	ClipWorkers int
 }
 
 // Render executes the timeline to outPath. The output appears atomically
@@ -110,31 +116,15 @@ func Render(ctx context.Context, tl *timeline.Timeline, opts Options, outPath st
 
 	// 1. Normalize each clip. Sources are probed once so clips without an
 	// audio stream still produce a (silent) audio track — concat requires
-	// uniform stream layouts across parts.
+	// uniform stream layouts across parts. Clips are independent, so they
+	// normalize concurrently: the wall time of a reel tracks its slowest
+	// clip times ceil(clips/workers) instead of the sum of all of them.
 	fades := fadePlan(clips)
 	parts := make([]string, len(clips))
-	for i, c := range clips {
-		if err := ctx.Err(); err != nil {
-			return xcerr.E(xcerr.CodeCancelled, "render cancelled", err)
-		}
-		probe, err := media.ProbeFile(ctx, opts.Tools, c.SourcePath)
-		if err != nil {
-			return xcerr.E(xcerr.CodeRenderFailure, "cannot probe source for clip "+c.ID, err)
-		}
-		part, err := normalizeClip(ctx, tl, c, i, fades[i], probe.HasAudio, opts)
-		if err != nil {
-			return err
-		}
-		parts[i] = part
-		if opts.TempBudgetBytes > 0 {
-			if used := dirBytes(opts.TempDir); used > opts.TempBudgetBytes {
-				return xcerr.E(xcerr.CodeResourceLimit,
-					fmt.Sprintf("render scratch exceeded its budget (%s in use, budget %s) — raise resource.max_temp_gb or use a shorter timeline",
-						humanBytes(used), humanBytes(opts.TempBudgetBytes)), nil)
-			}
-		}
-		opts.OnProgress(i+1, len(clips)+1)
+	if err := normalizeClips(ctx, tl, clips, fades, parts, opts); err != nil {
+		return err
 	}
+	opts.OnProgress(len(clips), len(clips)+1)
 
 	// 2. Combine. Timelines containing xfade transitions need a filtergraph
 	// (xfade + acrossfade chains); plain timelines use the concat demuxer
@@ -221,25 +211,15 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 	out := filepath.Join(opts.TempDir, fmt.Sprintf("clip-%04d.mp4", idx))
 	dur := c.Duration()
 
-	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s,format=yuv420p",
-		tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.Width, tl.Canvas.Height,
-		strconv.FormatFloat(tl.Canvas.FPS, 'f', -1, 64))
-	if c.Motion != nil {
-		// Framing first, normalization after: the crop chooses *which* pixels the
-		// clip shows, and the scale/pad below only has to fit them to the canvas.
-		vf = motionFilter(c.Motion, tl.Canvas.Width, tl.Canvas.Height, dur) + "," + vf
-	}
+	vf := videoFilterChain(tl, c, dur, fade)
 	af := "aresample=48000,volume=" + strconv.FormatFloat(c.Volume, 'f', 4, 64)
 	if c.Speed != 1 {
-		// Speed applies before the fps resample so the canvas rate is
-		// sampled from the already-time-mapped stream.
-		vf = "setpts=PTS/" + strconv.FormatFloat(c.Speed, 'f', 6, 64) + "," + vf
 		af = atempoChain(c.Speed) + "," + af
 	}
 
-	// "fade" transition halves: dissolve through black at the joined edges.
+	// "fade" transition halves: dissolve through black at the joined edges
+	// (video stages in videoFilterChain; the audio mirror lives here).
 	if fade[0] > 0 {
-		vf += ",fade=t=in:st=0:d=" + strconv.FormatFloat(fade[0], 'f', 3, 64)
 		af += ",afade=t=in:st=0:d=" + strconv.FormatFloat(fade[0], 'f', 3, 64)
 	}
 	if fade[1] > 0 {
@@ -247,8 +227,6 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 		if outStart < 0 {
 			outStart = 0
 		}
-		vf += ",fade=t=out:st=" + strconv.FormatFloat(outStart, 'f', 3, 64) +
-			":d=" + strconv.FormatFloat(fade[1], 'f', 3, 64)
 		af += ",afade=t=out:st=" + strconv.FormatFloat(outStart, 'f', 3, 64) +
 			":d=" + strconv.FormatFloat(fade[1], 'f', 3, 64)
 	}
@@ -290,6 +268,44 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 		return "", runErr
 	}
 	return out, nil
+}
+
+// videoFilterChain assembles the clip's video filter chain. Order is a speed
+// decision with identical output: the fps resample runs BEFORE the expensive
+// geometry stages so a 59.94→30 conversion drops frames without ever
+// resampling them (kept frames carry identical timestamps, so crop/scale/fade
+// see the same t and the same pixels either way). setpts (speed) stays in
+// front because fps samples the already-time-mapped stream, and the fades
+// land last because their st counts output time.
+func videoFilterChain(tl *timeline.Timeline, c timeline.Clip, dur float64, fade [2]float64) string {
+	chain := []string{}
+	if c.Speed != 1 {
+		chain = append(chain, "setpts=PTS/"+strconv.FormatFloat(c.Speed, 'f', 6, 64))
+	}
+	chain = append(chain, "fps="+strconv.FormatFloat(tl.Canvas.FPS, 'f', -1, 64))
+	if c.Motion != nil {
+		// Framing before geometry: the crop chooses *which* pixels the clip
+		// shows, and the scale/pad below only has to fit them to the canvas.
+		chain = append(chain, motionFilter(c.Motion, tl.Canvas.Width, tl.Canvas.Height, dur))
+	}
+	chain = append(chain,
+		fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", tl.Canvas.Width, tl.Canvas.Height),
+		fmt.Sprintf("pad=%d:%d:(ow-iw)/2:(oh-ih)/2", tl.Canvas.Width, tl.Canvas.Height),
+		"format=yuv420p",
+	)
+	vf := strings.Join(chain, ",")
+	if fade[0] > 0 {
+		vf += ",fade=t=in:st=0:d=" + strconv.FormatFloat(fade[0], 'f', 3, 64)
+	}
+	if fade[1] > 0 {
+		outStart := dur - fade[1]
+		if outStart < 0 {
+			outStart = 0
+		}
+		vf += ",fade=t=out:st=" + strconv.FormatFloat(outStart, 'f', 3, 64) +
+			":d=" + strconv.FormatFloat(fade[1], 'f', 3, 64)
+	}
+	return vf
 }
 
 // concat joins normalized clips with the concat demuxer (stream copy).

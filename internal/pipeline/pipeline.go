@@ -926,6 +926,10 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 			TempDir:         tempDir,
 			TempBudgetBytes: scratchBudget,
 			Encoder:         enc.Name,
+			// Clip-level parallelism rides the global process limiter: the
+			// knob that already caps concurrent ffmpeg children decides how
+			// many clips normalize at once.
+			ClipWorkers: d.Cfg.Resource.MaxFFmpegProcesses,
 			OnProgress: func(done, total int) {
 				if total > 0 && onProgress != nil {
 					pct := done * 100 / total

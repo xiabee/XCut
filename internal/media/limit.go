@@ -111,3 +111,16 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	err = cmd.Wait()
 	return buf.b, err
 }
+
+// ProcessLimit reports the configured global ffmpeg/ffprobe concurrency cap
+// (0 = unlimited). Callers that spawn one child per unit of work use it as
+// their default worker count so raising resource.max_ffmpeg_processes raises
+// their parallelism without a second knob.
+func ProcessLimit() int {
+	limiterMu.Lock()
+	defer limiterMu.Unlock()
+	if limiter == nil {
+		return 0
+	}
+	return cap(limiter)
+}

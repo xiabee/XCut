@@ -1,0 +1,356 @@
+[22:15:46] batch started
+[22:15:46] === 2024.08.18 (project session-2024-08-18) ===
+created project session-2024-08-18 (id prj_9d185b38625e39a4)
+time=2026-09-24T22:15:46.689+08:00 level=INFO msg="job started" job_id=job_a0aaf61f4367bfd9 type=import project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:15:46.764+08:00 level=INFO msg="job succeeded" job_id=job_a0aaf61f4367bfd9 type=import
+imported IMG_5360.MOV -> [asst_6f7102837fa43cd6] 4:45 3840x2160 59.96fps hevc +aac
+time=2026-09-24T22:15:46.764+08:00 level=INFO msg="job started" job_id=job_e929b8fa4f44553f type=import project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:15:46.829+08:00 level=INFO msg="job succeeded" job_id=job_e929b8fa4f44553f type=import
+imported IMG_5361.MOV -> [asst_286c33f8a210217e] 1:02 3840x2160 59.96fps hevc +aac
+time=2026-09-24T22:15:46.830+08:00 level=INFO msg="job started" job_id=job_3a939c5a32e33eed type=import project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:15:46.903+08:00 level=INFO msg="job succeeded" job_id=job_3a939c5a32e33eed type=import
+imported IMG_5362.MOV -> [asst_d4044c5bae545d53] 6:52 3840x2160 59.96fps hevc +aac
+time=2026-09-24T22:15:46.950+08:00 level=INFO msg="job started" job_id=job_b78c4210f36d48c6 type=analyze project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:17:31.090+08:00 level=INFO msg="event segmentation" asset_id=asst_286c33f8a210217e config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed IMG_5361.MOV [asst_286c33f8a210217e]: 3 tracks, 427 samples, 1 events
+  event   0.00s– 62.91s  score 0.42  (motion 0.04, audio -25.9 dB)
+time=2026-09-24T22:22:40.655+08:00 level=INFO msg="event segmentation" asset_id=asst_6f7102837fa43cd6 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed IMG_5360.MOV [asst_6f7102837fa43cd6]: 3 tracks, 1905 samples, 1 events
+  event   0.00s–285.26s  score 0.38  (motion 0.02, audio -26.5 dB)
+time=2026-09-24T22:26:50.020+08:00 level=INFO msg="event segmentation" asset_id=asst_d4044c5bae545d53 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed IMG_5362.MOV [asst_d4044c5bae545d53]: 3 tracks, 3134 samples, 1 events
+  event   0.00s–412.87s  score 0.43  (motion 0.04, audio -24.0 dB)
+time=2026-09-24T22:26:50.020+08:00 level=INFO msg="job succeeded" job_id=job_b78c4210f36d48c6 type=analyze
+time=2026-09-24T22:26:50.070+08:00 level=INFO msg="job started" job_id=job_add0a81bf34062a4 type=timeline project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:26:50.163+08:00 level=INFO msg="event segmentation" asset_id=asst_286c33f8a210217e config=badminton_highlight onsets=175 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=4 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=4
+time=2026-09-24T22:26:50.232+08:00 level=INFO msg="event segmentation" asset_id=asst_6f7102837fa43cd6 config=badminton_highlight onsets=764 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=15 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=15
+time=2026-09-24T22:26:50.298+08:00 level=INFO msg="event segmentation" asset_id=asst_d4044c5bae545d53 config=badminton_highlight onsets=1482 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=15 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=15
+time=2026-09-24T22:26:50.300+08:00 level=INFO msg="job succeeded" job_id=job_add0a81bf34062a4 type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 64.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_9d185b38625e39a4\timeline.json
+time=2026-09-24T22:26:50.344+08:00 level=INFO msg="job started" job_id=job_dd534e2dc8ab4e8d type=render project_id=prj_9d185b38625e39a4
+time=2026-09-24T22:29:26.681+08:00 level=INFO msg="job succeeded" job_id=job_dd534e2dc8ab4e8d type=render
+rendered E:\TEMP\Badminton\output\2024.08.18-highlights.mp4 (29.1 MB) in 156.3s
+  DONE -> /e/TEMP/Badminton/output/2024.08.18-highlights.mp4
+[22:29:26] === 2024.06.27 (project session-2024-06-27) ===
+created project session-2024-06-27 (id prj_cf320e64d129a01f)
+time=2026-09-24T22:29:27.081+08:00 level=INFO msg="job started" job_id=job_1b61d1c71929c219 type=import project_id=prj_cf320e64d129a01f
+time=2026-09-24T22:29:27.164+08:00 level=INFO msg="job succeeded" job_id=job_1b61d1c71929c219 type=import
+imported DJI_20240627205644_0002_D.MP4 -> [asst_00712bde5b5d4af6] 16:49 3840x2160 59.94fps hevc +aac
+time=2026-09-24T22:29:27.164+08:00 level=INFO msg="job started" job_id=job_681150790be01fae type=import project_id=prj_cf320e64d129a01f
+time=2026-09-24T22:29:27.234+08:00 level=INFO msg="job succeeded" job_id=job_681150790be01fae type=import
+imported DJI_20240627212258_0003_D.MP4 -> [asst_232e27fd94e97ccf] 6:07 3840x2160 59.94fps hevc +aac
+time=2026-09-24T22:29:27.278+08:00 level=INFO msg="job started" job_id=job_4ecba32c100da7c3 type=analyze project_id=prj_cf320e64d129a01f
+time=2026-09-24T22:39:54.472+08:00 level=INFO msg="event segmentation" asset_id=asst_232e27fd94e97ccf config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=47
+analyzed DJI_20240627212258_0003_D.MP4 [asst_232e27fd94e97ccf]: 3 tracks, 2556 samples, 47 events
+  event   0.00s–  6.50s  score 0.20  (motion 0.04, audio -36.8 dB)
+  event   9.50s– 16.00s  score 0.24  (motion 0.07, audio -37.8 dB)
+  event  20.00s– 43.00s  score 0.37  (motion 0.07, audio -35.3 dB)
+  event  50.00s– 58.50s  score 0.22  (motion 0.07, audio -41.2 dB)
+  event  60.00s– 71.00s  score 0.31  (motion 0.06, audio -35.0 dB)
+  event  72.00s– 73.50s  score 0.08  (motion 0.04, audio -41.0 dB)
+  event  74.50s– 85.50s  score 0.28  (motion 0.06, audio -38.0 dB)
+  event  86.50s– 88.00s  score 0.14  (motion 0.08, audio -47.4 dB)
+  … and 39 more events
+time=2026-09-24T22:54:40.252+08:00 level=INFO msg="event segmentation" asset_id=asst_00712bde5b5d4af6 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=17
+analyzed DJI_20240627205644_0002_D.MP4 [asst_00712bde5b5d4af6]: 3 tracks, 7019 samples, 17 events
+  event   0.00s–  2.00s  score 0.17  (motion 0.01, audio -29.3 dB)
+  event   3.00s–  6.00s  score 0.09  (motion 0.01, audio -38.8 dB)
+  event   8.50s– 38.00s  score 0.32  (motion 0.01, audio -31.6 dB)
+  event  39.50s– 55.50s  score 0.30  (motion 0.01, audio -32.4 dB)
+  event  56.50s–120.00s  score 0.30  (motion 0.01, audio -33.3 dB)
+  event 122.00s–207.00s  score 0.31  (motion 0.01, audio -31.7 dB)
+  event 208.00s–377.00s  score 0.30  (motion 0.01, audio -33.0 dB)
+  event 378.00s–511.00s  score 0.31  (motion 0.01, audio -32.5 dB)
+  … and 9 more events
+time=2026-09-24T22:54:40.252+08:00 level=INFO msg="job succeeded" job_id=job_4ecba32c100da7c3 type=analyze
+time=2026-09-24T22:54:40.319+08:00 level=INFO msg="job started" job_id=job_be752cc82a53897e type=timeline project_id=prj_cf320e64d129a01f
+time=2026-09-24T22:54:40.444+08:00 level=INFO msg="event segmentation" asset_id=asst_00712bde5b5d4af6 config=badminton_highlight onsets=2984 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=34 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=8 segments=26
+time=2026-09-24T22:54:40.519+08:00 level=INFO msg="event segmentation" asset_id=asst_232e27fd94e97ccf config=badminton_highlight onsets=1086 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=15 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=15
+time=2026-09-24T22:54:40.521+08:00 level=INFO msg="job succeeded" job_id=job_be752cc82a53897e type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 48.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_cf320e64d129a01f\timeline.json
+time=2026-09-24T22:54:40.565+08:00 level=INFO msg="job started" job_id=job_57e2163fffd27b62 type=render project_id=prj_cf320e64d129a01f
+time=2026-09-24T22:57:42.986+08:00 level=INFO msg="job succeeded" job_id=job_57e2163fffd27b62 type=render
+rendered E:\TEMP\Badminton\output\2024.06.27-highlights.mp4 (31.3 MB) in 182.4s
+  DONE -> /e/TEMP/Badminton/output/2024.06.27-highlights.mp4
+[22:57:43] === 2024.08.07 (project session-2024-08-07) ===
+created project session-2024-08-07 (id prj_25f35f9f99f0b2b9)
+time=2026-09-24T22:57:43.484+08:00 level=INFO msg="job started" job_id=job_437a6e92cc903fcb type=import project_id=prj_25f35f9f99f0b2b9
+time=2026-09-24T22:57:43.571+08:00 level=INFO msg="job succeeded" job_id=job_437a6e92cc903fcb type=import
+imported DJI_20240807203132_0001_D.MP4 -> [asst_e1bd580a76dd21a0] 19:52 3840x2160 59.94fps hevc +aac
+time=2026-09-24T22:57:43.571+08:00 level=INFO msg="job started" job_id=job_9f922f6858b9c25c type=import project_id=prj_25f35f9f99f0b2b9
+time=2026-09-24T22:57:43.640+08:00 level=INFO msg="job succeeded" job_id=job_9f922f6858b9c25c type=import
+imported DJI_20240807205124_0002_D.MP4 -> [asst_ba2a51d349b413a1] 3:02 3840x2160 59.94fps hevc +aac
+time=2026-09-24T22:57:43.640+08:00 level=INFO msg="job started" job_id=job_05ca71ccd5b4b9cd type=import project_id=prj_25f35f9f99f0b2b9
+time=2026-09-24T22:57:43.711+08:00 level=INFO msg="job succeeded" job_id=job_05ca71ccd5b4b9cd type=import
+imported DJI_20240807211341_0003_D.MP4 -> [asst_e3a3aee9106f1fb6] 8:19 3840x2160 59.94fps hevc +aac
+time=2026-09-24T22:57:43.757+08:00 level=INFO msg="job started" job_id=job_d2fbe5caacb38dbb type=analyze project_id=prj_25f35f9f99f0b2b9
+time=2026-09-24T23:02:51.542+08:00 level=INFO msg="event segmentation" asset_id=asst_ba2a51d349b413a1 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=19
+analyzed DJI_20240807205124_0002_D.MP4 [asst_ba2a51d349b413a1]: 3 tracks, 1237 samples, 19 events
+  event   4.50s–  5.50s  score 0.06  (motion 0.01, audio -39.8 dB)
+  event   7.00s–  8.00s  score 0.08  (motion 0.02, audio -37.0 dB)
+  event  14.00s– 21.00s  score 0.18  (motion 0.01, audio -34.9 dB)
+  event  27.50s– 34.00s  score 0.14  (motion 0.01, audio -38.5 dB)
+  event  40.50s– 46.00s  score 0.14  (motion 0.01, audio -36.5 dB)
+  event  53.50s– 57.00s  score 0.13  (motion 0.01, audio -36.1 dB)
+  event  62.00s– 67.00s  score 0.14  (motion 0.01, audio -36.4 dB)
+  event  76.50s– 78.50s  score 0.12  (motion 0.01, audio -34.7 dB)
+  … and 11 more events
+time=2026-09-24T23:17:06.370+08:00 level=INFO msg="event segmentation" asset_id=asst_e3a3aee9106f1fb6 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=57
+analyzed DJI_20240807211341_0003_D.MP4 [asst_e3a3aee9106f1fb6]: 3 tracks, 3465 samples, 57 events
+  event   2.00s–  3.50s  score 0.12  (motion 0.06, audio -40.6 dB)
+  event  10.50s– 14.50s  score 0.15  (motion 0.02, audio -35.4 dB)
+  event  15.50s– 16.50s  score 0.06  (motion 0.02, audio -39.6 dB)
+  event  19.50s– 20.50s  score 0.10  (motion 0.02, audio -35.0 dB)
+  event  21.50s– 26.00s  score 0.15  (motion 0.02, audio -36.0 dB)
+  event  27.00s– 28.50s  score 0.08  (motion 0.02, audio -38.7 dB)
+  event  32.50s– 34.50s  score 0.06  (motion 0.01, audio -39.7 dB)
+  event  39.00s– 40.50s  score 0.13  (motion 0.02, audio -32.9 dB)
+  … and 49 more events
+time=2026-09-24T23:27:43.901+08:00 level=WARN msg="proxy generation failed; analyzing original" asset=asst_e1bd580a76dd21a0 err="internal: proxy generation timed out or was cancelled: context deadline exceeded"
+time=2026-09-24T23:55:02.429+08:00 level=INFO msg="event segmentation" asset_id=asst_e1bd580a76dd21a0 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=138
+analyzed DJI_20240807203132_0001_D.MP4 [asst_e1bd580a76dd21a0]: 3 tracks, 8078 samples, 138 events
+  event   0.50s– 26.00s  score 0.36  (motion 0.11, audio -42.5 dB)
+  event  28.00s– 36.50s  score 0.21  (motion 0.07, audio -42.5 dB)
+  event  44.00s– 55.00s  score 0.29  (motion 0.07, audio -37.9 dB)
+  event  62.50s– 68.50s  score 0.19  (motion 0.04, audio -36.6 dB)
+  event  71.00s– 75.00s  score 0.17  (motion 0.05, audio -37.9 dB)
+  event  82.00s– 86.50s  score 0.17  (motion 0.06, audio -39.4 dB)
+  event  95.50s–100.00s  score 0.20  (motion 0.07, audio -37.4 dB)
+  event 103.00s–104.00s  score 0.17  (motion 0.04, audio -32.5 dB)
+  … and 130 more events
+time=2026-09-24T23:55:02.431+08:00 level=INFO msg="job succeeded" job_id=job_d2fbe5caacb38dbb type=analyze
+time=2026-09-24T23:55:02.502+08:00 level=INFO msg="job started" job_id=job_8664edb7794b1773 type=timeline project_id=prj_25f35f9f99f0b2b9
+time=2026-09-24T23:55:02.616+08:00 level=INFO msg="event segmentation" asset_id=asst_ba2a51d349b413a1 config=badminton_highlight onsets=505 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=12 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=12
+time=2026-09-25T00:23:51.367+08:00 level=INFO msg="event segmentation" asset_id=asst_e1bd580a76dd21a0 config=badminton_highlight onsets=3262 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=40 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=2 segments=38
+time=2026-09-25T00:23:51.478+08:00 level=INFO msg="event segmentation" asset_id=asst_e3a3aee9106f1fb6 config=badminton_highlight onsets=1468 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=17 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=17
+time=2026-09-25T00:23:51.480+08:00 level=INFO msg="job succeeded" job_id=job_8664edb7794b1773 type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 16.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_25f35f9f99f0b2b9\timeline.json
+time=2026-09-25T00:23:51.538+08:00 level=INFO msg="job started" job_id=job_c1c1fca867409c97 type=render project_id=prj_25f35f9f99f0b2b9
+time=2026-09-25T00:26:56.300+08:00 level=INFO msg="job succeeded" job_id=job_c1c1fca867409c97 type=render
+rendered E:\TEMP\Badminton\output\2024.08.07-highlights.mp4 (25.9 MB) in 184.8s
+  DONE -> /e/TEMP/Badminton/output/2024.08.07-highlights.mp4
+[00:26:56] === 2024.08.09 (project session-2024-08-09) ===
+created project session-2024-08-09 (id prj_0ae829c03e50c7cf)
+time=2026-09-25T00:26:56.840+08:00 level=INFO msg="job started" job_id=job_94f08fc6e4d4eb1b type=import project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:26:56.924+08:00 level=INFO msg="job succeeded" job_id=job_94f08fc6e4d4eb1b type=import
+imported DJI_20240809184051_0001_D.MP4 -> [asst_3b77797819142154] 12:10 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:26:56.924+08:00 level=INFO msg="job started" job_id=job_965ffeaa652619c9 type=import project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:26:57.003+08:00 level=INFO msg="job succeeded" job_id=job_965ffeaa652619c9 type=import
+imported DJI_20240809185401_0002_D.MP4 -> [asst_e89b682836613997] 8:13 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:26:57.004+08:00 level=INFO msg="job started" job_id=job_de3cfaec0d0d8879 type=import project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:26:57.074+08:00 level=INFO msg="job succeeded" job_id=job_de3cfaec0d0d8879 type=import
+imported DJI_20240809194451_0003_D.MP4 -> [asst_6a9630572fcfe99b] 10:26 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:26:57.119+08:00 level=INFO msg="job started" job_id=job_af8eb3690d781841 type=analyze project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:43:47.593+08:00 level=INFO msg="event segmentation" asset_id=asst_6a9630572fcfe99b config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240809194451_0003_D.MP4 [asst_6a9630572fcfe99b]: 3 tracks, 3936 samples, 1 events
+  event   0.00s–626.37s  score 0.40  (motion 0.02, audio -24.5 dB)
+time=2026-09-25T00:46:33.792+08:00 level=INFO msg="event segmentation" asset_id=asst_3b77797819142154 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240809184051_0001_D.MP4 [asst_3b77797819142154]: 3 tracks, 4674 samples, 1 events
+  event   0.00s–730.00s  score 0.36  (motion 0.01, audio -26.8 dB)
+time=2026-09-25T00:55:35.091+08:00 level=INFO msg="event segmentation" asset_id=asst_e89b682836613997 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240809185401_0002_D.MP4 [asst_e89b682836613997]: 3 tracks, 3136 samples, 1 events
+  event   0.00s–493.00s  score 0.38  (motion 0.02, audio -26.3 dB)
+time=2026-09-25T00:55:35.091+08:00 level=INFO msg="job succeeded" job_id=job_af8eb3690d781841 type=analyze
+time=2026-09-25T00:55:35.144+08:00 level=INFO msg="job started" job_id=job_3c1187557639aab2 type=timeline project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:55:35.252+08:00 level=INFO msg="event segmentation" asset_id=asst_3b77797819142154 config=badminton_highlight onsets=1756 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=25 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=7 segments=18
+time=2026-09-25T00:55:35.327+08:00 level=INFO msg="event segmentation" asset_id=asst_6a9630572fcfe99b config=badminton_highlight onsets=1431 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=21 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=21
+time=2026-09-25T00:55:35.398+08:00 level=INFO msg="event segmentation" asset_id=asst_e89b682836613997 config=badminton_highlight onsets=1165 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=17 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=2 segments=15
+time=2026-09-25T00:55:35.400+08:00 level=INFO msg="job succeeded" job_id=job_3c1187557639aab2 type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 56.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_0ae829c03e50c7cf\timeline.json
+time=2026-09-25T00:55:35.444+08:00 level=INFO msg="job started" job_id=job_237a64e6317754ce type=render project_id=prj_0ae829c03e50c7cf
+time=2026-09-25T00:58:31.310+08:00 level=INFO msg="job succeeded" job_id=job_237a64e6317754ce type=render
+rendered E:\TEMP\Badminton\output\2024.08.09-highlights.mp4 (23.4 MB) in 175.9s
+  DONE -> /e/TEMP/Badminton/output/2024.08.09-highlights.mp4
+[00:58:31] === 2024.07.21 (project session-2024-07-21) ===
+created project session-2024-07-21 (id prj_df0101315e6ac649)
+time=2026-09-25T00:58:31.820+08:00 level=INFO msg="job started" job_id=job_528bce4dd766b2c8 type=import project_id=prj_df0101315e6ac649
+time=2026-09-25T00:58:31.899+08:00 level=INFO msg="job succeeded" job_id=job_528bce4dd766b2c8 type=import
+imported DJI_20240721210259_0016_D.MP4 -> [asst_670441fed59be996] 7:33 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:58:31.899+08:00 level=INFO msg="job started" job_id=job_a442a26eb2a88935 type=import project_id=prj_df0101315e6ac649
+time=2026-09-25T00:58:31.975+08:00 level=INFO msg="job succeeded" job_id=job_a442a26eb2a88935 type=import
+imported DJI_20240721211035_0017_D.MP4 -> [asst_80c3f111dc285028] 14:26 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:58:31.975+08:00 level=INFO msg="job started" job_id=job_608339808be80678 type=import project_id=prj_df0101315e6ac649
+time=2026-09-25T00:58:32.051+08:00 level=INFO msg="job succeeded" job_id=job_608339808be80678 type=import
+imported DJI_20240721212652_0018_D.MP4 -> [asst_0516d95abf6164af] 16:43 3840x2160 59.94fps hevc +aac
+time=2026-09-25T00:58:32.098+08:00 level=INFO msg="job started" job_id=job_c4c3a457a96d89ef type=analyze project_id=prj_df0101315e6ac649
+time=2026-09-25T01:10:56.524+08:00 level=INFO msg="event segmentation" asset_id=asst_670441fed59be996 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=8
+analyzed DJI_20240721210259_0016_D.MP4 [asst_670441fed59be996]: 3 tracks, 3163 samples, 8 events
+  event   0.00s–  3.50s  score 0.09  (motion 0.01, audio -39.6 dB)
+  event   4.50s–107.00s  score 0.27  (motion 0.01, audio -35.7 dB)
+  event 109.00s–116.00s  score 0.16  (motion 0.00, audio -35.3 dB)
+  event 118.50s–125.50s  score 0.17  (motion 0.01, audio -35.3 dB)
+  event 129.00s–136.50s  score 0.14  (motion 0.01, audio -38.9 dB)
+  event 137.50s–143.00s  score 0.17  (motion 0.01, audio -32.6 dB)
+  event 144.00s–145.00s  score 0.07  (motion 0.01, audio -37.4 dB)
+  event 147.50s–453.91s  score 0.32  (motion 0.01, audio -31.4 dB)
+time=2026-09-25T01:22:19.108+08:00 level=INFO msg="event segmentation" asset_id=asst_80c3f111dc285028 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=52
+analyzed DJI_20240721211035_0017_D.MP4 [asst_80c3f111dc285028]: 3 tracks, 6134 samples, 52 events
+  event   0.50s–185.00s  score 0.31  (motion 0.02, audio -32.7 dB)
+  event 186.50s–217.00s  score 0.28  (motion 0.02, audio -36.2 dB)
+  event 219.00s–224.50s  score 0.17  (motion 0.02, audio -35.0 dB)
+  event 228.50s–238.50s  score 0.23  (motion 0.01, audio -34.5 dB)
+  event 241.50s–256.50s  score 0.31  (motion 0.02, audio -33.8 dB)
+  event 257.50s–261.00s  score 0.13  (motion 0.01, audio -34.4 dB)
+  event 262.00s–269.50s  score 0.20  (motion 0.02, audio -33.9 dB)
+  event 271.50s–292.00s  score 0.30  (motion 0.01, audio -34.3 dB)
+  … and 44 more events
+time=2026-09-25T01:36:08.302+08:00 level=INFO msg="event segmentation" asset_id=asst_0516d95abf6164af config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=78
+analyzed DJI_20240721212652_0018_D.MP4 [asst_0516d95abf6164af]: 3 tracks, 7211 samples, 78 events
+  event   0.50s– 32.50s  score 0.31  (motion 0.03, audio -34.2 dB)
+  event  33.50s– 38.50s  score 0.19  (motion 0.02, audio -33.0 dB)
+  event  39.50s– 55.50s  score 0.33  (motion 0.03, audio -34.3 dB)
+  event  56.50s– 57.50s  score 0.15  (motion 0.04, audio -34.1 dB)
+  event  58.50s– 67.00s  score 0.25  (motion 0.03, audio -32.4 dB)
+  event  68.50s– 77.00s  score 0.22  (motion 0.02, audio -33.2 dB)
+  event  78.00s–187.00s  score 0.30  (motion 0.01, audio -34.3 dB)
+  event 188.00s–222.50s  score 0.31  (motion 0.02, audio -33.8 dB)
+  … and 70 more events
+time=2026-09-25T01:36:08.303+08:00 level=INFO msg="job succeeded" job_id=job_c4c3a457a96d89ef type=analyze
+time=2026-09-25T01:36:08.358+08:00 level=INFO msg="job started" job_id=job_9a24eca42736b56d type=timeline project_id=prj_df0101315e6ac649
+time=2026-09-25T01:36:08.483+08:00 level=INFO msg="event segmentation" asset_id=asst_670441fed59be996 config=badminton_highlight onsets=1348 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=16 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=5 segments=11
+time=2026-09-25T01:36:08.561+08:00 level=INFO msg="event segmentation" asset_id=asst_80c3f111dc285028 config=badminton_highlight onsets=2671 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=29 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=29
+time=2026-09-25T01:36:08.640+08:00 level=INFO msg="event segmentation" asset_id=asst_0516d95abf6164af config=badminton_highlight onsets=3197 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=34 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=34
+time=2026-09-25T01:36:08.642+08:00 level=INFO msg="job succeeded" job_id=job_9a24eca42736b56d type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 16.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_df0101315e6ac649\timeline.json
+time=2026-09-25T01:36:08.690+08:00 level=INFO msg="job started" job_id=job_0faca8da2505bdef type=render project_id=prj_df0101315e6ac649
+time=2026-09-25T01:39:10.347+08:00 level=INFO msg="job succeeded" job_id=job_0faca8da2505bdef type=render
+rendered E:\TEMP\Badminton\output\2024.07.21-highlights.mp4 (27.4 MB) in 181.7s
+  DONE -> /e/TEMP/Badminton/output/2024.07.21-highlights.mp4
+[01:39:10] === 2024.06.26 (project session-2024-06-26) ===
+created project session-2024-06-26 (id prj_7d889d5390410229)
+time=2026-09-25T01:39:10.979+08:00 level=INFO msg="job started" job_id=job_ee0c5d18d126c510 type=import project_id=prj_7d889d5390410229
+time=2026-09-25T01:39:11.060+08:00 level=INFO msg="job succeeded" job_id=job_ee0c5d18d126c510 type=import
+imported DJI_20240626202052_0001_D.MP4 -> [asst_34e48fecaf76e33e] 7:04 3840x2160 59.94fps hevc +aac
+time=2026-09-25T01:39:11.060+08:00 level=INFO msg="job started" job_id=job_057026af30724456 type=import project_id=prj_7d889d5390410229
+time=2026-09-25T01:39:11.141+08:00 level=INFO msg="job succeeded" job_id=job_057026af30724456 type=import
+imported DJI_20240626203010_0002_D.MP4 -> [asst_b75369c21ceb4a9d] 18:32 3840x2160 59.94fps hevc +aac
+time=2026-09-25T01:39:11.142+08:00 level=INFO msg="job started" job_id=job_fbcc445490912c89 type=import project_id=prj_7d889d5390410229
+time=2026-09-25T01:39:11.220+08:00 level=INFO msg="job succeeded" job_id=job_fbcc445490912c89 type=import
+imported DJI_20240626205025_0003_D.MP4 -> [asst_caaa0efda9417c66] 19:52 3840x2160 59.94fps hevc +aac
+time=2026-09-25T01:39:11.220+08:00 level=INFO msg="job started" job_id=job_d480c32118542139 type=import project_id=prj_7d889d5390410229
+time=2026-09-25T01:39:11.296+08:00 level=INFO msg="job succeeded" job_id=job_d480c32118542139 type=import
+imported DJI_20240626211018_0004_D.MP4 -> [asst_b2d0cda451a6139b] 15:23 3840x2160 59.94fps hevc +aac
+time=2026-09-25T01:39:11.342+08:00 level=INFO msg="job started" job_id=job_487af4deb1a2f96a type=analyze project_id=prj_7d889d5390410229
+time=2026-09-25T01:50:47.567+08:00 level=INFO msg="event segmentation" asset_id=asst_34e48fecaf76e33e config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=59
+analyzed DJI_20240626202052_0001_D.MP4 [asst_34e48fecaf76e33e]: 3 tracks, 2927 samples, 59 events
+  event   2.00s–  5.50s  score 0.10  (motion 0.03, audio -40.5 dB)
+  event   7.00s–  9.00s  score 0.05  (motion 0.01, audio -40.9 dB)
+  event  11.50s– 25.50s  score 0.27  (motion 0.01, audio -35.0 dB)
+  event  26.50s– 30.00s  score 0.09  (motion 0.01, audio -38.9 dB)
+  event  32.00s– 35.00s  score 0.08  (motion 0.01, audio -38.5 dB)
+  event  37.50s– 45.00s  score 0.17  (motion 0.02, audio -36.9 dB)
+  event  56.00s– 57.00s  score 0.10  (motion 0.01, audio -33.7 dB)
+  event  58.50s– 61.00s  score 0.06  (motion 0.01, audio -41.0 dB)
+  … and 51 more events
+time=2026-09-25T02:04:26.854+08:00 level=INFO msg="event segmentation" asset_id=asst_b2d0cda451a6139b config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=120
+analyzed DJI_20240626211018_0004_D.MP4 [asst_b2d0cda451a6139b]: 3 tracks, 6364 samples, 120 events
+  event   0.50s–  9.50s  score 0.19  (motion 0.01, audio -35.4 dB)
+  event  10.50s– 12.50s  score 0.13  (motion 0.02, audio -34.0 dB)
+  event  19.00s– 26.00s  score 0.15  (motion 0.01, audio -37.7 dB)
+  event  29.50s– 33.00s  score 0.11  (motion 0.02, audio -38.4 dB)
+  event  36.00s– 38.50s  score 0.12  (motion 0.01, audio -34.9 dB)
+  event  40.00s– 41.50s  score 0.10  (motion 0.00, audio -34.2 dB)
+  event  46.50s– 49.00s  score 0.11  (motion 0.00, audio -34.4 dB)
+  event  50.00s– 51.00s  score 0.09  (motion 0.01, audio -36.6 dB)
+  … and 112 more events
+time=2026-09-25T02:20:47.680+08:00 level=WARN msg="proxy generation failed; analyzing original" asset=asst_b75369c21ceb4a9d err="internal: proxy generation timed out or was cancelled: context deadline exceeded"
+time=2026-09-25T02:34:30.931+08:00 level=WARN msg="proxy generation failed; analyzing original" asset=asst_caaa0efda9417c66 err="internal: proxy generation timed out or was cancelled: context deadline exceeded"
+time=2026-09-25T02:48:12.796+08:00 level=INFO msg="event segmentation" asset_id=asst_b75369c21ceb4a9d config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=165
+analyzed DJI_20240626203010_0002_D.MP4 [asst_b75369c21ceb4a9d]: 3 tracks, 7609 samples, 165 events
+  event   1.50s–  5.00s  score 0.21  (motion 0.11, audio -42.0 dB)
+  event   7.00s– 12.00s  score 0.17  (motion 0.06, audio -41.1 dB)
+  event  16.50s– 44.00s  score 0.30  (motion 0.04, audio -36.9 dB)
+  event  45.00s– 46.00s  score 0.14  (motion 0.08, audio -45.9 dB)
+  event  47.00s– 48.00s  score 0.10  (motion 0.02, audio -36.1 dB)
+  event  49.00s– 54.00s  score 0.21  (motion 0.07, audio -38.5 dB)
+  event  55.50s– 56.50s  score 0.11  (motion 0.03, audio -36.5 dB)
+  event  57.50s– 67.00s  score 0.22  (motion 0.03, audio -37.1 dB)
+  … and 157 more events
+time=2026-09-25T03:01:40.426+08:00 level=INFO msg="event segmentation" asset_id=asst_caaa0efda9417c66 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=155
+analyzed DJI_20240626205025_0003_D.MP4 [asst_caaa0efda9417c66]: 3 tracks, 8179 samples, 155 events
+  event   0.00s– 10.00s  score 0.24  (motion 0.06, audio -40.8 dB)
+  event  11.00s– 22.00s  score 0.30  (motion 0.08, audio -39.0 dB)
+  event  31.50s– 32.50s  score 0.06  (motion 0.02, audio -39.6 dB)
+  event  36.00s– 42.00s  score 0.25  (motion 0.07, audio -36.1 dB)
+  event  43.00s– 45.00s  score 0.10  (motion 0.03, audio -39.3 dB)
+  event  49.00s– 53.50s  score 0.18  (motion 0.07, audio -39.8 dB)
+  event  58.00s– 69.00s  score 0.27  (motion 0.05, audio -36.9 dB)
+  event  78.00s– 88.00s  score 0.27  (motion 0.06, audio -37.4 dB)
+  … and 147 more events
+time=2026-09-25T03:01:40.427+08:00 level=INFO msg="job succeeded" job_id=job_487af4deb1a2f96a type=analyze
+time=2026-09-25T03:01:40.511+08:00 level=INFO msg="job started" job_id=job_968985cc6c0fe60f type=timeline project_id=prj_7d889d5390410229
+time=2026-09-25T03:01:40.677+08:00 level=INFO msg="event segmentation" asset_id=asst_34e48fecaf76e33e config=badminton_highlight onsets=1230 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=15 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=6 segments=9
+time=2026-09-25T03:01:40.761+08:00 level=INFO msg="event segmentation" asset_id=asst_b2d0cda451a6139b config=badminton_highlight onsets=2671 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=31 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=9 segments=22
+time=2026-09-25T03:27:53.198+08:00 level=INFO msg="event segmentation" asset_id=asst_b75369c21ceb4a9d config=badminton_highlight onsets=3153 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=38 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=15 segments=23
+time=2026-09-25T03:55:47.038+08:00 level=INFO msg="event segmentation" asset_id=asst_caaa0efda9417c66 config=badminton_highlight onsets=3364 spans_opened=1 spans_dropped_min_hits=0 chunks_considered=40 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=27 segments=13
+time=2026-09-25T03:55:47.039+08:00 level=INFO msg="job succeeded" job_id=job_968985cc6c0fe60f type=timeline
+style: badminton_highlight
+timeline: 15 clips, 120.0s total, canvas 1280x720@30
+pacing: 15 shots, mean 8.0s, median 8.0s, longest 8.0s, top shot starts at 16.0s
+written: D:\Projects\XCut\.badminton-ws\projects\prj_7d889d5390410229\timeline.json
+time=2026-09-25T03:55:47.096+08:00 level=INFO msg="job started" job_id=job_b01425e9dc2946c6 type=render project_id=prj_7d889d5390410229
+time=2026-09-25T03:58:46.396+08:00 level=INFO msg="job succeeded" job_id=job_b01425e9dc2946c6 type=render
+rendered E:\TEMP\Badminton\output\2024.06.26-highlights.mp4 (18.3 MB) in 179.3s
+  DONE -> /e/TEMP/Badminton/output/2024.06.26-highlights.mp4
+[03:58:46] === 2024.06.28 (project session-2024-06-28) ===
+created project session-2024-06-28 (id prj_93ebdfdae6955b88)
+time=2026-09-25T03:58:47.376+08:00 level=INFO msg="job started" job_id=job_f28fedcf58d064ab type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.455+08:00 level=INFO msg="job succeeded" job_id=job_f28fedcf58d064ab type=import
+imported DJI_20240628172622_0001_D.MP4 -> [asst_c095ccdc666da213] 7:57 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.455+08:00 level=INFO msg="job started" job_id=job_be126e0c68327550 type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.532+08:00 level=INFO msg="job succeeded" job_id=job_be126e0c68327550 type=import
+imported DJI_20240628173427_0002_D.MP4 -> [asst_863287524634ccb0] 16:11 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.532+08:00 level=INFO msg="job started" job_id=job_309b6accb751f54f type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.612+08:00 level=INFO msg="job succeeded" job_id=job_309b6accb751f54f type=import
+imported DJI_20240628175904_0003_D.MP4 -> [asst_c4e9024ea4b7aca8] 14:46 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.613+08:00 level=INFO msg="job started" job_id=job_6e570b371876b8b1 type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.693+08:00 level=INFO msg="job succeeded" job_id=job_6e570b371876b8b1 type=import
+imported DJI_20240628181353_0004_D.MP4 -> [asst_43e70c28d18dd1f0] 19:52 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.693+08:00 level=INFO msg="job started" job_id=job_f26608ed69e673fc type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.759+08:00 level=INFO msg="job succeeded" job_id=job_f26608ed69e673fc type=import
+imported DJI_20240628183346_0005_D.MP4 -> [asst_6a4cc8146dfc4e41] 0:05 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.759+08:00 level=INFO msg="job started" job_id=job_caad60f16ce0d447 type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.836+08:00 level=INFO msg="job succeeded" job_id=job_caad60f16ce0d447 type=import
+imported DJI_20240628183423_0006_D.MP4 -> [asst_4817f4b91c6adb49] 11:54 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.836+08:00 level=INFO msg="job started" job_id=job_8e1a338476bd51aa type=import project_id=prj_93ebdfdae6955b88
+time=2026-09-25T03:58:47.914+08:00 level=INFO msg="job succeeded" job_id=job_8e1a338476bd51aa type=import
+imported DJI_20240628184737_0007_D.MP4 -> [asst_9235f6874e05a96b] 14:48 3840x2160 59.94fps hevc +aac
+time=2026-09-25T03:58:47.959+08:00 level=INFO msg="job started" job_id=job_a1d34403a7716f7d type=analyze project_id=prj_93ebdfdae6955b88
+time=2026-09-25T04:18:17.960+08:00 level=INFO msg="event segmentation" asset_id=asst_4817f4b91c6adb49 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628183423_0006_D.MP4 [asst_4817f4b91c6adb49]: 3 tracks, 4491 samples, 1 events
+  event   0.00s–714.50s  score 0.41  (motion 0.02, audio -23.5 dB)
+time=2026-09-25T04:18:26.229+08:00 level=INFO msg="event segmentation" asset_id=asst_6a4cc8146dfc4e41 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628183346_0005_D.MP4 [asst_6a4cc8146dfc4e41]: 3 tracks, 33 samples, 1 events
+  event   0.00s–  5.00s  score 0.25  (motion 0.02, audio -25.3 dB)
+time=2026-09-25T04:28:48.099+08:00 level=WARN msg="proxy generation failed; analyzing original" asset=asst_43e70c28d18dd1f0 err="internal: proxy generation timed out or was cancelled: context deadline exceeded"
+time=2026-09-25T04:43:56.348+08:00 level=INFO msg="event segmentation" asset_id=asst_863287524634ccb0 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628173427_0002_D.MP4 [asst_863287524634ccb0]: 3 tracks, 6048 samples, 1 events
+  event   0.00s–971.82s  score 0.41  (motion 0.02, audio -23.4 dB)
+time=2026-09-25T05:06:49.988+08:00 level=INFO msg="event segmentation" asset_id=asst_9235f6874e05a96b config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628184737_0007_D.MP4 [asst_9235f6874e05a96b]: 3 tracks, 5521 samples, 1 events
+  event   0.00s–888.00s  score 0.40  (motion 0.02, audio -23.6 dB)
+time=2026-09-25T05:11:45.529+08:00 level=INFO msg="event segmentation" asset_id=asst_c095ccdc666da213 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628172622_0001_D.MP4 [asst_c095ccdc666da213]: 3 tracks, 2944 samples, 1 events
+  event   0.00s–477.85s  score 0.40  (motion 0.01, audio -23.6 dB)
+time=2026-09-25T05:28:12.637+08:00 level=INFO msg="event segmentation" asset_id=asst_c4e9024ea4b7aca8 config=default onsets=0 spans_opened=0 spans_dropped_min_hits=0 chunks_considered=0 dropped_min_hits=0 dropped_min_duration=0 dropped_motion_floor=0 segments=1
+analyzed DJI_20240628175904_0003_D.MP4 [asst_c4e9024ea4b7aca8]: 3 tracks, 5573 samples, 1 events
+  event   0.50s–886.00s  score 0.42  (motion 0.02, audio -22.7 dB)
+time=2026-09-25T05:28:12.637+08:00 level=ERROR msg="job failed" job_id=job_a1d34403a7716f7d type=analyze error_code=analyzer_failure err="analyzer_failure: analyzer frame_diff exceeded its 30m0s time budget: analyzer_failure: video analysis timed out or was cancelled: context deadline exceeded"
+xcut analyze: analyzer frame_diff exceeded its 30m0s time budget
+  ANALYZE FAILED
+[05:28:12] batch complete
