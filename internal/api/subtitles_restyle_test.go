@@ -35,7 +35,7 @@ func TestSubtitlesStatusNamesBothFramesAndRestyleFixesThem(t *testing.T) {
 		t.Fatalf("the staged reel is %v, not the 1080x1920 this test restyles back to", out["reel_frame"])
 	}
 
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 	rec, out = do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("transcribe trigger: %d %v", rec.Code, out)
@@ -126,41 +126,21 @@ func TestRestyleRefusesWithoutATranscript(t *testing.T) {
 	}
 }
 
-// blockingSidecar points the server at a fake transcriber that starts an analyze and
-// then waits for a sentinel file, so a test can hold the exclusive subtitles slot with a
-// job that is *known to be running* rather than one it hopes has not finished yet. The
-// returned path is the sentinel: create it and the job completes.
+// blockingSidecar points the server at this test binary in blocking-sidecar
+// mode (TestMain): the analyze starts and then waits for a sentinel file, so
+// a test can hold the exclusive subtitles slot with a job that is *known to be
+// running* rather than one it hopes has not finished yet. The returned path is
+// the sentinel: create it and the job completes.
 func blockingSidecar(t *testing.T, s *Server) string {
 	t.Helper()
-	if pythonBin(t) == "" {
-		t.Skip("python not available")
-	}
 	sentinel := filepath.Join(t.TempDir(), "release")
-	script := `#!/usr/bin/env python3
-import json, os, sys, time
-req = json.loads(sys.stdin.read() or "{}")
-op = req.get("op")
-gate = os.environ.get("XCUT_FAKE_GATE")
-if op == "capabilities":
-    result = {"ops": [{"op": "analyze"}], "models": [
-        {"name": "transcript", "available": True, "loaded": False, "detail": "fake"}]}
-elif op == "analyze":
-    if gate:
-        for _ in range(600):
-            if os.path.exists(gate):
-                break
-            time.sleep(0.05)
-    result = {"language": "zh", "segments": [{"start": 0.5, "end": 1.5, "text": "held"}]}
-else:
-    result = {}
-sys.stdout.write(json.dumps({"protocol": 1, "ok": True, "op": op, "result": result}))
-`
-	path := filepath.Join(t.TempDir(), "blocking-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	t.Setenv("XCUT_TEST_SIDECAR", "blocking")
+	t.Setenv("XCUT_TEST_SIDECAR_GATE", sentinel)
+	bin, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XCUT_FAKE_GATE", sentinel)
-	s.Pipe.Cfg.Workers.AIBin = path
+	s.Pipe.Cfg.Workers.AIBin = bin
 	return sentinel
 }
 
@@ -175,7 +155,7 @@ func TestRestyleWaitsBehindATranscription(t *testing.T) {
 
 	// A completed transcription first: it puts a transcript on disk, which is what the
 	// endpoint's own pre-check asks for.
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 	_, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	awaitJob(t, s, out["job_id"].(string))
 
@@ -238,7 +218,7 @@ func waitForJobState(t *testing.T, s *Server, jobID, want string, wait time.Dura
 // pass while the browser saw nothing.
 func TestSubtitlesStatusNamesStaleMedia(t *testing.T) {
 	s, pid := stagedReel(t, "stalemedia")
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 	_, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	awaitJob(t, s, out["job_id"].(string))
 

@@ -3,8 +3,6 @@ package api
 import (
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,42 +10,25 @@ import (
 	"github.com/xiabee/XCut/internal/timeline"
 )
 
-// fakeSidecarScript writes a canned transcript sidecar and points the
-// server's AI bin at it. With wordTimings the segment carries one word per
-// syllable and both subtitle artifacts appear; without it the sidecar knows
-// only where each line falls, which is what most of them return.
-func fakeSidecarScript(t *testing.T, s *Server, wordTimings bool) {
+// fakeSidecar points the server at this test binary wearing its sidecar
+// hat (TestMain): the canned segment travels by environment, so the
+// transcription under test exercises the real exec/protocol path with a
+// deterministic process cost — no interpreter start to be slowed by AV
+// scanning or gate load, no python dependency to skip on.
+func fakeSidecar(t *testing.T, s *Server, wordTimings bool) {
 	t.Helper()
-	if pythonBin(t) == "" {
-		t.Skip("python not available")
-	}
 	segment := `{"start": 0.5, "end": 1.5, "text": "你好"}`
 	if wordTimings {
-		segment = `{"start": 0.5, "end": 1.5, "text": "你好", "words": [
-            {"start": 0.5, "end": 1.0, "word": "你"},
-            {"start": 1.0, "end": 1.5, "word": "好"}]}`
+		segment = `{"start": 0.5, "end": 1.5, "text": "你好", "words": [{"start": 0.5, "end": 1.0, "word": "你"}, {"start": 1.0, "end": 1.5, "word": "好"}]}`
 	}
-	script := strings.Replace(transcriptSidecarTemplate, "__SEGMENT__", segment, 1)
-	path := filepath.Join(t.TempDir(), "fake-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	t.Setenv("XCUT_TEST_SIDECAR", "1")
+	t.Setenv("XCUT_TEST_SIDECAR_SEGMENT", segment)
+	bin, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	s.Pipe.Cfg.Workers.AIBin = path
+	s.Pipe.Cfg.Workers.AIBin = bin
 }
-
-const transcriptSidecarTemplate = `#!/usr/bin/env python3
-import json, sys
-req = json.loads(sys.stdin.read() or "{}")
-op = req.get("op")
-if op == "capabilities":
-    result = {"ops": [{"op": "analyze"}], "models": [
-        {"name": "transcript", "available": True, "loaded": False, "detail": "fake"}]}
-elif op == "analyze":
-    result = {"language": "zh", "segments": [__SEGMENT__]}
-else:
-    result = {}
-sys.stdout.write(json.dumps({"protocol": 1, "ok": True, "op": op, "result": result}))
-`
 
 // verticalReel is a one-clip 9:16 timeline: the canvas the caption style has
 // to be laid out against.
@@ -63,9 +44,10 @@ func verticalReel(assetID string) *timeline.Timeline {
 }
 
 // awaitJob blocks out loud: a transcription that failed is reported with its
-// error, one that never finished with how long it was given. 30s because on
-// AV-scanned machines a cold python sidecar start can be slow — a remote CI
-// node flaked once at 15s, and the immediate re-run passed.
+// error, one that never finished with how long it was given. The stub is
+// this test binary (no interpreter start), so 30s is a hang-guard, not a
+// load guess — a timeout now means the pipeline wedged, not that the
+// machine was having a slow moment.
 func awaitJob(t *testing.T, s *Server, jobID string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -87,16 +69,6 @@ func awaitJob(t *testing.T, s *Server, jobID string) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-}
-
-func pythonBin(t *testing.T) string {
-	t.Helper()
-	for _, py := range []string{"python", "python3"} {
-		if p, err := exec.LookPath(py); err == nil && p != "" {
-			return p
-		}
-	}
-	return ""
 }
 
 // stagedReel is the state a caption is generated in: a project with one asset
@@ -140,7 +112,7 @@ func TestSubtitlesFlow(t *testing.T) {
 		t.Fatalf("initial status: %d %v", rec.Code, out)
 	}
 
-	fakeSidecarScript(t, s, true)
+	fakeSidecar(t, s, true)
 
 	// File download before transcription → 404.
 	if rec, _ := do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles/file?format=srt", ""); rec.Code != http.StatusNotFound {
@@ -202,7 +174,7 @@ func TestSubtitlesFlow(t *testing.T) {
 // whatever libass defaults to. Both now get the same frame and the same canvas.
 func TestPlainTranscriptGetsStyledCaptions(t *testing.T) {
 	s, pid := stagedReel(t, "plainsubs")
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("transcribe trigger: %d %v", rec.Code, out)
@@ -240,7 +212,7 @@ func TestPlainTranscriptGetsStyledCaptions(t *testing.T) {
 // and offering nothing in its place — both publish the wrong caption.
 func TestReTranscribeReplacesTheKaraokeFile(t *testing.T) {
 	s, pid := stagedReel(t, "twice")
-	fakeSidecarScript(t, s, true)
+	fakeSidecar(t, s, true)
 	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("karaoke transcribe: %d %v", rec.Code, out)
@@ -250,7 +222,7 @@ func TestReTranscribeReplacesTheKaraokeFile(t *testing.T) {
 		t.Fatal("the first pass was supposed to be karaoke")
 	}
 
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 	rec, out = do(t, s, "POST", "/api/v1/projects/"+pid+"/subtitles", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("plain transcribe: %d %v", rec.Code, out)

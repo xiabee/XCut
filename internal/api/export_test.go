@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -155,24 +155,19 @@ func TestExportIsExclusive(t *testing.T) {
 	}
 }
 
-// slowSidecar writes a transcript sidecar that answers, but slowly enough for a
-// test to catch the work in progress.
+// slowSidecar points the caller at this test binary in slow-sidecar mode: it
+// answers capabilities at once and holds each analyze for the named seconds,
+// so a test can catch the work in progress. The returned path is the test
+// binary itself; the hold is set by environment (TestMain reads it).
 func slowSidecar(t *testing.T, seconds int) string {
 	t.Helper()
-	if pythonBin(t) == "" {
-		t.Skip("python not available")
-	}
-	script := strings.Replace(transcriptSidecarTemplate, "import json, sys", "import json, sys, time", 1)
-	script = strings.Replace(script, "elif op == \"analyze\":",
-		fmt.Sprintf("elif op == \"analyze\":\n    time.sleep(%d)", seconds), 1)
-	if !strings.Contains(script, "time.sleep") || !strings.Contains(script, "import json, sys, time") {
-		t.Fatal("the slow sidecar template was patched into something else")
-	}
-	path := filepath.Join(t.TempDir(), "slow-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	t.Setenv("XCUT_TEST_SIDECAR", "slow")
+	t.Setenv("XCUT_TEST_SIDECAR_SLEEP", strconv.Itoa(seconds))
+	bin, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path
+	return bin
 }
 
 // TestTheClientPostsTheTapWhereTheServerAnswers: the button and the route are one

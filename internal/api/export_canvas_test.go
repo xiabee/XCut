@@ -98,7 +98,7 @@ func TestExportSaysWhenTheCaptionsBelongToAnotherFrame(t *testing.T) {
 func TestExportRestylesCaptionsForTheReelsOwnFrame(t *testing.T) {
 	s, pid := stagedReel(t, "export-canvas-restyle")
 	path := captionStyledFor(t, s, pid, 1280, 720)
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 
 	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/export", "")
 	if rec.Code != http.StatusAccepted {
@@ -134,7 +134,7 @@ func TestExportReusesCaptionsThatAlreadyFit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fakeSidecarScript(t, s, false)
+	fakeSidecar(t, s, false)
 
 	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/export", "")
 	if rec.Code != http.StatusAccepted {
