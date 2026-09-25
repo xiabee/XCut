@@ -2177,7 +2177,50 @@ heartbeat reaches the connection through it. Pinned by a real-TCP case with
 a 400 ms `WriteTimeout` against a paced ~1.2 s real-media upload: the 201
 must arrive readable, with its asset id — the mutation (wrap removed) fails
 exactly the way the defect did (transport EOF after the file landed).
-Accepted at `0f4e99c`.
+Accepted at `0f4e99c` (rebased to `77f8d66` — see the integration note).
+
+**Integration note for this session.** Origin had moved during the day
+(2026-09-25, commits `ad48f95`..`868fc61`: clip-parallel normalization,
+selection algorithm v2, machine auto-profile, the player's multi-region
+model — a different worktree, `D:\Projects\XCut`). Tonight's commits were
+rebased onto it, and every gate verdict this session claims is read at the
+merged head, not at the pre-rebase one. The remote's `push_snapshot`
+carries the working tree, so the rebased-and-clean tree is also what the
+remote leg tested.
+
+**Same night, later: the export tap ends at the reel it produced.** The
+export job queues its render as a row of its own and returns — and the
+client's `watchUntilDone` acted only on timeline/render/subtitles
+terminals, so an export terminal refreshed nothing. The player kept
+showing the pre-export reel (or a 404 with a fresh timestamp) for the
+whole minutes-long tap while the jobs list said done: a wrong reel a user
+could publish. The export terminal now follows the tap's child render
+(prefer a render row still in flight; fall back to the first listed —
+the endpoint is newest-first), and the premature `showPlayerSoon` is gone
+from the export path; the render button keeps it (seconds, self-correcting
+via its own watcher). Pinned both ends: a server case seeds a terminal old
+render row and demands the tap's child list ahead of it — with a stated
+caveat, because `created_at` carries second resolution and a same-second
+tie is broken by id, which is why the client prefers *in-flight* rows over
+raw order — and a structural pin holds the watcher's shape plus exactly
+two `showPlayerSoon` sites. Not browser-verified; the DOM pins and the
+server contract carry it, per the honest-remainder convention. Accepted
+at `ed6c34f`.
+
+**Same night, later: two debris classes stop outliving their owners.** The
+burn's run-failure arm was the one exit of `BurnSubtitles` that left its
+`.subs.partial` behind; it now removes like its siblings — pinned through a
+new stand-in mode (`XCUT_FAKE_FFMPEG_CREATE`) whose child *creates the
+output* before dying, because the first red-check passed under mutation: a
+child that never creates the file cannot leave it behind, so the original
+assert was untestable and was rewritten until its mutation died. And the
+FFmpeg installer sweeps stale `<tool>.partial` beside its target at start,
+mirroring the scratch-zip rule two lines up — a kill between create and
+rename orphans ~100 MB next to the exe that no workspace sweeper visits.
+The test plants `ffplay.exe.partial`, a name the fresh pin does not
+rewrite: a same-name partial is the self-healing case the extract consumes
+anyway, which is exactly why the first version of this test passed under
+mutation too. Accepted at `85cffbd`.
 
 ## Version / HEAD
 
