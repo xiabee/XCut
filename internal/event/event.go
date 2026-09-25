@@ -44,6 +44,9 @@ type Segment struct {
 	// "no signature on this asset".
 	PlayerPresence    float64 `json:"player_presence,omitempty"`
 	HasPlayerPresence bool    `json:"has_player_presence,omitempty"`
+	// PeakRate is the max onset rate (hits/sec) in any 1-second window — a
+	// burst of smashes scores higher than uniform play at the same average.
+	PeakRate float64 `json:"peak_rate,omitempty"`
 }
 
 // Duration of the segment in seconds.

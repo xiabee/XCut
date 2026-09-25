@@ -655,24 +655,43 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []f
 	start = round4(seg.Start)
 	end = round4(start + length)
 
-	// Rally mode: the window ENDS where the play ended — the last hit plus
-	// the landing tail — so a dive at the buzzer and the shuttle coming down
-	// stay inside the clip instead of an arithmetic edge cutting the point
-	// mid-air. The window then reaches back for its length.
+	// Rally mode: slide a peak-window across the segment's hit timestamps and
+	// pick the densest max-length window — the most intense exchange within
+	// the rally, not just its head or tail. Then extend the end past the last
+	// hit for the landing tail.
 	if len(seg.Hits) > 0 {
-		lastHit := seg.Hits[len(seg.Hits)-1]
-		naturalEnd := lastHit + rallyTailSeconds(p)
-		if naturalEnd <= seg.End+hitTailEps {
-			end = naturalEnd
+		// Find the densest window of `length` seconds within the segment.
+		var bestStart, bestEnd float64
+		bestCount := -1
+		for _, hit := range seg.Hits {
+			wStart := hit
+			wEnd := wStart + length
+			if wEnd > seg.End {
+				wEnd = seg.End
+			}
+			if wEnd-wStart < p.MinClipDuration {
+				continue
+			}
+			count := 0
+			for _, h := range seg.Hits {
+				if h >= wStart && h <= wEnd {
+					count++
+				}
+			}
+			if count > bestCount {
+				bestCount = count
+				bestStart = wStart
+				bestEnd = wEnd
+			}
+		}
+		if bestCount > 0 {
+			start = bestStart
+			end = bestEnd
+			anchor = anchorPeakWindow
 		} else {
-			end = seg.End // the segment's own pad already holds the tail
+			start = round4(seg.Start)
+			end = round4(start + length)
 		}
-		start = end - length
-		if start < seg.Start {
-			start = seg.Start
-			end = start + length
-		}
-		anchor = anchorRallyEnd
 	}
 
 	// Scoreboard boundaries (sidecar-measured point ends) outrank the hit
@@ -708,9 +727,10 @@ const hitTailEps = 0.01
 // Clip-end anchors, recorded into clip metadata so a reel explains not only
 // why a clip was picked but also why it stops where it stops.
 const (
-	anchorBoundary = "scoreboard point end"
-	anchorRallyEnd = "last hit + landing tail"
-	anchorHead     = "segment head"
+	anchorBoundary   = "scoreboard point end"
+	anchorRallyEnd   = "last hit + landing tail"
+	anchorPeakWindow = "peak window"
+	anchorHead       = "segment head"
 )
 
 // reachableBoundary picks the first boundary that can serve as a clip end:
