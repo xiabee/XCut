@@ -86,7 +86,14 @@ func TestRenderCommandCarriesTheFramingPlan(t *testing.T) {
 		t.Setenv("XCUT_FAKE_FFMPEG_ARGV", argvPath)
 		tools := media.Tools{FFmpeg: os.Args[0], FFprobe: "ffprobe", Threads: 2}
 		out := filepath.Join(t.TempDir(), "out.mp4")
-		err := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir()}, out)
+		// The serial path is the point, not a shortcut: the stand-in FFmpeg
+		// fails every invocation, and under clip-parallel normalization the
+		// first failure cancels the surviving worker's child before it has
+		// necessarily appended its argv — so the file read below was a race
+		// over which clip's command survived. The command line itself is
+		// identical serial or parallel (the chain builder is shared); the
+		// parallel half is covered by TestRenderParallelClipsVerified.
+		err := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir(), ClipWorkers: 1}, out)
 		if err == nil {
 			t.Fatal("the stand-in FFmpeg must fail the render")
 		}
