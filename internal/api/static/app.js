@@ -1633,9 +1633,11 @@ async function refreshROIStatus() {
   const clearBtn = $("btn-roi-clear");
   const asset = roiAsset();
   const target = roiTarget();
-  // The two branches are separate requests, so whichever resolves last wins
-  // the label — which is wrong when the user switched target in between.
-  const stale = () => target !== roiTarget();
+  const assetValue = asset.value;
+  // The branches are separate requests, so whichever resolves last wins the
+  // label — wrong when the user switched target OR asset in between (a
+  // target switch and an asset switch each fire this function again).
+  const stale = () => target !== roiTarget() || assetValue !== roiAsset().value;
   $("roi-hint-court").hidden = roiIsScore();
   $("roi-hint-score").hidden = !roiIsScore();
   $("roi-tag-motion").hidden = roiIsScore();

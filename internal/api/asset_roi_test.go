@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/xiabee/XCut/internal/storage"
@@ -97,5 +98,16 @@ func TestAssetROIValidationAndScoping(t *testing.T) {
 	rec, out = do(t, s, "GET", "/api/v1/styles/badminton_highlight/roi", "")
 	if rec.Code != 200 || out["roi"] != nil {
 		t.Fatalf("asset roi leaked into the preset: %d %v", rec.Code, out)
+	}
+}
+
+// TestTheROIGuardCoversBothAxes: the status line's stale guard must check
+// which ASSET the answer is for, not just which target — both selectors
+// re-fire refreshROIStatus, so a slow score/roi answer for a switched-away
+// asset must not overwrite the label and clear-button the user now sees.
+func TestTheROIGuardCoversBothAxes(t *testing.T) {
+	_, js, _ := i18nAssets(t)
+	if !strings.Contains(js, "assetValue !== roiAsset().value") {
+		t.Fatal("the ROI stale guard checks the target axis only — a late response for a switched-away asset mislabels the selected clip's region")
 	}
 }
