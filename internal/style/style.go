@@ -46,6 +46,9 @@ type Scoring struct {
 	Duration float64 `json:"duration"`
 	Hits     float64 `json:"hits,omitempty"`
 	Density  float64 `json:"density,omitempty"`
+	// Player scores the measured presence of the user's color signature in
+	// the segment (0 when no signature exists — the factor is then neutral).
+	Player float64 `json:"player,omitempty"`
 }
 
 // AudioGain linear loudness multiplier applied to clip volume.
@@ -158,6 +161,10 @@ type Preset struct {
 	TargetDuration  float64         `json:"target_duration"`
 	MinClipDuration float64         `json:"min_clip_duration"`
 	MaxClipDuration float64         `json:"max_clip_duration"`
+	// MinPlayerPresence gates candidates on the measured person-presence of
+	// the asset's player signature (0..1). Only bites where a signature was
+	// measured; 0 = off.
+	MinPlayerPresence float64 `json:"min_player_presence,omitempty"`
 	// BeatSnapTolerance lets a clip end that nothing else has fixed move to the
 	// nearest beat of the source's own grid, so cuts land where the audio's
 	// pulse is (卡点). 0 = off. Capped well below a clip's length on purpose:
@@ -174,6 +181,10 @@ type Preset struct {
 	ClipOrder string     `json:"clip_order,omitempty"`
 	MotionROI *MotionROI `json:"motion_roi,omitempty"`
 
+	// CanvasSource selects the output canvas: "fixed" (default) renders the
+	// preset canvas; "match_largest" follows the highest-resolution asset so
+	// high-bitrate sources keep their quality end to end.
+	CanvasSource string `json:"canvas_source,omitempty"`
 	// Source records where the preset was loaded from (not serialized).
 	Source string `json:"-"`
 }
@@ -221,11 +232,14 @@ func (p *Preset) Validate() error {
 			p.BeatSnapTolerance, p.MinClipDuration)
 	}
 	w := p.Scoring
-	if w.Motion < 0 || w.Audio < 0 || w.Duration < 0 || w.Hits < 0 || w.Density < 0 {
+	if w.Motion < 0 || w.Audio < 0 || w.Duration < 0 || w.Hits < 0 || w.Density < 0 || w.Player < 0 {
 		add("scoring weights must be >= 0")
 	}
-	if w.Motion+w.Audio+w.Duration+w.Hits+w.Density <= 0 {
+	if w.Motion+w.Audio+w.Duration+w.Hits+w.Density+w.Player <= 0 {
 		add("scoring weights must not all be zero")
+	}
+	if p.MinPlayerPresence < 0 || p.MinPlayerPresence > 1 {
+		add("min_player_presence must be in [0,1]")
 	}
 	if p.Transition.Type != "cut" && p.Transition.Type != "fade" && p.Transition.Type != "xfade" {
 		add("transition.type %q unsupported (cut|fade|xfade)", p.Transition.Type)

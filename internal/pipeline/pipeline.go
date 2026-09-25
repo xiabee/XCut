@@ -22,6 +22,7 @@ import (
 	"github.com/xiabee/XCut/internal/event"
 	"github.com/xiabee/XCut/internal/job"
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/player"
 	"github.com/xiabee/XCut/internal/render"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/style"
@@ -138,9 +139,60 @@ func (d Deps) proxyStore() *analysis.ProxyStore {
 // low-res proxy when proxy_enabled and the source is larger than the
 // analysis canvas, the original otherwise. The returned Options copy pins
 // UseProxy so the cache key distinguishes proxy-based results forever.
-func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options) (analysis.Options, string) {
+// analysisInput resolves the per-asset input path and analyzer set. Assets
+// carrying a measured player signature gain the presence analyzer; assets with
+// a spot but no signature get measured here (once, then cached like the other
+// analyzers).
+func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options, base []analysis.Analyzer, preset *style.Preset) (analysis.Options, []analysis.Analyzer, string, error) {
+	opts, analyzers, path, baseErr := d.analysisInputBase(ctx, asset, baseOpts, base)
+	if baseErr != nil {
+		return baseOpts, base, path, baseErr
+	}
+	// Style-driven extras (per-source ROI overrides the preset's court crop)
+	// need a preset; the analyze stage is style-agnostic, so nil skips them
+	// (presence scanning below is preset-independent).
+	if preset != nil {
+		roiAnalyzers, roiErr := assetAnalyzers(analyzers, preset, asset)
+		if roiErr != nil {
+			return baseOpts, base, xcerr.E(xcerr.CodeValidation, "invalid motion_roi on this asset", roiErr).Error(), roiErr
+		}
+		analyzers = roiAnalyzers
+	}
+	if asset.PlayerSpot == nil {
+		return opts, analyzers, path, nil
+	}
+	sig := player.Signature{}
+	if len(asset.PlayerSpot.Bins) > 0 {
+		sig = player.Signature{Bins: asset.PlayerSpot.Bins}
+	} else {
+		measured, frames, err := player.MeasureSignature(
+			ctx, d.tools(), path, asset.PlayerSpot.Rect, asset.PlayerSpot.At, asset.DurationSec)
+		if err != nil {
+			d.Log.Warn("player signature measurement failed; person filter off for this asset",
+				"asset", asset.ID, "err", err)
+			return opts, base, path, nil
+		}
+		asset.PlayerSpot.Bins = measured.Bins
+		asset.PlayerSpot.SampledAt = time.Now().Unix()
+		if b, err := json.Marshal(asset.PlayerSpot); err == nil {
+			if _, err := d.DB.ExecContext(ctx,
+				`UPDATE assets SET player_spot = ? WHERE id = ?`, string(b), asset.ID); err != nil {
+				d.Log.Warn("cannot persist player signature", "asset", asset.ID, "err", err)
+			}
+		}
+		d.Log.Info("player signature measured",
+			"asset", asset.ID, "frames", frames, "bins", len(measured.Bins))
+		sig = measured
+	}
+	hash := player.SigHash(sig.Bins)
+	opts.PlayerSig = hash
+	analyzers = append(analyzers, analysis.PlayerPresenceAnalyzer{Sig: sig})
+	return opts, analyzers, path, nil
+}
+
+func (d Deps) analysisInputBase(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options, base []analysis.Analyzer) (analysis.Options, []analysis.Analyzer, string, error) {
 	if !d.Cfg.ProxyOn() {
-		return baseOpts, asset.Path
+		return baseOpts, base, asset.Path, nil
 	}
 	opts := baseOpts
 	proxyPath, used, err := d.proxyStore().Ensure(ctx, d.tools(), asset.Path, asset.Fingerprint,
@@ -148,13 +200,13 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 	if err != nil {
 		// Proxy is an optimization, never a correctness gate.
 		d.Log.Warn("proxy generation failed; analyzing original", "asset", asset.ID, "err", err)
-		return baseOpts, asset.Path
+		return baseOpts, base, asset.Path, nil
 	}
 	if !used {
-		return baseOpts, asset.Path
+		return baseOpts, base, asset.Path, nil
 	}
 	opts.UseProxy = true
-	return opts, proxyPath
+	return opts, base, proxyPath, nil
 }
 
 func (d Deps) analyzers() ([]analysis.Analyzer, error) {
@@ -361,8 +413,12 @@ func (d Deps) analyzeBody(project *storage.Project, onAsset func(AnalyzedAsset),
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				assetOpts, path := d.analysisInput(jctx, &asset, opts)
-				result, err := analysis.Run(jctx, store, assetOpts, analyzers,
+				assetOpts, assetAnalyzers, path, aerr := d.analysisInput(jctx, &asset, opts, analyzers, nil)
+				if aerr != nil {
+					errCh <- aerr
+					return
+				}
+				result, err := analysis.Run(jctx, store, assetOpts, assetAnalyzers,
 					path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
 				if err != nil {
 					errCh <- err
@@ -601,10 +657,9 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 			// (UseProxy bit), not the original at a never-hit key — the old
 			// form re-decoded full originals on every regeneration and
 			// duplicated the analysis cache entries.
-			assetOpts, path := d.analysisInput(jctx, &asset, opts)
-			run, err := assetAnalyzers(analyzers, preset, &asset)
-			if err != nil {
-				return err
+			assetOpts, run, path, terr := d.analysisInput(jctx, &asset, opts, analyzers, preset)
+			if terr != nil {
+				return terr
 			}
 			res, err := analysis.Run(jctx, store, assetOpts, run,
 				path, asset.Fingerprint, asset.DurationSec, asset.HasAudio, d.Log)
@@ -640,6 +695,9 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 					ID:          asset.ID,
 					Path:        asset.Path,
 					DurationSec: asset.DurationSec,
+					Width:       asset.Width,
+					Height:      asset.Height,
+					FPS:         asset.FPS,
 					ROI:         AssetMotionROI(&asset),
 				},
 				Segments:   segs,

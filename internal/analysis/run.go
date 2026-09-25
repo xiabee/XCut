@@ -93,7 +93,7 @@ func (f FallbackAnalyzer) Analyze(ctx context.Context, opts Options, path string
 // Run executes the given analyzers over one asset and returns the combined
 // result. Cached results are served when the key matches.
 func Run(ctx context.Context, store *Store, opts Options, analyzers []Analyzer, path, fingerprint string, durationSec float64, hasAudio bool, log *slog.Logger) (*Result, error) {
-	cfg := ConfigKey{SampleFPS: opts.SampleFPS, AnalysisWidth: opts.AnalysisWidth, Proxy: opts.UseProxy}
+	cfg := ConfigKey{SampleFPS: opts.SampleFPS, AnalysisWidth: opts.AnalysisWidth, Proxy: opts.UseProxy, PlayerSig: opts.PlayerSig}
 	key := cacheKey(fingerprint, analyzers, cfg)
 
 	if store != nil {

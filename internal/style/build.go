@@ -17,12 +17,74 @@ type AssetInfo struct {
 	ID          string
 	Path        string
 	DurationSec float64
+	Width       int
+	Height      int
+	FPS         float64
 	// ROI is the region the project's analysis was aimed at, when one is set.
 	// The framing plan can point a window at its center; it is a position, not a
 	// promise that the whole region fits in the frame — the selector does not
 	// know the source's pixel aspect, and saying otherwise would be a claim the
 	// renderer, not the plan, has to keep.
 	ROI *MotionROI
+}
+
+// CanvasSource modes: "fixed" uses the preset canvas as-is; "match_largest"
+// sizes the canvas to the highest-resolution asset in the reel (rounded to
+// even, capped at 3840×2160, fps capped at 60) so a 4K/1080p high-bitrate
+// source renders at its own quality instead of downscaling into a fixed
+// canvas.
+const (
+	CanvasFixed        = "fixed"
+	CanvasMatchLargest = "match_largest"
+	maxCanvasW         = 3840
+	maxCanvasH         = 2160
+	maxCanvasFPS       = 60.0
+)
+
+// resolveCanvas picks the output canvas for the mode. assets is scanned for
+// the largest frame only when the mode asks for it.
+func resolveCanvas(mode string, fixed timeline.Canvas, assets []AssetInfo) timeline.Canvas {
+	if mode != CanvasMatchLargest {
+		return fixed
+	}
+	best := fixed
+	bestPixels := 0
+	for _, a := range assets {
+		px := a.Width * a.Height
+		if px <= bestPixels || px == 0 {
+			continue
+		}
+		bestPixels = px
+		w := a.Width - a.Width%2
+		h := a.Height - a.Height%2
+		fps := a.FPS
+		if fps <= 0 {
+			fps = fixed.FPS
+		}
+		if fps > maxCanvasFPS {
+			fps = maxCanvasFPS
+		}
+		w = minInt(w, maxCanvasW)
+		h = minInt(h, maxCanvasH)
+		best = timeline.Canvas{Width: w, Height: h, FPS: fps}
+	}
+	return best
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// assetsOf projects the per-asset knowledge the canvas resolver needs.
+func assetsOf(items []AssetEvents) []AssetInfo {
+	out := make([]AssetInfo, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.Asset)
+	}
+	return out
 }
 
 // AssetEvents pairs one asset with its event segments. Events are always
@@ -54,13 +116,17 @@ type selInterval struct {
 type factors struct {
 	motion, audio, duration float64
 	hits, density           float64
+	player                  float64
 }
 
-// weighted returns the preset-weighted total.
+// weighted returns the preset-weighted total. The player factor contributes
+// only where presence was measured (segments of signature-bearing assets);
+// everywhere else the weight is a no-op, so styles without a signature behave
+// byte-for-byte like before.
 func (f factors) weighted(p *Preset) float64 {
 	return p.Scoring.Motion*f.motion + p.Scoring.Audio*f.audio +
 		p.Scoring.Duration*f.duration + p.Scoring.Hits*f.hits +
-		p.Scoring.Density*f.density
+		p.Scoring.Density*f.density + p.Scoring.Player*f.player
 }
 
 // reason names the dominant weighted factors (share of the total), e.g.
@@ -80,6 +146,7 @@ func (f factors) reason(p *Preset) string {
 		{"duration", p.Scoring.Duration * f.duration},
 		{"hits", p.Scoring.Hits * f.hits},
 		{"density", p.Scoring.Density * f.density},
+		{"player", p.Scoring.Player * f.player},
 	}
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].value > parts[j].value })
 
@@ -116,6 +183,7 @@ func (f factors) breakdown(p *Preset) string {
 		line("duration", f.duration, p.Scoring.Duration),
 		line("hits", f.hits, p.Scoring.Hits),
 		line("density", f.density, p.Scoring.Density),
+		line("player", f.player, p.Scoring.Player),
 	}
 	var kept []string
 	for _, s := range parts {
@@ -225,6 +293,13 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			}
 			srcStart, srcEnd, atBoundary, anchor, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
 			if !ok {
+				continue
+			}
+			// Person filter: only bites where presence was measured (a player
+			// signature exists on this asset) — segments without a signature
+			// are never gated by a knob their data cannot answer.
+			if preset.MinPlayerPresence > 0 && c.seg.HasPlayerPresence &&
+				c.seg.PlayerPresence < preset.MinPlayerPresence {
 				continue
 			}
 			// Clamp to the real media duration: events should never exceed it,
@@ -353,7 +428,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	tl := &timeline.Timeline{
 		Version:   timeline.Version,
 		ProjectID: projectID,
-		Canvas:    preset.Canvas,
+		Canvas:    resolveCanvas(preset.CanvasSource, preset.Canvas, assetsOf(items)),
 		Tracks: []timeline.Track{
 			{ID: "v1", Kind: "video", Clips: clips},
 		},
@@ -479,7 +554,7 @@ func diverse(p *Preset, chosen []selInterval, cand selInterval, assetDur float64
 // rawFactors is one segment's un-normalized score component values (they
 // live on incomparable scales: motion ratios, dB, seconds, counts).
 type rawFactors struct {
-	motion, audio, duration, hits, density float64
+	motion, audio, duration, hits, density, player float64
 }
 
 func rawSegmentFactors(s event.Segment) rawFactors {
@@ -489,26 +564,32 @@ func rawSegmentFactors(s event.Segment) rawFactors {
 		duration: s.Duration(),
 		hits:     float64(s.HitCount),
 		density:  s.HitDensity,
+		player:   s.PlayerPresence,
 	}
 }
 
 // component is one accessor of rawFactors plus its observed min and span
-// across the candidate set.
+// across the candidate set. neutral is the value every candidate maps to when
+// the component carries no discriminating information (zero span) — 1.0 keeps
+// an unmeasured factor from penalizing anyone, while the player factor (mea-
+// sured only where a signature exists) uses 0.0: no measurement, no credit.
 type component struct {
 	get       func(rawFactors) float64
 	set       func(f *factors, v float64)
 	min, span float64
+	neutral   float64
 }
 
 // components lists the scored components. Higher is better for every one
 // of them (louder, more motion, longer, denser).
 func components() []component {
 	return []component{
-		{func(r rawFactors) float64 { return r.motion }, func(f *factors, v float64) { f.motion = v }, 0, 0},
-		{func(r rawFactors) float64 { return r.audio }, func(f *factors, v float64) { f.audio = v }, 0, 0},
-		{func(r rawFactors) float64 { return r.duration }, func(f *factors, v float64) { f.duration = v }, 0, 0},
-		{func(r rawFactors) float64 { return r.hits }, func(f *factors, v float64) { f.hits = v }, 0, 0},
-		{func(r rawFactors) float64 { return r.density }, func(f *factors, v float64) { f.density = v }, 0, 0},
+		{func(r rawFactors) float64 { return r.motion }, func(f *factors, v float64) { f.motion = v }, 0, 0, 1},
+		{func(r rawFactors) float64 { return r.audio }, func(f *factors, v float64) { f.audio = v }, 0, 0, 1},
+		{func(r rawFactors) float64 { return r.duration }, func(f *factors, v float64) { f.duration = v }, 0, 0, 1},
+		{func(r rawFactors) float64 { return r.hits }, func(f *factors, v float64) { f.hits = v }, 0, 0, 1},
+		{func(r rawFactors) float64 { return r.density }, func(f *factors, v float64) { f.density = v }, 0, 0, 1},
+		{func(r rawFactors) float64 { return r.player }, func(f *factors, v float64) { f.player = v }, 0, 0, 0},
 	}
 }
 
@@ -533,7 +614,7 @@ func relativize(all []rawFactors) []factors {
 		c.span = maxv - minv
 		c.min = minv
 		for i, r := range all {
-			v := 1.0
+			v := c.neutral
 			if c.span != 0 {
 				v = clamp((c.get(r)-c.min)/c.span, 0, 1)
 			}

@@ -27,9 +27,10 @@ func cmdAuto(a *App, args []string) error {
 	musicFlag := "" // a track to lay under the reel and cut to
 	projectName := "auto"
 	outPath := ""
-	subsFlag := ""      // "" or "off" = no captions; "on" = transcribe this run; a path = burn that file
-	scoreCropFlag := "" // normalized x,y,w,h of a burned-in scoreboard; "" = none
-	encoderFlag := ""   // hardware/software encoder override for this run's render
+	subsFlag := ""       // "" or "off" = no captions; "on" = transcribe this run; a path = burn that file
+	scoreCropFlag := ""  // normalized x,y,w,h of a burned-in scoreboard; "" = none
+	playerSpotFlag := "" // normalized x,y,w,h[,at] where the person filter looks; "" = none
+	encoderFlag := ""    // hardware/software encoder override for this run's render
 	pos, err := parseCommandArgs(args, map[string]*string{
 		"style":      &styleName,
 		"duration":   &durationFlag,
@@ -133,6 +134,21 @@ func cmdAuto(a *App, args []string) error {
 			}
 			fmt.Fprintf(a.Stdout, "==> scoreboard region %s on %d asset(s), measured during analyze\n",
 				scoreCropFlag, len(assetIDs))
+		}
+		if playerSpotFlag != "" {
+			rect, at, perr := parsePlayerSpotFlag(playerSpotFlag)
+			if perr != nil {
+				db.Close()
+				return perr
+			}
+			for _, id := range assetIDs {
+				if err := db.SetAssetPlayerSpot(a.Ctx, id, &storage.PlayerSpot{Rect: rect, At: at}); err != nil {
+					db.Close()
+					return err
+				}
+			}
+			fmt.Fprintf(a.Stdout, "==> player spot %s on %d asset(s), measured during analyze\n",
+				playerSpotFlag, len(assetIDs))
 		}
 		db.Close()
 	}

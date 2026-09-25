@@ -76,6 +76,44 @@ func (m *ScoreMarks) Valid() bool {
 	return true
 }
 
+// PlayerSpot is a user-drawn normalized rect around themselves in one frame,
+// together with the color signature analyze measured from it and when. Stored
+// as JSON in the assets.player_spot column (” = unset). The signature is the
+// person filter's model: segments whose frames backproject strongly against it
+// are the segments this person plays in.
+type PlayerSpot struct {
+	// Rect is [x, y, w, h] in 0..1 fractions of the frame.
+	Rect []float64 `json:"rect"`
+	// At is the source second the rect was drawn against (where the user was
+	// standing when they drew it).
+	At float64 `json:"at"`
+	// Bins is the sampled HSV histogram, flattened H-major (len == H*S*V
+	// when measured; nil when the spot is set but not yet scanned).
+	Bins []float64 `json:"bins,omitempty"`
+	// SampledAt records when the signature was measured (unix seconds), so
+	// the analyze stage can see "spot set, never scanned" and "scanned
+	// against an older rect" as different states — the same split the
+	// scoreboard crop/marks pair makes.
+	SampledAt int64 `json:"sampled_at,omitempty"`
+}
+
+// ValidSpotRect reports whether r is a sane normalized rect.
+func ValidSpotRect(r []float64) bool {
+	return len(r) == 4 && !ValidCropRectIsNaN(r) &&
+		r[0] >= 0 && r[1] >= 0 && r[2] > 0 && r[3] > 0 &&
+		r[0]+r[2] <= 1.0000001 && r[1]+r[3] <= 1.0000001
+}
+
+// ValidCropRectIsNaN guards the NaN cases ValidCropRect also rejects.
+func ValidCropRectIsNaN(r []float64) bool {
+	for _, v := range r {
+		if v != v { // NaN
+			return true
+		}
+	}
+	return false
+}
+
 // Asset is an imported media file within a project.
 type Asset struct {
 	ID          string  `json:"id"`
@@ -109,20 +147,25 @@ type Asset struct {
 	// analyze stage scans when marks are missing or were measured against a
 	// different rect, so moving the crop re-derives the marks by itself.
 	ScoreCrop []float64 `json:"score_crop,omitempty"`
+	// PlayerSpot is the person filter's model: a rect the user drew around
+	// themselves plus the color signature analyze measured from it. It rides
+	// the asset for the same reason the scoreboard pair does — the spot
+	// belongs to the camera and the person, not to a style.
+	PlayerSpot *PlayerSpot `json:"player_spot,omitempty"`
 }
 
 const assetCols = `id, project_id, path, filename, fingerprint, duration_s, width, height,
 fps, video_codec, audio_codec, has_audio, bitrate, size_bytes, probe_json, created_at, motion_roi,
-score_marks, score_crop`
+score_marks, score_crop, player_spot`
 
 func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 	var a Asset
 	var hasAudio int
-	var roiJSON, marksJSON, cropJSON string
+	var roiJSON, marksJSON, cropJSON, spotJSON string
 	err := row.Scan(&a.ID, &a.ProjectID, &a.Path, &a.Filename, &a.Fingerprint,
 		&a.DurationSec, &a.Width, &a.Height, &a.FPS,
 		&a.VideoCodec, &a.AudioCodec, &hasAudio, &a.Bitrate, &a.SizeBytes,
-		&a.ProbeJSON, &a.CreatedAt, &roiJSON, &marksJSON, &cropJSON)
+		&a.ProbeJSON, &a.CreatedAt, &roiJSON, &marksJSON, &cropJSON, &spotJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -154,7 +197,40 @@ func scanAsset(row interface{ Scan(...any) error }) (*Asset, error) {
 		}
 		a.ScoreCrop = crop
 	}
+	if spotJSON != "" {
+		spot := &PlayerSpot{}
+		if err := json.Unmarshal([]byte(spotJSON), spot); err != nil {
+			return nil, xcerr.E(xcerr.CodeStorageFailure,
+				"asset "+a.ID+" has a corrupt player_spot", err)
+		}
+		a.PlayerSpot = spot
+	}
 	return &a, nil
+}
+
+// SetAssetPlayerSpot stores (spot != nil) or clears (spot == nil) the person
+// filter's model on one asset. Reports NotFound when the asset id is unknown.
+func (d *DB) SetAssetPlayerSpot(ctx context.Context, assetID string, spot *PlayerSpot) error {
+	if spot != nil && !ValidSpotRect(spot.Rect) {
+		return xcerr.E(xcerr.CodeValidation,
+			"player spot needs a normalized rect x,y,w,h with x+w,y+h<=1", nil)
+	}
+	value := ""
+	if spot != nil {
+		b, err := json.Marshal(spot)
+		if err != nil {
+			return xcerr.E(xcerr.CodeStorageFailure, "cannot serialize player spot", err)
+		}
+		value = string(b)
+	}
+	res, err := d.ExecContext(ctx, `UPDATE assets SET player_spot = ? WHERE id = ?`, value, assetID)
+	if err != nil {
+		return xcerr.E(xcerr.CodeStorageFailure, "cannot store player spot", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return xcerr.E(xcerr.CodeNotFound, "asset not found: "+assetID, nil)
+	}
+	return nil
 }
 
 // UpsertAsset inserts or updates (by project+path) an asset row. The asset

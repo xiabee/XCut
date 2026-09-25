@@ -37,6 +37,13 @@ type Segment struct {
 	// end a clip where the play actually ended (last hit + landing tail)
 	// instead of at an arithmetic window edge that can cut a rally mid-air.
 	Hits []float64 `json:"hits,omitempty"`
+
+	// PlayerPresence is the mean person-signature match (0..1) inside the
+	// segment, from the player_presence track an asset carries when its user
+	// seeded a player spot. HasPlayerPresence distinguishes "measured 0" from
+	// "no signature on this asset".
+	PlayerPresence    float64 `json:"player_presence,omitempty"`
+	HasPlayerPresence bool    `json:"has_player_presence,omitempty"`
 }
 
 // Duration of the segment in seconds.
@@ -181,7 +188,7 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 		return nil, stats, xcerr.E(xcerr.CodeValidation, "media duration must be positive", nil)
 	}
 
-	var motion, audio, onsets *analysis.FeatureTrack
+	var motion, audio, onsets, playerPresence *analysis.FeatureTrack
 	wantMotion := cfg.MotionTrack
 	if wantMotion == "" {
 		wantMotion = "frame_diff"
@@ -198,7 +205,12 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 			audio = &tracks[i]
 		case "audio_onset":
 			onsets = &tracks[i]
+		case "player_presence":
+			playerPresence = &tracks[i]
 		}
+	}
+	if playerPresence != nil {
+		sortSamples(playerPresence.Samples)
 	}
 	if motion == nil || len(motion.Samples) == 0 {
 		return nil, stats, xcerr.E(xcerr.CodeValidation, "frame_diff feature track missing", nil)
@@ -212,7 +224,7 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 	}
 
 	if cfg.Mode == ModeRally {
-		ssegs, serr := buildRallies(motion, audio, onsets, duration, cfg, &stats)
+		ssegs, serr := buildRallies(motion, audio, onsets, playerPresence, duration, cfg, &stats)
 		stats.Segments = len(ssegs)
 		return ssegs, stats, serr
 	}

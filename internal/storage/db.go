@@ -195,6 +195,14 @@ ON jobs(project_id, type)
 WHERE status IN ('queued', 'running')
   AND type IN ('analyze', 'timeline', 'render', 'subtitles', 'export');
 `},
+	// v8: the player spot — a small normalized rect a user draws around
+	// themselves in one frame. Analyze samples the region's color signature
+	// (an HSV histogram) so the style engine can rank segments by how much
+	// that signature is present — the person filter, without any AI
+	// dependency. JSON (rect + signature + measured-at) or '' when unset.
+	{id: 8, name: "asset-player-spot", stmt: `
+ALTER TABLE assets ADD COLUMN player_spot TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // ExclusiveJobTypes returns the job types the *last* migration's partial unique

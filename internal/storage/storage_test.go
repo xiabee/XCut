@@ -420,6 +420,12 @@ func TestExclusiveIndexMigrationAppliesToAnOlderDatabase(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_jobs_active_exclusive`); err != nil {
 		t.Fatal(err)
 	}
+	// Roll the schema back to its v6 shape: forget migrations 7+ AND drop the
+	// structures later migrations added (ADD COLUMN is not idempotent in
+	// SQLite, so a re-run would refuse its own column otherwise).
+	if _, err := db.ExecContext(ctx, `ALTER TABLE assets DROP COLUMN player_spot`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.ExecContext(ctx, `DELETE FROM schema_migrations WHERE id >= 7`); err != nil {
 		t.Fatal(err)
 	}

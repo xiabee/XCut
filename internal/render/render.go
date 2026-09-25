@@ -252,7 +252,7 @@ func normalizeClip(ctx context.Context, tl *timeline.Timeline, c timeline.Clip, 
 	// Volume 0 keeps the audio track (a muted clip stays uniform for concat).
 	args = append(args,
 		"-af", af,
-		"-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000",
+		"-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000",
 	)
 	args = append(args, audioArgs...)
 	args = append(args, encoderVideoArgs(opts.Encoder, opts.CRF)...)
@@ -530,7 +530,7 @@ func xfadeCombine(ctx context.Context, clips []timeline.Clip, parts []string, op
 	args = append(args, encoderVideoArgs(opts.Encoder, opts.CRF)...)
 	args = append(args,
 		"-pix_fmt", "yuv420p",
-		"-c:a", "aac", "-b:a", "128k",
+		"-c:a", "aac", "-b:a", "192k",
 		"-movflags", "+faststart",
 		"-f", "mp4",
 		outPath,

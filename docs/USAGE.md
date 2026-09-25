@@ -154,6 +154,13 @@ analysis cache keeps the two apart: setting a region makes the next `xcut analyz
 measure the clip again inside it, which is also when a scoreboard region gets its
 point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
+## xcut player
+```
+usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]]
+
+person filter: mark where you are in a source
+```
+
 ## xcut render
 ```
 usage: xcut render <project> [--out path] [--subs file|auto] [--encoder name]

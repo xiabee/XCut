@@ -17,6 +17,9 @@ type ConfigKey struct {
 	SampleFPS     float64 `json:"sample_fps"`
 	AnalysisWidth int     `json:"analysis_width"`
 	Proxy         bool    `json:"proxy,omitempty"` // analyzed a generated proxy, not the original
+	// PlayerSig is the hash of the color signature a presence scan was run
+	// with. Re-seeding the player spot must re-scan, never cross-serve.
+	PlayerSig string `json:"player_sig,omitempty"`
 }
 
 // cacheKey = SHA256(fingerprint | analyzer names+versions | config). Stored

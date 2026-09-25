@@ -52,6 +52,10 @@ type Options struct {
 	// process that hangs must not pin a worker slot forever). 0 disables
 	// the per-call cap — the job context still applies.
 	CallTimeout time.Duration
+	// PlayerSig enables the player-presence analyzer: set to the color
+	// signature hash measured from the asset's player spot. Empty = no
+	// presence track. The value feeds the cache key (ConfigKey.PlayerSig).
+	PlayerSig string
 }
 
 // Analyzer is the pluggable analysis unit. Future Rust/AI workers implement

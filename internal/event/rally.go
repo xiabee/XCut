@@ -78,7 +78,7 @@ func AdaptRallyChunk(chunk, duration, target, maxClip float64) float64 {
 
 // buildRallies clusters onsets into rally segments. The stats pointer (nil
 // in tests that don't care) collects gate disposition counts.
-func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64, cfg Config, stats *BuildStats) ([]Segment, error) {
+func buildRallies(motion, audio, onsets, playerPresence *analysis.FeatureTrack, duration float64, cfg Config, stats *BuildStats) ([]Segment, error) {
 	hits := onsetSamples(onsets)
 	if len(hits) == 0 {
 		return nil, nil
@@ -219,6 +219,13 @@ func buildRallies(motion, audio, onsets *analysis.FeatureTrack, duration float64
 			continue
 		}
 		if seg, gate, ok := scoreRallyWithFloor(motion, audio, cfg, c.bounds[0], c.bounds[1], c.hits, effectiveFloor); ok {
+			if playerPresence != nil {
+				mean := intervalMean(playerPresence, seg.Start, seg.End)
+				if !math.IsNaN(mean) && !math.IsInf(mean, 0) {
+					seg.PlayerPresence = round4(mean)
+					seg.HasPlayerPresence = true
+				}
+			}
 			segments = append(segments, seg)
 		} else if stats != nil {
 			switch gate {
