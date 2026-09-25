@@ -5,7 +5,7 @@
 	"canvas": { "width": 1280, "height": 720, "fps": 30 },
 	"target_duration": 120,
 	"min_clip_duration": 1.5,
-	"max_clip_duration": 8.0,
+	"max_clip_duration": 10.0,
 	"scoring": {
 		"motion": 0.20,
 		"audio": 0.10,
@@ -28,5 +28,5 @@
 	},
 	"transition": { "type": "cut", "duration": 0 },
 	"audio": { "gain": 1.0 },
-	"diversity": { "min_gap": 4.0, "max_overlap_iou": 0.4, "max_per_window": 2, "min_per_window": 1, "phases": 5 }
+	"diversity": { "min_gap": 2.5, "max_overlap_iou": 0.4, "max_per_window": 2, "min_per_window": 1, "phases": 5 }
 }

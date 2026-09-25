@@ -272,6 +272,25 @@ func cmdDoctor(a *App, args []string) error {
 		add("API auth", "OPTIONAL", "no token; loopback only, remote bind refused")
 	}
 
+	// Resource profile: what the machine decided for itself (or what the
+	// user pinned), in one line — the knobs it drives are the ones every
+	// stage's parallelism rides on.
+	spec := config.DetectMachine()
+	rec := config.RecommendResources(spec)
+	profile := a.Cfg.Resource.Profile
+	if profile == "" {
+		profile = config.ProfileAuto
+	}
+	profileDetail := fmt.Sprintf("%d children × %d threads, analysis workers %d (of %d logical CPUs)",
+		a.Cfg.Resource.MaxFFmpegProcesses, a.Cfg.Resource.FFmpegThreads,
+		a.Cfg.Resource.MaxAnalysisWorkers, spec.LogicalCPU)
+	if profile == config.ProfileAuto {
+		add("Resource profile", "OK", "auto — "+profileDetail)
+	} else {
+		add("Resource profile", "OK", "manual — "+profileDetail+
+			fmt.Sprintf(" (auto would say %d × %d)", rec.MaxFFmpegProcesses, rec.FFmpegThreads))
+	}
+
 	// Process sandbox posture: what bounds a runaway ffmpeg child. The
 	// kill-on-close job object is Windows; the memory cap has a second rung on
 	// Linux through a per-child systemd scope (D18), and media.SandboxPosture

@@ -33,6 +33,10 @@ type Segment struct {
 	Kind       string  `json:"kind,omitempty"`      // "" (activity) | "rally"
 	HitCount   int     `json:"hit_count,omitempty"` // audio transients in segment
 	HitDensity float64 `json:"hit_density,omitempty"`
+	// Hits carries the transient timestamps themselves so the style engine can
+	// end a clip where the play actually ended (last hit + landing tail)
+	// instead of at an arithmetic window edge that can cut a rally mid-air.
+	Hits []float64 `json:"hits,omitempty"`
 }
 
 // Duration of the segment in seconds.

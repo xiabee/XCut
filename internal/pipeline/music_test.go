@@ -105,7 +105,7 @@ func reqFor(f bedFixture, music string, snap float64) TimelineRequest {
 	// 7.7 s, odd on purpose: a round ask is answered by max_clip_duration, which
 	// lands on the half-second lattice by construction and leaves the snap with
 	// nothing to prove.
-	return TimelineRequest{Style: "badminton_highlight", Duration: 7.7, BeatSnap: snap, Music: music}
+	return TimelineRequest{Style: "generic_highlight", Duration: 7.7, BeatSnap: snap, Music: music}
 }
 
 // TestBedGridOutranksTheSourceAudio is the precedence claim end to end.

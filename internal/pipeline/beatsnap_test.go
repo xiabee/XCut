@@ -37,7 +37,10 @@ func TestBeatSnappingThroughTheRealAnalysisPath(t *testing.T) {
 		slack  = 0.06 // onset detection is sampled, not exact
 	)
 	dir := t.TempDir()
-	path, err := testmedia.GenerateRally(dir, "clicks.mp4", 320, 240, 25, 14,
+	// The file runs 0.3 s past a lattice line (14.3): a whole-file rally now
+	// clamps its end there — OFF the half-second grid — so the control below
+	// still has something to prove, and the snap can reach the 14.5 beat.
+	path, err := testmedia.GenerateRally(dir, "clicks.mp4", 320, 240, 25, 14.3,
 		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: period}})
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +183,11 @@ func nearBeat(ts, period, slack float64) bool {
 // end that must not move beside a free one that must — is internal/style's
 // TestBeatSnap* family, which needs no ffmpeg to check it.
 func snapReq(snap float64) TimelineRequest {
-	return TimelineRequest{Style: "badminton_highlight", Duration: 7.7, BeatSnap: snap}
+	// generic_highlight: activity segments carry no hit times, so their ends
+	// stay head-anchored and free for the snap to move. A rally-style reel
+	// would end at last-hit-plus-tail, which the grid (built from the same
+	// onsets) never reaches — and the landing, not the beat, owns that edge.
+	return TimelineRequest{Style: "generic_highlight", Duration: 7.7, BeatSnap: snap}
 }
 
 func clipEnds(clips []timeline.Clip) []float64 {

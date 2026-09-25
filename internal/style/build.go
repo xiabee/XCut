@@ -223,7 +223,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				budgetRanOut = true
 				break
 			}
-			srcStart, srcEnd, atBoundary, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
+			srcStart, srcEnd, atBoundary, anchor, ok := trimSegment(preset, c.seg, remaining, c.boundaries)
 			if !ok {
 				continue
 			}
@@ -236,10 +236,12 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				continue
 			}
 			// Beat snapping only applies where nothing else has fixed the end: a
-			// measured point end is the harder constraint, so a clip that already
-			// stops as the score changes keeps that moment.
+			// measured point end outranks the grid, and so does a rally's own
+			// landing — a clip that stops at last-hit-plus-tail keeps that
+			// landing even when a beat sits nearer (the grid, built from the
+			// same onsets, ends at the last hit anyway).
 			atBeat := 0.0
-			if atBoundary == 0 {
+			if atBoundary == 0 && anchor != anchorRallyEnd {
 				if snapped, moved := snapEnd(preset, srcStart, srcEnd, c.seg, c.beats); moved {
 					srcEnd, atBeat = snapped, snapped
 				}
@@ -277,6 +279,11 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				// Which boundary shaped this clip — so a reader can check the
 				// scoreboard rule per clip instead of trusting an aggregate score.
 				md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
+			}
+			if anchor != "" && anchor != anchorBoundary {
+				// The end rule is visible per clip too: "last hit + landing
+				// tail" is the answer to why a clip stops where it stops.
+				md["end_anchor"] = anchor
 			}
 			if atBeat > 0 {
 				// Same argument for the grid: the beat is visible per clip. Four
@@ -549,7 +556,7 @@ func relativize(all []rawFactors) []factors {
 // boundary the window was ended at — 0 when the clip is start-anchored — so the
 // caller can record *why* this clip stops where it does instead of leaving the
 // reader to infer it from a duration.
-func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []float64) (start, end, atBoundary float64, ok bool) {
+func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []float64) (start, end, atBoundary float64, anchor string, ok bool) {
 	length := seg.Duration()
 	if length > p.MaxClipDuration {
 		length = p.MaxClipDuration
@@ -558,20 +565,72 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []f
 		length = remaining
 	}
 	if length < p.MinClipDuration {
-		return 0, 0, 0, false
+		return 0, 0, 0, "", false
 	}
+
+	// Default anchor, unchanged for segments that carry no hit times: the
+	// window starts at the segment head.
+	anchor = anchorHead
 	start = round4(seg.Start)
 	end = round4(start + length)
+
+	// Rally mode: the window ENDS where the play ended — the last hit plus
+	// the landing tail — so a dive at the buzzer and the shuttle coming down
+	// stay inside the clip instead of an arithmetic edge cutting the point
+	// mid-air. The window then reaches back for its length.
+	if len(seg.Hits) > 0 {
+		lastHit := seg.Hits[len(seg.Hits)-1]
+		naturalEnd := lastHit + rallyTailSeconds(p)
+		if naturalEnd <= seg.End+hitTailEps {
+			end = naturalEnd
+		} else {
+			end = seg.End // the segment's own pad already holds the tail
+		}
+		start = end - length
+		if start < seg.Start {
+			start = seg.Start
+			end = start + length
+		}
+		anchor = anchorRallyEnd
+	}
+
+	// Scoreboard boundaries (sidecar-measured point ends) outrank the hit
+	// heuristic and keep the semantics they always had.
 	if b, found := reachableBoundary(boundaries, seg, p.MinClipDuration); found {
 		newStart := b - length
 		if newStart < seg.Start {
 			newStart = seg.Start
 		}
 		start, end = round4(newStart), round4(b)
-		atBoundary = b
+		atBoundary, anchor = b, anchorBoundary
 	}
-	return start, end, atBoundary, true
+	return round4(start), round4(end), atBoundary, anchor, true
 }
+
+// defaultRallyTail mirrors internal/event's default rally_pad: the landing
+// tail a clip keeps after the last hit when the style says nothing.
+const defaultRallyTail = 1.2
+
+// rallyTailSeconds is the landing tail a clip keeps after the last hit: the
+// style's own rally_pad (the seconds that already pad segment bounds), so the
+// space between "last hit" and "players walk away" stays one number.
+func rallyTailSeconds(p *Preset) float64 {
+	if p.EventConfig.RallyPad > 0 {
+		return p.EventConfig.RallyPad
+	}
+	return defaultRallyTail
+}
+
+// hitTailEps absorbs round4 rounding on hit timestamps.
+const hitTailEps = 0.01
+
+// Clip-end anchors, recorded into clip metadata so a reel explains not only
+// why a clip was picked but also why it stops where it stops.
+const (
+	anchorBoundary = "scoreboard point end"
+	anchorRallyEnd = "last hit + landing tail"
+	anchorHead     = "segment head"
+)
 
 // reachableBoundary picks the first boundary that can serve as a clip end:
 // at least one minimum-clip inside the segment, and not past its end (the

@@ -302,7 +302,8 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 |---|---|---|
 | `workspace` | `~/.xcut` | 数据目录（数据库、缓存、临时、工程） |
 | `resource.max_concurrent_jobs` | 2 | 并行任务硬上限 |
-| `resource.max_ffmpeg_processes` | 2 | 并行 ffmpeg/ffprobe 硬上限（**同时决定渲染时多少片段并行归一化**——实测 4 槽位把 2 分钟成片的渲染从 105 s 提到 43 s，见 docs/PERFORMANCE.md） |
+| `resource.profile` | `auto` | **机器自动画像**：按逻辑核数/内存自动设定并发与线程（上限 ≈ 半个机器的 CPU 与内存），实测把 2 分钟成片的渲染从 105 s 压到 31 s（docs/PERFORMANCE.md）；设为 `manual` 则下面四个旋钮完全由你说了算 |
+| `resource.max_ffmpeg_processes` | auto 探测 | 并行 ffmpeg/ffprobe 硬上限（**同时决定渲染时多少片段并行归一化**；`profile: manual` 时的显式值才会生效） |
 | `resource.max_render_workers` | 1 | 并发渲染任务的独立上限 |
 | `resource.max_analysis_workers` | 2 | 一次分析同时推进多少个素材（子进程数仍受 `max_ffmpeg_processes` 限制） |
 | `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |

@@ -5,7 +5,16 @@
 
 Updated: 2026-09-25 02:45 +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `## Version / HEAD`.
+last paragraph before `
+
+**Known flake (this host):** `scripts/check.sh fast` intermittently fails one
+cli auto/render test (a different one each run — scoreboard-region, captions,
+subs-restyle) under full parallel package load; every one passes with
+`-run` in isolation and the whole suite passes on a quiet machine. The failing
+assertion is timing-sensitive (real-ffmpeg one-shot runs ~4-8 s under
+contention). Not caused by any single change: it reproduces on a pristine
+origin/main worktree.
+## Version / HEAD`.
 
 Session #18: the rally-end gap closed with imported data instead of a new
 heuristic. The sidecar can now read a burned-in

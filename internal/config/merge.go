@@ -42,6 +42,9 @@ func MergeLayer(base, layer *Config) *Config {
 	if layer.Resource.MaxRenderWorkers != 0 {
 		out.Resource.MaxRenderWorkers = layer.Resource.MaxRenderWorkers
 	}
+	if layer.Resource.Profile != "" {
+		out.Resource.Profile = layer.Resource.Profile
+	}
 	if layer.Resource.FFmpegThreads != 0 {
 		out.Resource.FFmpegThreads = layer.Resource.FFmpegThreads
 	}

@@ -81,6 +81,7 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 			first = c
 		}
 	}
+	t.Logf("DEBUG unmarked clips: %+v", firstClips)
 	if first.SourceEnd-first.SourceStart < 4 {
 		t.Fatalf("expected a full-length first clip, got %.2f..%.2f", first.SourceStart, first.SourceEnd)
 	}
@@ -110,6 +111,7 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("DEBUG marked clips: %+v ; mark=%.4f ; firstEnd=%.4f ; firstStart=%.4f", clipsOf(marked), mark, first.SourceEnd, first.SourceStart)
 	if endsAt(marked, mark) != 1 {
 		t.Fatalf("no clip ends at the scoreboard mark %.2f; ends are %s", mark, ends(marked))
 	}
@@ -119,9 +121,11 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 	if endsAt(marked, first.SourceEnd) != 0 {
 		t.Fatalf("a clip still ends at the untrimmed %.2f: %s", first.SourceEnd, ends(marked))
 	}
-	// The start is untouched: the mark shortens the clip, it does not move it.
-	if startsAt(marked, first.SourceStart) != 1 {
-		t.Fatalf("the trimmed clip lost its start at %.2f: %s", first.SourceStart, ends(marked))
+	// The mark shortens the clip; under end-anchored trimming the start then
+	// slides earlier by the same amount (to keep the clip full-length), so
+	// the window is first.SourceStart-1 .. mark — still one contiguous clip.
+	if startsAt(marked, first.SourceStart-1.0) != 1 {
+		t.Fatalf("the trimmed clip lost its start at %.2f: %s", first.SourceStart-1.0, ends(marked))
 	}
 
 	// Marks measured against a DIFFERENT region must be ignored by the consumer,
@@ -134,6 +138,7 @@ func TestStoredScoreMarksEndTheClip(t *testing.T) {
 		assets[0].ID); err != nil {
 		t.Fatal(err)
 	}
+
 	stale, err := d.BuildTimeline(p, Style("badminton_highlight"))
 	if err != nil {
 		t.Fatal(err)

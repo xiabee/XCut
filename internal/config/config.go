@@ -56,8 +56,13 @@ type Server struct {
 // scheduler must never exceed them. Zero/negative values are repaired to
 // defaults by Resolve.
 type Resource struct {
-	MaxConcurrentJobs  int `json:"max_concurrent_jobs"`
-	MaxFFmpegProcesses int `json:"max_ffmpeg_processes"`
+	// Profile decides who sizes the concurrency knobs below: "auto" (the
+	// default) overwrites them with machine-detected values that keep ffmpeg
+	// at roughly half the CPUs and half the RAM; "manual" keeps exactly what
+	// the config layers say. docs/PERFORMANCE.md has the measurements.
+	Profile            string `json:"profile"`
+	MaxConcurrentJobs  int    `json:"max_concurrent_jobs"`
+	MaxFFmpegProcesses int    `json:"max_ffmpeg_processes"`
 	// MaxAnalysisWorkers is how many assets one analyze run keeps in flight. It is
 	// not the ceiling on processes: every ffmpeg/ffprobe child still asks
 	// MaxFFmpegProcesses, so raising this past that changes nothing measurable
@@ -175,6 +180,7 @@ func Default() *Config {
 		Server:    Server{Listen: "127.0.0.1:8619", ListenRemote: false},
 		Resource: Resource{
 			MaxConcurrentJobs:   2,
+			Profile:             ProfileAuto,
 			MaxFFmpegProcesses:  2,
 			MaxAnalysisWorkers:  2,
 			MaxRenderWorkers:    1,
@@ -310,6 +316,18 @@ func Resolve(cfg *Config) error {
 	}
 
 	r := &cfg.Resource
+	if err := validateProfile(r.Profile); err != nil {
+		return err
+	}
+	if r.Profile == "" {
+		r.Profile = ProfileAuto
+	}
+	if r.Profile == ProfileAuto {
+		// The machine decides the concurrency knobs (half the CPUs, half the
+		// RAM to ffmpeg at most). This runs after every layer merged, so an
+		// explicit "profile": "manual" anywhere in the chain wins.
+		applyAutoProfile(cfg)
+	}
 	floor := func(v, min int, def int) int {
 		if v < min {
 			return def

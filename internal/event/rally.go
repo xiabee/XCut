@@ -367,6 +367,10 @@ func scoreRallyWithFloor(motion, audio *analysis.FeatureTrack, cfg Config, start
 	if math.IsNaN(sc) || math.IsInf(sc, 0) {
 		sc = 0
 	}
+	hits := make([]float64, len(chunkHits))
+	for i, h := range chunkHits {
+		hits[i] = round4(h.T)
+	}
 	return Segment{
 		Start:       round4(start),
 		End:         round4(end),
@@ -376,6 +380,7 @@ func scoreRallyWithFloor(motion, audio *analysis.FeatureTrack, cfg Config, start
 		Kind:        ModeRally,
 		HitCount:    count,
 		HitDensity:  round4(density),
+		Hits:        hits,
 	}, "", true
 }
 
