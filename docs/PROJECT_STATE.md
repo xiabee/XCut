@@ -2319,6 +2319,26 @@ no assertion detail) and passed in isolation — still intermittent, still
 load-shaped, and it now leaves evidence behind: that test's failure
 output ships in the message instead of being discarded.
 
+**Same night, the packaging axis was exercised and the CLI help stopped
+lying.** Three platform binaries plus the host smoke (five checks, token
+masking included) built green at `55d1c7a` — where render had been
+registered twice since the GPU session added `--encoder` in a second
+init and left the stale one standing; `lookup` returns the first match,
+so `xcut render -h` kept advertising a syntax without the flag the
+command takes. The stale init is gone and a registry pin fails the build
+on the next double registration.
+
+**And the product soak earned its keep on the very change M-4/M-5
+introduced.** A 150-round run recorded one error in round 128: ffmpeg
+exited zero, but under full-load saturation its final stderr flush
+missed the 1 s drain grace, `cmd.Wait` answered `exec.ErrWaitDelay`, and
+the good encode was recorded as a failed job. In `RunCombined` the pipes
+carry diagnostics only — the exit code is the verdict — so the
+classification now reads a post-success WaitDelay expiry as success,
+while the output-bearing paths (probe, stream) keep the strict error
+because there the pipe *is* the product (`32335bc`; the 150-round rerun
+came back clean).
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
