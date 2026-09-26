@@ -747,6 +747,9 @@ func TestExportWritesCaptionsFromTheStoredTranscriptWithNoSidecar(t *testing.T) 
 // stored payload cannot tell the tap whether the project's asset is still the one that was
 // spoken over — the question a mismatch does not ask.
 func TestExportStillTranscribesWhenASidecarIsConfigured(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
 	root := t.TempDir()
 	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
 		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
@@ -1051,6 +1054,9 @@ func TestTranscriptionBindsThePayloadToTheAssetHeard(t *testing.T) {
 // the box is the right size for the wrong speech. With a sidecar the tap re-transcribes; the
 // plan says so instead of reporting a comfortable "reuse".
 func TestExportRetranscribesCaptionsHeardFromOtherMedia(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
 	root := t.TempDir()
 	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
 		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
@@ -1133,6 +1139,9 @@ func TestExportRetranscribesCaptionsHeardFromOtherMedia(t *testing.T) {
 // but a silent "reuse" would let the reel ship with the wrong words and no trace of the
 // decision in the record.
 func TestExportSaysWhenItBurnsAnotherClipsCaptionsWithNoSidecar(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
 	root := t.TempDir()
 	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
 		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
@@ -1185,6 +1194,9 @@ func TestExportSaysWhenItBurnsAnotherClipsCaptionsWithNoSidecar(t *testing.T) {
 // one. A payload written before bindings existed (or hand-placed) gives the tap no
 // evidence, and evidence-free is not a reason to spend a transcription — or to warn.
 func TestUnboundTranscriptIsNotHeldAgainstTheProject(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
 	root := t.TempDir()
 	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
 		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
