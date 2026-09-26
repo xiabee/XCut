@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -109,6 +110,17 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	// left-to-right and handed back the pre-Run (empty) slice, stripping the
 	// stderr tail from every failure diagnostic.
 	err = cmd.Wait()
+	// WaitDelay lapsing after a *successful* exit means only that the
+	// diagnostic pipes hadn't drained within the grace — under full load an
+	// ffmpeg's final stderr flush can miss a 1 s window. The process exit
+	// code is the render's verdict and it said zero; failing the job over a
+	// lost stderr tail (soak round 128: a good encode recorded as failed)
+	// turns a slow machine into a false negative. A non-zero exit still
+	// returns its own ExitError; the output-bearing paths (probe, stream)
+	// keep the strict error because there the pipe *is* the product.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
 	return buf.b, err
 }
 
