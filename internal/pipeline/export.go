@@ -12,6 +12,7 @@ import (
 	"github.com/xiabee/XCut/internal/subs"
 	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/worker"
+	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 // The export tap is the sequence a user would otherwise click through: a reel,
@@ -171,6 +172,17 @@ func (s CaptionState) frames() string {
 func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (string, []ExportStep, error) {
 	if err := req.Timeline.validate(); err != nil {
 		return "", nil, err
+	}
+	// Refuse at the door when the tap's own render would collide: an active
+	// render row makes the child RunAsync below fail — but only after the
+	// reel was rebuilt and the captions possibly transcribed, so the tap
+	// would record a failure naming a job the user never connected to the
+	// button. The answer belongs at POST time, before any stage is spent.
+	if active, err := d.DB.FindActiveJob(d.Ctx, job.TypeRender, project.ID); err != nil {
+		return "", nil, err
+	} else if active != nil {
+		return "", nil, xcerr.E(xcerr.CodeConflict,
+			fmt.Sprintf("a render job for this project is already %s — the one-tap export queues a render of its own; wait for it to finish or cancel it first", active.Status), nil)
 	}
 	subsPath := d.existingSubtitlesPath(project.ID)
 	steps := []ExportStep{

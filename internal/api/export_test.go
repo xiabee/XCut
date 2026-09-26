@@ -270,3 +270,30 @@ func TestTheClientPostsTheTapWhereTheServerAnswers(t *testing.T) {
 	}
 	do(t, s, "POST", "/api/v1/jobs/"+out["job_id"].(string)+"/cancel", "")
 }
+
+// TestExportRefusesBeforeWorkWhenARenderIsActive: the tap's own render
+// collides with an active one (the exclusive set again), and the collision
+// used to surface only after the reel was rebuilt and the captions possibly
+// transcribed — minutes of work, then a failed row naming a job the user
+// never connected to the button. The refusal belongs at POST time, before
+// any stage runs, and no export row may exist on the way out.
+func TestExportRefusesBeforeWorkWhenARenderIsActive(t *testing.T) {
+	s, pid := stagedReel(t, "export-conflict")
+	ctx := context.Background()
+	if _, err := s.DB.CreateJob(ctx, "render", pid, "CPU_HEAVY", `{"out":"busy.mp4"}`); err != nil {
+		t.Fatal(err)
+	}
+	rec, out := do(t, s, "POST", "/api/v1/projects/"+pid+"/export", "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("export beside an active render answered %d %v, want 409 before any stage ran", rec.Code, out)
+	}
+	jobs, err := s.DB.ListJobs(ctx, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range jobs {
+		if j.Type == "export" {
+			t.Fatal("an export row was queued despite the collision — the refusal must precede every stage")
+		}
+	}
+}
