@@ -3,9 +3,9 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-26 00:0x +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-26 23:3x +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `
+last paragraph before `## Version / HEAD`.
 
 **Known flake (this host):** `scripts/check.sh fast` intermittently fails one
 cli auto/render test (a different one each run — scoreboard-region, captions,
@@ -14,7 +14,6 @@ subs-restyle) under full parallel package load; every one passes with
 assertion is timing-sensitive (real-ffmpeg one-shot runs ~4-8 s under
 contention). Not caused by any single change: it reproduces on a pristine
 origin/main worktree.
-## Version / HEAD`.
 
 Session #18: the rally-end gap closed with imported data instead of a new
 heuristic. The sidecar can now read a burned-in
@@ -2160,6 +2159,32 @@ interim state was carried by `docs/NIGHTLY_PROGRESS.md` (gitignored, by
 design) and the last committed paragraph below understated the night by four
 milestones and one HEAD.
 
+**Session #22 addendum (this host, real-footage day):** the highlight
+algorithm caught up with operator feedback from real badminton footage
+(E:\TEMP\Badminton, 35 files / 268 GB): rally clips are now END-ANCHORED —
+the window ends at the segment's last hit plus the rally tail (so a
+last-second dive and the shuttle landing stay inside the clip) instead of the
+head-anchored first-N-seconds window; the badminton preset's max clip went
+8 → 10 s and its diversity min_gap now matches rally_gap (2.5 s — end-anchored
+clips reach deeper into the inter-rally gap; 4.0 silently dropped the third
+rally of a 3-rally reel). Segments carry their hit timestamps
+(`Segment.Hits`) and every clip records its end anchor
+(`end_anchor` metadata: scoreboard point end / last hit + landing tail /
+segment head). `resource.profile` (auto | manual) sizes the concurrency knobs
+from the machine — children = clamp(logical/4, 2, 4), threads =
+clamp((logical/2)/children, 2, 8), a RAM guard (children × 1.5 GB ≤ RAM/2),
+analysis workers follow; `manual` keeps user values byte-for-byte. Render
+normalization is clip-parallel (workers ride `max_ffmpeg_processes`) with an
+fps-first filter chain (59.94 → 30 drops frames before the resample):
+session-0218's 120 s reel renders in 31.2 s vs 105.3 s serial ≈ 3.4×.
+Timeline placement validation uses a placement tolerance (1e-4) matching the
+document's own 4-decimal rounding — a legit back-to-back join no longer
+fails as a "0 s gap" after seven clips. All nine date directories re-rendered
+with v2 into E:\TEMP\Badminton\output (12 reels incl. A/B artifacts; every
+one probe-verified). The cli one-shot gate flake (a different auto/render
+test each run under full parallel load) reproduces on a pristine
+origin/main worktree and is documented above — it is not mine.
+
 **Night 2026-09-25→26 (session #22) opens with a lost-response defect in the
 upload path.** The upload handler's only response is written after the whole
 body copy and the import probe — but `net/http` arms the server's absolute
@@ -2221,6 +2246,14 @@ The test plants `ffplay.exe.partial`, a name the fresh pin does not
 rewrite: a same-name partial is the self-healing case the extract consumes
 anyway, which is exactly why the first version of this test passed under
 mutation too. Accepted at `85cffbd`.
+
+**Same night, later: the ROI status guard covers the asset axis too.** The
+court picker fires `refreshROIStatus` from two selectors — target and asset —
+but its stale guard compared only the target, so a slow score/roi answer for
+a switched-away asset could resolve last and mislabel the now-selected clip's
+region. The guard now carries both axes; pinned structurally, and the
+mutation (asset axis dropped) fails with exactly the mislabel the guard
+exists to prevent. Accepted at `6d782b1`.
 
 ## Version / HEAD
 
@@ -2973,30 +3006,3 @@ every leg (the fast gate included)
    plaintext, which is why remote binds are documented as trusted-network or
    tunnel-only today. Owner-level call, and the only survivor of the old
    remote-access thread.
-
-
-**Session #22 addendum (this host, real-footage day):** the highlight
-algorithm caught up with operator feedback from real badminton footage
-(E:\TEMP\Badminton, 35 files / 268 GB): rally clips are now END-ANCHORED —
-the window ends at the segment's last hit plus the rally tail (so a
-last-second dive and the shuttle landing stay inside the clip) instead of the
-head-anchored first-N-seconds window; the badminton preset's max clip went
-8 → 10 s and its diversity min_gap now matches rally_gap (2.5 s — end-anchored
-clips reach deeper into the inter-rally gap; 4.0 silently dropped the third
-rally of a 3-rally reel). Segments carry their hit timestamps
-(`Segment.Hits`) and every clip records its end anchor
-(`end_anchor` metadata: scoreboard point end / last hit + landing tail /
-segment head). `resource.profile` (auto | manual) sizes the concurrency knobs
-from the machine — children = clamp(logical/4, 2, 4), threads =
-clamp((logical/2)/children, 2, 8), a RAM guard (children × 1.5 GB ≤ RAM/2),
-analysis workers follow; `manual` keeps user values byte-for-byte. Render
-normalization is clip-parallel (workers ride `max_ffmpeg_processes`) with an
-fps-first filter chain (59.94 → 30 drops frames before the resample):
-session-0218's 120 s reel renders in 31.2 s vs 105.3 s serial ≈ 3.4×.
-Timeline placement validation uses a placement tolerance (1e-4) matching the
-document's own 4-decimal rounding — a legit back-to-back join no longer
-fails as a "0 s gap" after seven clips. All nine date directories re-rendered
-with v2 into E:\TEMP\Badminton\output (12 reels incl. A/B artifacts; every
-one probe-verified). The cli one-shot gate flake (a different auto/render
-test each run under full parallel load) reproduces on a pristine
-origin/main worktree and is documented above — it is not mine.
