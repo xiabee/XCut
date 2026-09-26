@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,10 +11,11 @@ import (
 	"github.com/xiabee/XCut/internal/worker"
 )
 
-// fakeTranscriptSidecar writes a minimal protocol-v1 sidecar that advertises
-// an available transcript analyzer and answers analyze with a canned result.
-// With wordTimings off it answers the way most backends do: where each line
-// falls, and nothing about the syllables inside it.
+// fakeTranscriptSidecar points XCUT_AI_BIN at the package's own test binary,
+// which TestMain turns into the sidecar when XCUT_TEST_SIDECAR is set: it
+// advertises an available transcript analyzer and answers analyze with a
+// canned result. With wordTimings off it answers the way most backends do:
+// where each line falls, and nothing about the syllables inside it.
 func fakeTranscriptSidecar(t *testing.T, wordTimings bool) string {
 	t.Helper()
 	second := `{"start": 2.0, "end": 3.0, "text": "世界", "words": [
@@ -27,37 +27,19 @@ func fakeTranscriptSidecar(t *testing.T, wordTimings bool) string {
 		first = `{"start": 0.5, "end": 1.5, "text": "你好"}`
 		second = `{"start": 2.0, "end": 3.0, "text": "世界"}`
 	}
-	script := fakeTranscriptBody(first, second)
-	path := filepath.Join(t.TempDir(), "fake-xcut-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	bin, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path
-}
-
-func fakeTranscriptBody(segments ...string) string {
-	return `#!/usr/bin/env python3
-import json, sys
-req = json.loads(sys.stdin.read() or "{}")
-op = req.get("op")
-if op == "capabilities":
-    result = {"ops": [{"op": "analyze", "desc": "run one analyzer"}],
-              "models": [{"name": "transcript", "available": True,
-                          "loaded": False, "detail": "fake"}],
-              "device": "cpu"}
-elif op == "analyze":
-    result = {"language": "zh", "segments": [` + strings.Join(segments, ",") + `]}
-else:
-    result = {}
-sys.stdout.write(json.dumps({"protocol": 1, "ok": True, "op": op, "result": result}))
-`
+	t.Setenv("XCUT_TEST_SIDECAR", "canned")
+	t.Setenv("XCUT_TEST_SIDECAR_SEGMENTS", "["+first+","+second+"]")
+	return bin
 }
 
 // TestSubtitlesCommandEndToEnd: the subtitles command drives the sidecar
 // handshake, parses the transcript, and writes SRT — and karaoke ASS on
 // --ass — next to the media file.
 func TestSubtitlesCommandEndToEnd(t *testing.T) {
-	requirePythonForFake(t)
 	root := t.TempDir()
 	t.Setenv("XCUT_WORKSPACE", root)
 	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, true))
@@ -104,7 +86,6 @@ func TestSubtitlesCommandEndToEnd(t *testing.T) {
 // with "karaoke output needs them" left the caller with no styled caption at
 // all — the same words, two qualities of output, decided by the sidecar.
 func TestSubtitlesASSWithoutWordTimings(t *testing.T) {
-	requirePythonForFake(t)
 	root := t.TempDir()
 	t.Setenv("XCUT_WORKSPACE", root)
 	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false))
@@ -193,15 +174,4 @@ func transcriptModelFor(c *worker.AICapabilities) *worker.AIModel {
 		}
 	}
 	return nil
-}
-
-// requirePythonForFake skips when no interpreter can run the fake sidecar.
-func requirePythonForFake(t *testing.T) {
-	t.Helper()
-	for _, py := range []string{"python", "python3"} {
-		if _, err := exec.LookPath(py); err == nil {
-			return
-		}
-	}
-	t.Skip("python not available")
 }

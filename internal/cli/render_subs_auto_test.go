@@ -24,7 +24,6 @@ func TestRenderSubsAutoFixesAReStyledProject(t *testing.T) {
 	if !testmedia.HasFFmpeg() {
 		t.Skip("ffmpeg not available")
 	}
-	requirePythonForFake(t)
 	root := t.TempDir()
 	t.Setenv("XCUT_WORKSPACE", root)
 	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false))
