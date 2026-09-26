@@ -12,10 +12,6 @@ import (
 )
 
 func init() {
-	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path] [--subs file|auto]"), cmdRender)
-}
-
-func init() {
 	register("render", "render a project timeline to MP4", usageSyntax("xcut render <project> [--out path] [--subs file|auto] [--encoder name]"), cmdRender)
 }
 
