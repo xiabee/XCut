@@ -2255,6 +2255,70 @@ region. The guard now carries both axes; pinned structurally, and the
 mutation (asset axis dropped) fails with exactly the mislabel the guard
 exists to prevent. Accepted at `6d782b1`.
 
+**Night 2026-09-26→27 (session #23) began by collecting two straws last
+night left behind:** the ROI asset-axis guard (`6d782b1`) had shipped
+unpushed and unrecorded, and the working tree held a finished-but-
+uncommitted one-tap-export guard — POST /export now refuses with 409
+beside an active render *before* any stage runs (no reel rebuild, no
+transcription, no export row naming a job the user never connected to
+the button; the child render's own exclusive guard still backs the
+post-POST race window). Accepted at `6498b14`, remote PASS. The ledger
+itself got its repairs: the Known-flake paragraph that had been inserted
+mid-sentence into this file's intro (severing "the last paragraph before
+`## Version / HEAD`" around it) went back to being a paragraph, the
+real-footage-day addendum moved from after Next Priorities into the
+session log where its chronology lives, and the ROI guard got its
+paragraph (`847a620`). The root scratch a day session committed —
+`.patch2.py`, two `.badminton-*.log` batch logs — left the tree, kept on
+disk, anchored by gitignore (`f4895fa`).
+
+Then the test-infra lane paid twice more. The cli package's canned
+transcript stub was still a python script — the shape whose
+cold-interpreter cost the api package measured into a flake family last
+night — so TestMain doubled as the sidecar there too, segments travel by
+environment, and five tests stopped skipping on python-less machines
+(`bf8ad56`); the pipeline package's identical stub got the same
+treatment, taking the tree to zero canned python children (`c0ce276`).
+The reference sidecar keeps its python child on purpose: the scoreboard
+tests assert what the real detector measured. Both changes accepted with
+the mechanism proven end to end (the test binary driven as the worker
+drives it, canned segments byte-identical to the stub's answers).
+
+**The night's real find needed a new axis to see it.** A full-suite
+`-shuffle=1` run failed with every package green — `go: unlinkat
+pipeline.test.exe: Access is denied` — and a process snapshot caught the
+cause: a bare-execed copy of the test binary still alive after the run.
+Two export tests asserted the tap's plan and returned without draining
+the queue, so the job's subtitles stage execed its sidecar after
+`t.Setenv` restored the environment; the child, seeing no mode, ran the
+whole suite over again in a process nobody waits on — immortal, holding
+the image lock. Under the python stub the same orphan had been invisible
+(a python.exe locks nothing go cleans up); the test-binary sidecar made
+it visible. Fix is two layers: the two tests drain via `waitForTap`, and
+all four bare-execed TestMains (api, cli, pipeline, render) refuse an
+argv-less invocation with no mode env — milliseconds, loud, naming the
+leak (`1862230`). Accepted remote PASS.
+
+The Linux race leg (docker, no ffmpeg) caught the last one: four export
+tests called `testmedia.GenerateRally` without the `HasFFmpeg` skip
+their siblings carry, answering a missing tool with a red package
+instead of four skips (`e2dda0d`). Verified both directions — the
+ffmpeg-less container passes with the package ok, and on Windows all
+four still run and pass under `-race`.
+
+Verification depth this session: 260 rounds of the product soak with
+zero errors, nine in-order full suites, both shuffle seeds, six cli
+packages under soak load, five win-devops remote legs PASS, and the
+security trio (govulncheck, gosec HIGH, gitleaks) clean at every
+discovery pass; gosec's MEDIUM findings were triaged to their written
+waivers (G204/G304 are the argv-data and SafeJoin models by design; the
+session cookie carries HttpOnly+SameSite=Strict, and `Secure` is absent
+for the D12 reason the code records). The cli one-shot flake family
+struck once more during a gate run (`TestE2EAutoWithProxy`, exit 1 with
+no assertion detail) and passed in isolation — still intermittent, still
+load-shaped, and it now leaves evidence behind: that test's failure
+output ships in the message instead of being discarded.
+
 ## Version / HEAD
 
 - Version: 0.1.0-dev (release artifacts stamped via ldflags); **v0.1.9-alpha tagged
