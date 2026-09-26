@@ -25,43 +25,19 @@ import (
 // queued rather than swallowed into the tap's own slot, and that a second tap on
 // the same project leaves the artifacts it found exactly as it found them.
 
-// fakeTranscriptSidecar is a sidecar that knows where two lines fall and nothing
-// about the words inside them — the ordinary transcript, and the one whose
-// captions the karaoke writer used to refuse to style.
+// fakeTranscriptSidecar points the config at the package's own test binary,
+// which TestMain turns into the sidecar when XCUT_TEST_SIDECAR is set: it
+// knows where two lines fall and nothing about the words inside them — the
+// ordinary transcript, and the one whose captions the karaoke writer used to
+// refuse to style.
 func fakeTranscriptSidecar(t *testing.T) string {
 	t.Helper()
-	if !hasPython() {
-		t.Skip("no python interpreter on PATH")
-	}
-	script := `#!/usr/bin/env python3
-import json, sys
-req = json.loads(sys.stdin.read() or "{}")
-op = req.get("op")
-if op == "capabilities":
-    result = {"ops": [{"op": "analyze"}], "models": [
-        {"name": "transcript", "available": True, "loaded": False, "detail": "fake"}]}
-elif op == "analyze":
-    result = {"language": "zh", "segments": [
-        {"start": 0.5, "end": 1.5, "text": "第一句台词"},
-        {"start": 2.0, "end": 3.0, "text": "第二句台词"}]}
-else:
-    result = {}
-sys.stdout.write(json.dumps({"protocol": 1, "ok": True, "op": op, "result": result}))
-`
-	path := filepath.Join(t.TempDir(), "fake-xcut-ai.py")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	bin, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path
-}
-
-func hasPython() bool {
-	for _, py := range []string{"python", "python3"} {
-		if p, err := exec.LookPath(py); err == nil && p != "" {
-			return true
-		}
-	}
-	return false
+	t.Setenv("XCUT_TEST_SIDECAR", "canned")
+	return bin
 }
 
 func stepNamed(steps []ExportStep, name string) ExportStep {
