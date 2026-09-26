@@ -29,6 +29,11 @@ target/
 soak-results.json
 .gotmp/
 
+# Day-session scratch that once slipped into the tree: batch logs and
+# one-off patch scripts stay local (see session #23)
+/.badminton-*.log
+/.patch*.py
+
 # Night-ops records and automation config: kept locally, never published
 /NIGHTOPS.yaml
 /docs/NIGHTLY_PROGRESS.md
