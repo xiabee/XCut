@@ -42,5 +42,17 @@ func TestMain(m *testing.M) {
 		fmt.Fprint(os.Stderr, flood.String())
 		os.Exit(1)
 	}
+	// A bare exec with no fake-ffmpeg env is an orphaned child: a test let a
+	// render outlive itself, so the product execed this binary after t.Setenv
+	// had restored the environment. Running the suite from here would mean
+	// re-executing every test in a process nobody waits on — an immortal
+	// child holding the binary's image lock (go: unlinkat ... Access is
+	// denied). The fake ffmpeg is always invoked with the encoder's argument
+	// list, and go test always passes -test.* flags, so a bare argv can only
+	// be an orphaned exec; refuse it loudly instead.
+	if len(os.Args) <= 1 {
+		fmt.Fprintln(os.Stderr, "orphaned test child: execed bare without XCUT_FAKE_FFMPEG set — a test let its render outlive itself")
+		os.Exit(2)
+	}
 	os.Exit(m.Run())
 }

@@ -1000,6 +1000,10 @@ func TestExportWillNotReStyleAnotherClipsWords(t *testing.T) {
 	if got.Action == "restyle" {
 		t.Fatalf("the tap planned to re-lay words heard from another clip: %+v", got)
 	}
+	// The plan is the assertion, but the queued job is real: left running it
+	// would exec its sidecar after this test returned and t.Setenv restored
+	// the environment — the orphan shape waitForTap exists to close.
+	waitForTap(t, d)
 	// The payload is a file on disk like any other: refusing to use it leaves it alone.
 	after, err := os.ReadFile(assPath)
 	if err != nil {
@@ -1232,6 +1236,21 @@ func TestUnboundTranscriptIsNotHeldAgainstTheProject(t *testing.T) {
 		t.Fatal(err)
 	} else if got := stepNamed(steps, "subtitles"); got.Reason != ExportReuseSubtitles {
 		t.Errorf("unbound captions planned %q, want the plain reuse sentence", got.Reason)
+	}
+	waitForTap(t, d)
+}
+
+// waitForTap drains the queued export before the test returns. A tap still
+// running in the background execs its sidecar child after t.Setenv restored
+// the environment, and a bare-execed test binary then runs the whole suite
+// over again — an immortal child holding the binary's image lock, seen from
+// go as `unlinkat ...test.exe: Access is denied` after every package passed.
+func waitForTap(t *testing.T, d Deps) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
 	}
 }
 

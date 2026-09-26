@@ -19,6 +19,17 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv("XCUT_TEST_SIDECAR"); mode != "" {
 		os.Exit(runFakeSidecar(mode))
 	}
+	// A bare exec with no mode env is an orphaned sidecar child: a test let
+	// its tap outlive itself, so the worker execed this binary after t.Setenv
+	// had restored the environment. Running the suite from here would mean
+	// re-executing every test in a process nobody waits on — an immortal
+	// child holding the binary's image lock (go: unlinkat ... Access is
+	// denied). go test always passes -test.* flags, so a bare argv can only
+	// be a sidecar exec; refuse it loudly instead.
+	if len(os.Args) <= 1 {
+		fmt.Fprintln(os.Stderr, "orphaned test sidecar: execed bare without XCUT_TEST_SIDECAR set — a test let its tap outlive itself")
+		os.Exit(2)
+	}
 	os.Exit(m.Run())
 }
 

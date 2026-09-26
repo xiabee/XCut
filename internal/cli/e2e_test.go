@@ -135,13 +135,18 @@ func TestE2EAutoWithProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The buffers outlive run() on purpose: the one-shot's failure output is
+	// the only diagnosis a red gate run leaves behind, and "exit 1" alone
+	// once sent this test to the flake pile with nothing to read.
+	var stdout, stderr bytes.Buffer
 	run := func(args ...string) int {
-		var stdout, stderr bytes.Buffer
+		stdout.Reset()
+		stderr.Reset()
 		return Run(args, &stdout, &stderr)
 	}
 	run("init")
 	if code := run("auto", fixture, "--project", "proxy-e2e", "--style", "generic_highlight"); code != 0 {
-		t.Fatalf("auto with proxies failed (exit %d)", code)
+		t.Fatalf("auto with proxies failed (exit %d)\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 
 	entries, err := os.ReadDir(filepath.Join(root, "cache", "proxy"))
@@ -159,7 +164,7 @@ func TestE2EAutoWithProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code := run("auto", fixture, "--project", "proxy-e2e", "--style", "generic_highlight"); code != 0 {
-		t.Fatalf("second auto failed (exit %d)", code)
+		t.Fatalf("second auto failed (exit %d)\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	entries, err = os.ReadDir(filepath.Join(root, "cache", "proxy"))
 	if err != nil {
