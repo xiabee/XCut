@@ -61,6 +61,16 @@ ffmpeg -y -hide_banner -loglevel error \
     -f lavfi -i "color=c=blue:size=320x240:rate=30:duration=8" \
     -f lavfi -i "sine=frequency=440:duration=8" -shortest \
     -c:v libx264 -preset ultrafast -c:a aac "$WS/fixture.mp4" || exit 2
+# The export scenario needs a render window wide enough for the door and
+# exclusivity probes to catch a job provably running — the 8s fixture renders
+# in well under a second, and even 30s loses the race to the status query's
+# own python cold start (~0.5-1s), which leaves the 409 arms mostly blind
+# (measured: expDoor 0/5, expDup 1/4 at 30s). 120s at 320x240 ultrafast
+# renders in ~6-9s: generated once here, uploaded per round.
+ffmpeg -y -hide_banner -loglevel error \
+    -f lavfi -i "color=c=green:size=320x240:rate=30:duration=120" \
+    -f lavfi -i "sine=frequency=550:duration=120" -shortest \
+    -c:v libx264 -preset ultrafast -c:a aac "$WS/exp-fixture.mp4" || exit 2
 "$XCUT" import soak "$WS/fixture.mp4" >/dev/null 2>&1
 "$XCUT" timeline soak --style generic_highlight >/dev/null 2>&1
 
@@ -296,10 +306,20 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
 import json,sys
 d=json.load(sys.stdin)
 print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/dev/null)
-        eup=$(upload_code_pid "$EXP_ID" "$WS/fixture.mp4" "exp.mp4")
+        eup=$(upload_code_pid "$EXP_ID" "$WS/exp-fixture.mp4" "exp.mp4")
         eat=$(post_code "/projects/$EXP_ID/analyze" '{}')
         if [ "$eup" = "201" ] && [ "$eat" = "202" ]; then
             wait_job_pid "$EXP_ID" analyze >/dev/null
+            # a render needs a timeline (it fails not_found without one —
+            # measured, and a fast-failing render blinds the door probe);
+            # build it explicitly, then the render has its full window
+            etl=$(post_code "/projects/$EXP_ID/timeline" '{"style":"generic_highlight"}')
+            case "$etl" in
+                202|200)
+                    tlst=$(wait_job_pid "$EXP_ID" timeline)
+                    [ "$tlst" = "succeeded" ] || err="$err exp-timeline $tlst";;
+                *) err="$err exp-timeline-code $etl";;
+            esac
             er=$(post_code "/projects/$EXP_ID/render" '{}')
             case "$er" in
                 202|200)
