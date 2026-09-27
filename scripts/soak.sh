@@ -140,6 +140,13 @@ print(js[-1]['status'] if js else '')" 2>/dev/null
 wait_job() { # wait_job TYPE -> prints final status; bounded 90s
     wait_job_pid "$PROJ_ID" "$1"
 }
+job_status_by_id() { # job_status_by_id JOBID -> status ('' if gone)
+    curl -s --max-time 5 "$BASE/jobs" | python -c "
+import json,sys
+d=json.load(sys.stdin)
+js=[j for j in d.get('jobs',[]) if j.get('id')=='$1']
+print(js[0]['status'] if js else '')" 2>/dev/null
+}
 wait_job_pid() { # wait_job_pid PROJECT TYPE -> prints final status; bounded 90s
     local pid="$1" typ="$2" n=0 st=""
     while [ $n -lt 180 ]; do
@@ -320,7 +327,11 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
                     [ "$tlst" = "succeeded" ] || err="$err exp-timeline $tlst";;
                 *) err="$err exp-timeline-code $etl";;
             esac
-            er=$(post_code "/projects/$EXP_ID/render" '{}')
+            er_resp=$(curl -s -w "|%{http_code}" --max-time 15 -X POST \
+                -H "Content-Type: application/json" -d '{}' \
+                "$BASE/projects/$EXP_ID/render")
+            er="${er_resp##*|}"
+            er_id=$(echo "${er_resp%|*}" | python -c "import json,sys; print(json.load(sys.stdin).get('job_id',''))" 2>/dev/null)
             case "$er" in
                 202|200)
                     rst=$(job_status_pid "$EXP_ID" render)
@@ -329,18 +340,21 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
                         if [ "$ex1" = "409" ]; then
                             expDoor=$((expDoor+1))
                         elif [ "$ex1" = "202" ] || [ "$ex1" = "200" ]; then
-                            # A 202 here is only wrong if the render was live
-                            # when the tap was processed — and the probe's
-                            # own ~1s python gap is exactly where a render
-                            # can legitimately finish (measured 2/58 at the
-                            # 120s fixture under full load). The catchable
-                            # violation is the export being accepted while
-                            # the render is STILL live afterwards: re-probe
-                            # now. Still live = real precheck race; terminal
-                            # = the gap answer, counted, no error.
-                            rst_now=$(job_status_pid "$EXP_ID" render)
+                            # A 202 here is only wrong if THE MANUAL RENDER
+                            # was live when the tap was processed. The
+                            # probe's own ~1s python gap is where a render
+                            # can legitimately finish (2/58 at the 120s
+                            # fixture) — and worse for a naive re-probe: the
+                            # accepted tap can queue its OWN child render
+                            # inside that gap, so "latest render still
+                            # running" can be the child, not the row the
+                            # door checked (fired once in 100 rounds, round
+                            # 65). Re-probe the manual row BY ID: still live
+                            # = real precheck race; terminal = the gap
+                            # answer, counted, no error.
+                            rst_now=$(job_status_by_id "$er_id")
                             if [ "$rst_now" = "running" ] || [ "$rst_now" = "queued" ]; then
-                                err="$err export-door-race 202 accepted, render still $rst_now"
+                                err="$err export-door-race 202 accepted, render $er_id still $rst_now"
                             else
                                 expDoorLate=$((expDoorLate+1))
                             fi
