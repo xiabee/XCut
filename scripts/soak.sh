@@ -126,7 +126,7 @@ n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
 
 errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
 dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
-expDoor=0; expDoorSkip=0; expQueued=0; expDup=0; expDupSkip=0; expDone=0
+expDoor=0; expDoorSkip=0; expDoorLate=0; expQueued=0; expDup=0; expDupSkip=0; expDupLate=0; expDone=0
 
 job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
     curl -s --max-time 5 "$BASE/jobs" | python -c "
@@ -328,8 +328,24 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
                         ex1=$(post_code "/projects/$EXP_ID/export" '{}')
                         if [ "$ex1" = "409" ]; then
                             expDoor=$((expDoor+1))
+                        elif [ "$ex1" = "202" ] || [ "$ex1" = "200" ]; then
+                            # A 202 here is only wrong if the render was live
+                            # when the tap was processed — and the probe's
+                            # own ~1s python gap is exactly where a render
+                            # can legitimately finish (measured 2/58 at the
+                            # 120s fixture under full load). The catchable
+                            # violation is the export being accepted while
+                            # the render is STILL live afterwards: re-probe
+                            # now. Still live = real precheck race; terminal
+                            # = the gap answer, counted, no error.
+                            rst_now=$(job_status_pid "$EXP_ID" render)
+                            if [ "$rst_now" = "running" ] || [ "$rst_now" = "queued" ]; then
+                                err="$err export-door-race 202 accepted, render still $rst_now"
+                            else
+                                expDoorLate=$((expDoorLate+1))
+                            fi
                         else
-                            err="$err export-door $ex1 (want 409, render $rst)"
+                            err="$err export-door $ex1 (render $rst)"
                         fi
                     else
                         expDoorSkip=$((expDoorSkip+1)) # render terminal in the gap; nothing to refuse
@@ -343,14 +359,22 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
                 202|200)
                     expQueued=$((expQueued+1))
                     # the child render row is the tap's own; while it is
-                    # provably active, a second export must refuse
+                    # provably active, a second export must refuse — same
+                    # honest-202 shape as the door probe above
                     cst=$(job_status_pid "$EXP_ID" render)
                     if [ "$cst" = "running" ] || [ "$cst" = "queued" ]; then
                         ex2=$(post_code "/projects/$EXP_ID/export" '{}')
                         if [ "$ex2" = "409" ]; then
                             expDup=$((expDup+1))
+                        elif [ "$ex2" = "202" ] || [ "$ex2" = "200" ]; then
+                            cst_now=$(job_status_pid "$EXP_ID" render)
+                            if [ "$cst_now" = "running" ] || [ "$cst_now" = "queued" ]; then
+                                err="$err export-dup-race 202 accepted, child render still $cst_now"
+                            else
+                                expDupLate=$((expDupLate+1))
+                            fi
                         else
-                            err="$err export-dup $ex2 (want 409, child render $cst)"
+                            err="$err export-dup $ex2 (child render $cst)"
                         fi
                     else
                         expDupSkip=$((expDupSkip+1)) # child finished in the gap
@@ -377,5 +401,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip expQueued=$expQueued expDup=$expDup/$expDupSkip expDone=$expDone"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone"
 [ "$errors" -eq 0 ]
