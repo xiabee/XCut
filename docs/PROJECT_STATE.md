@@ -3,7 +3,7 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-26 23:3x +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-28 04:4x +0800 (the clock of the last recorded commit, not a wall-clock guess).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
@@ -2338,6 +2338,52 @@ classification now reads a post-success WaitDelay expiry as success,
 while the output-bearing paths (probe, stream) keep the strict error
 because there the pipe *is* the product (`32335bc`; the 150-round rerun
 came back clean).
+
+Session #24 (night 2026-09-27) closed the GPU-encoder row the M-4 entry
+had left pending and then taught the product soak to burn the one-tap
+export. The measurement first: the owner's match (in-repo at
+`eval/media/`) rendered through one `badminton_highlight` timeline twice
+on this laptop — libx264 9.3 s / 28.7 MB against h264_nvenc 9.4 s /
+25.9 MB, VMAF 95.24 — **wall parity on real footage**: the M-4
+single-encode 31% nvenc win does not survive the full pipeline at this
+scale, and what the hardware encoder buys here is −10% bytes, not time
+(`6b74d0d`, the pending clause rewritten to point at the row).
+
+The soak gained an export section (`cc44167`) and the section's own
+first runs exposed two of its assumptions. The manual render that arms
+the door probe failed `not_found` in milliseconds on a project with no
+timeline — a fast-failing render leaves nothing provably running, so
+the 409 arms were structurally blind (expDoor 0/5 measured) until the
+scenario builds the timeline explicitly and uses a 120 s fixture whose
+render window outlasts the probe's own python startup (`ba3e93d`; 30 s
+was tried and measured losing that race, the number lives in the
+script's comment). With both arms biting every round, a 60-round run
+produced the opposite finding: `export-door 202 (want 409, render
+running)` twice in 58 engaged probes. The door checks the same database
+the probe reads, so a 202 can only be wrong if the render was live at
+the moment the tap was processed — unobservable after the fact, and the
+probe's ~1 s gap is exactly where a render legitimately finishes. The
+assertion became honest instead of absolute: a 202 re-probes, and only
+a render still live *after* acceptance is a violation (`cb5b0fb`).
+
+That tripwire fired once in its first 100-round run — and the fire was
+the tool's own bug, not the product's: the re-probe named "the latest
+render row", and the accepted tap queues its own child render inside
+the same gap, so the running row it found was the child, not the row
+the door checked. The re-probe now names the row by the `job_id` the
+render POST returned (`4b2724f`), and the next 260 rounds classified
+the same event twice as an honest Late with zero false races. The
+lesson generalizes the session's earlier timing assertions: a probe
+must anchor the entity it checks, not a position in a list that new
+rows join.
+
+Battery totals for the night: 452 soak rounds (the last 60 with both
+409 arms engaged in every round), a 29-round cli one-shot campaign
+against the flake family — no strike, the armed evidence harness
+untriggered, negative result recorded in the ledger — and three full
+`-shuffle` suites (default, seed 42, seed 7) all green. Six commits,
+each with a fast-gate PASS and a win-devops PASS; the security trio ran
+clean at every discovery pass.
 
 ## Version / HEAD
 
