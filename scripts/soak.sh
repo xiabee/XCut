@@ -10,9 +10,11 @@
 # Each round: analyze (duplicate -> 409) -> two render triggers (one 409)
 # -> timeline regenerate -> stale-revision PUT (must 409) -> matching PUT
 # (must 200) -> subtitles status -> junk upload (must not import, must not
-# litter imports/). Every request carries --max-time. Exit 0 = all rounds
-# green. Setup additionally uploads the fixture content twice (201, same
-# name — the second must land beside it, never overwrite).
+# litter imports/) -> export tap (409 at the door beside a provably active
+# render, 409 for a second tap beside a provably active child render, solo
+# tap queues and lands a reel). Every request carries --max-time. Exit 0 =
+# all rounds green. Setup additionally uploads the fixture content twice
+# (201, same name — the second must land beside it, never overwrite).
 set -u
 
 ROUNDS="${1:-30}"
@@ -114,6 +116,7 @@ n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
 
 errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
 dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
+expDoor=0; expDoorSkip=0; expQueued=0; expDup=0; expDupSkip=0; expDone=0
 
 job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
     curl -s --max-time 5 "$BASE/jobs" | python -c "
@@ -274,8 +277,78 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
         else
             err="$err busy-setup bup=$bup bat=$bat"
         fi
+        else
+            err="$err busy-project $busy"
+        fi
+
+    # 9. export tap (the one-tap family, 6498b14): the door precheck refuses
+    #    while a render is provably active, a second export refuses while the
+    #    first's child render runs (exclusive set), and a solo export queues
+    #    and lands a reel. Throwaway project per round, deleted when idle.
+    #    Assert the invariant, not the timing — the tiny fixture can finish a
+    #    render between the 202 and the probe, and both answers are then
+    #    correct; a regression still shows in the counters (expDoor/expDup
+    #    collapsing to 0 while expDoorSkip/expDupSkip grow means the gate
+    #    stopped refusing).
+    exp=$(post_code "/projects" "{\"name\":\"soak-exp-$round\"}")
+    if [ "$exp" = "201" ]; then
+        EXP_ID=$(curl -s --max-time 5 "$BASE/projects" | python -c "
+import json,sys
+d=json.load(sys.stdin)
+print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/dev/null)
+        eup=$(upload_code_pid "$EXP_ID" "$WS/fixture.mp4" "exp.mp4")
+        eat=$(post_code "/projects/$EXP_ID/analyze" '{}')
+        if [ "$eup" = "201" ] && [ "$eat" = "202" ]; then
+            wait_job_pid "$EXP_ID" analyze >/dev/null
+            er=$(post_code "/projects/$EXP_ID/render" '{}')
+            case "$er" in
+                202|200)
+                    rst=$(job_status_pid "$EXP_ID" render)
+                    if [ "$rst" = "running" ] || [ "$rst" = "queued" ]; then
+                        ex1=$(post_code "/projects/$EXP_ID/export" '{}')
+                        if [ "$ex1" = "409" ]; then
+                            expDoor=$((expDoor+1))
+                        else
+                            err="$err export-door $ex1 (want 409, render $rst)"
+                        fi
+                    else
+                        expDoorSkip=$((expDoorSkip+1)) # render terminal in the gap; nothing to refuse
+                    fi
+                    wait_job_pid "$EXP_ID" render >/dev/null;;
+                *) err="$err export-render $er";;
+            esac
+            # solo export with no render in flight: must queue
+            exs=$(post_code "/projects/$EXP_ID/export" '{}')
+            case "$exs" in
+                202|200)
+                    expQueued=$((expQueued+1))
+                    # the child render row is the tap's own; while it is
+                    # provably active, a second export must refuse
+                    cst=$(job_status_pid "$EXP_ID" render)
+                    if [ "$cst" = "running" ] || [ "$cst" = "queued" ]; then
+                        ex2=$(post_code "/projects/$EXP_ID/export" '{}')
+                        if [ "$ex2" = "409" ]; then
+                            expDup=$((expDup+1))
+                        else
+                            err="$err export-dup $ex2 (want 409, child render $cst)"
+                        fi
+                    else
+                        expDupSkip=$((expDupSkip+1)) # child finished in the gap
+                    fi
+                    exst=$(wait_job_pid "$EXP_ID" export)
+                    [ "$exst" = "succeeded" ] || err="$err export-parent $exst"
+                    rst2=$(wait_job_pid "$EXP_ID" render)
+                    [ "$rst2" = "succeeded" ] || err="$err export-child-render $rst2"
+                    expDone=$((expDone+1));;
+                *) err="$err export-solo $exs (want 202)";;
+            esac
+            exdel=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X DELETE "$BASE/projects/$EXP_ID")
+            [ "$exdel" = "200" ] || err="$err exp-delete $exdel (want 200)"
+        else
+            err="$err exp-setup eup=$eup eat=$eat"
+        fi
     else
-        err="$err busy-project $busy"
+        err="$err exp-project $exp"
     fi
 
     if [ -n "$err" ]; then
@@ -284,5 +357,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip expQueued=$expQueued expDup=$expDup/$expDupSkip expDone=$expDone"
 [ "$errors" -eq 0 ]
