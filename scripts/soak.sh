@@ -147,6 +147,14 @@ d=json.load(sys.stdin)
 js=[j for j in d.get('jobs',[]) if j.get('id')=='$1']
 print(js[0]['status'] if js else '')" 2>/dev/null
 }
+latest_render_id() { # latest_render_id PROJECT -> id of the newest render row ('' if none)
+    curl -s --max-time 5 "$BASE/jobs" | python -c "
+import json,sys
+d=json.load(sys.stdin)
+js=[j for j in d.get('jobs',[]) if j.get('project_id')=='$1' and j.get('type')=='render']
+js.sort(key=lambda j: (j.get('created_at',0), j.get('id','')))
+print(js[-1]['id'] if js else '')" 2>/dev/null
+}
 wait_job_pid() { # wait_job_pid PROJECT TYPE -> prints final status; bounded 90s
     local pid="$1" typ="$2" n=0 st=""
     while [ $n -lt 180 ]; do
@@ -372,23 +380,35 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
             case "$exs" in
                 202|200)
                     expQueued=$((expQueued+1))
-                    # the child render row is the tap's own; while it is
+                    # The child render row is the tap's own; while it is
                     # provably active, a second export must refuse — same
-                    # honest-202 shape as the door probe above
-                    cst=$(job_status_pid "$EXP_ID" render)
+                    # honest-202 shape as the door probe above. The row is
+                    # named BY ID once it appears: the 2026-09-29 run's round
+                    # 8 fired this arm while both probes answered "latest
+                    # render" — a position, not a row (session #24's door-arm
+                    # lesson applied here too; the accepted tap can queue its
+                    # own child, and a fresh row changes which row "latest"
+                    # names between the two probes).
+                    cst="" ; cid=""
+                    for n in 1 2 3 4 5 6 7 8 9 10; do
+                        cid=$(latest_render_id "$EXP_ID")
+                        cst=$(job_status_by_id "$cid")
+                        case "$cst" in running|queued) break;; esac
+                        sleep 0.3
+                    done
                     if [ "$cst" = "running" ] || [ "$cst" = "queued" ]; then
                         ex2=$(post_code "/projects/$EXP_ID/export" '{}')
                         if [ "$ex2" = "409" ]; then
                             expDup=$((expDup+1))
                         elif [ "$ex2" = "202" ] || [ "$ex2" = "200" ]; then
-                            cst_now=$(job_status_pid "$EXP_ID" render)
+                            cst_now=$(job_status_by_id "$cid")
                             if [ "$cst_now" = "running" ] || [ "$cst_now" = "queued" ]; then
-                                err="$err export-dup-race 202 accepted, child render still $cst_now"
+                                err="$err export-dup-race 202 accepted, child render $cid still $cst_now (tap1=$exs)"
                             else
                                 expDupLate=$((expDupLate+1))
                             fi
                         else
-                            err="$err export-dup $ex2 (child render $cst)"
+                            err="$err export-dup $ex2 (child render $cid=$cst)"
                         fi
                     else
                         expDupSkip=$((expDupSkip+1)) # child finished in the gap
