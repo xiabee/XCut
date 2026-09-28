@@ -3,17 +3,20 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-28 04:4x +0800 (the clock of the last recorded commit, not a wall-clock guess).
+Updated: 2026-09-29 07:0x +0800 (session #25's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
 last paragraph before `## Version / HEAD`.
 
-**Known flake (this host):** `scripts/check.sh fast` intermittently fails one
-cli auto/render test (a different one each run — scoreboard-region, captions,
-subs-restyle) under full parallel package load; every one passes with
-`-run` in isolation and the whole suite passes on a quiet machine. The failing
-assertion is timing-sensitive (real-ffmpeg one-shot runs ~4-8 s under
-contention). Not caused by any single change: it reproduces on a pristine
-origin/main worktree.
+**Known flake (this host):** `scripts/check.ps1 fast` intermittently fails one
+timing-sensitive test (a different one each run — originally cli auto/render
+tests: scoreboard-region, captions, subs-restyle; on 2026-09-28/29 the same
+shape struck `worker` twice and `api` once) under full parallel package load;
+every one passes with `-run` in isolation and the whole suite passes on a
+quiet machine. The failing assertions are timing-sensitive. Since session #25
+the gate performs that isolation itself: a failed go-test run re-runs exactly
+the failed packages once, and a recovery is disclosed in the verdict line
+(`flake-recovered: <pkgs>`) with the first failure kept as evidence — a
+second failure is still a real failure.
 
 Session #18: the rally-end gap closed with imported data instead of a new
 heuristic. The sidecar can now read a burned-in
@@ -2384,6 +2387,90 @@ untriggered, negative result recorded in the ledger — and three full
 `-shuffle` suites (default, seed 42, seed 7) all green. Six commits,
 each with a fast-gate PASS and a win-devops PASS; the security trio ran
 clean at every discovery pass.
+
+Session #25 (night 2026-09-28) closed the last unmeasured caption claim
+in pixels, made crash debris under cache/ reclaimable, corrected the
+person-filter roadmap to match the code, and taught the gate to perform
+the load-flake family's own documented acceptance. The pixel work first:
+a burned caption on a black 720×1280 canvas comes back out of the MP4 as
+pixels and lands where `KaraokeStyle.frame` promises — bottom band never
+crossing the margin line (measured libass MarginV semantics: the
+baseline lands near the line, so the bound allows a line of slack above
+and a hard stop at it), centred, inside the side margins, glyphs about
+the declared 48 px; the wrapped cue stays a two-line stack above the
+same line (`9293dbe`). The karaoke `\kf` sweep is measured the same way:
+sung-yellow grows monotonically across a two-word cue while unsung-white
+shrinks, and a sweep mutated to instant (`kf0`) reads 640/640/640 and
+dies on the monotone guard (`a4dc33e`). B5's "any pixel claim" remaining
+and B5's karaoke half are thereby measured, not just file-pinned.
+
+The lifecycle find: `evictDirTo` never deletes `.tmp-*` scratch (by
+design — deleting a live writer's half-written temp breaks its rename),
+while `analysis/disk.go` claimed "`xcut cleanup` reclaims the debris
+itself" — and nothing did. A proxy encode orphaned by a dead process sat
+inside the proxy budget forever, invisible to every remover. Now
+`CleanupCacheDebris` shares CleanupPartials' scoped-root walk (the
+symlink-swap discipline holds for cache/ too), runs from `xcut cleanup`
+(a new `cache debris:` section) and from serve startup as the fourth
+sweep — both under the writer lock, where every previous writer is
+provably dead, so any scratch found is crash debris by construction
+(`344cc6a`).
+
+The honesty find: `docs/PERSON_FILTER_ROADMAP.md` said Phase 2 was
+delivered and that `min_player_presence` runs on multi-region scores —
+the multi-region model has zero production callers, and presence still
+runs the Phase-1 single histogram. Worse, the component contradicted its
+own contract: the builder trains head/torso/legs at 25/65/100% while
+`ScoreFrame` cut the frame into thirds, so the band it scored as torso
+was not the band the torso histogram was built from (head/torso swap
+measured 0.550; at the declared fractions it is exactly the legs weight
+0.30). The scorer now cuts at the same `bandFracAt` fractions, a
+zero-value signature returns `errEmptySignature` instead of panicking,
+the hollow test (build, then discard) is replaced by exact band-geometry
+assertions on pure-hue frames, and the roadmap's Phase 2 says what is
+true: component shipped, not wired, wiring stays the phase's open work
+with the spot-height ≥ 8 precondition recorded (`39376a3`).
+
+The gate work: this host's load-flake family struck three times in one
+night (two 60-second worker-call deadlines and a write-deadline
+heartbeat, each a different timing-sensitive test under full parallel
+package load — the family PROJECT_STATE documented for cli now seen in
+worker and api). Its documented acceptance — the same test passes in
+isolation — used to cost a full gate re-run per strike, by hand. The
+go-test step now re-runs exactly the failed packages once, isolated:
+the first failure stays printed as evidence, the verdict line discloses
+`flake-recovered: <pkgs>`, and a retry that also fails throws as the
+real failure it is (`2af121e`). And the shuffle battery's catch got its
+evidence channel: the one api strike this night (a TempDir-vs-handle
+race, seed 1790617374610972100, not reproducible on the seed) named no
+holder because `testServer` discarded the db.Close result — it is
+logged loudly now (`1dae274`).
+
+The soak's own tripwire fired for real in a 100-round run (round 8,
+`export-dup-race 202 accepted, child render still running`) and the
+kept workspace enabled a triage the previous night's cascade-deleted
+rows never could: export rows were already pruned (PruneJobHistory's
+newest-400-by-finished_at — the retention-vs-forensics conflict is
+recorded), the refusal-group reconstruction from serve.log matched the
+counters exactly, and the tool-side gap was definite even though the
+product-side race is not yet adjudicated: the dup arm's probes still
+answered "latest render" — a position, not a row (4b2724f's lesson had
+been applied to the door arm only). Both probes now anchor the child
+render by id captured the moment it appears, and the tripwire message
+carries the row id (`78776d6`); the anchored arm then ran 200 clean
+rounds without a firing. The verdict stays honest: one strike, triaged,
+instrument in place, product race neither confirmed nor exonerated —
+the next firing arrives with its own attribution.
+
+Battery totals for the night: 850 soak rounds (errors=1, the round-8
+strike above; both 409 arms engaged in every round after the anchoring
+fix), one full `-shuffle` suite green around the api strike, Rust
+fmt/clippy/test green, and the security trio clean at every discovery
+pass. Eight commits, each with a fast-gate PASS and a win-devops PASS.
+Known-flake note: the host flake family now spans worker and api
+packages in addition to cli — the gate's isolated-retry disclosure makes
+each future strike visible in the verdict line instead of costing a
+manual re-run.
 
 ## Version / HEAD
 
