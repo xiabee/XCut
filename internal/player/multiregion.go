@@ -97,23 +97,34 @@ func (m *MultiRegionBuilder) Build() (MultiRegionSignature, error) {
 
 // ScoreFrame backprojects one RGB frame against all three bands and returns a
 // weighted vote: the torso band must contribute, head/legs add bonus. The
-// result is 0..1.
+// bands are cut at the same fractions the builder used (0/25/65/100% of the
+// frame height) — scoring against thirds would measure a "torso" that is not
+// the band the torso histogram was trained on. The result is 0..1.
 func (mr MultiRegionSignature) ScoreFrame(width, height int, frame []byte) (float64, error) {
+	for band := 0; band < RegionCount; band++ {
+		if len(mr.Bands[band]) == 0 {
+			return 0, errEmptySignature
+		}
+	}
 	stride := width * height * 3
 	if len(frame) != stride {
 		return 0, xcerr.E(xcerr.CodeValidation,
 			fmt.Sprintf("frame has %d bytes, want %d", len(frame), stride), nil)
 	}
 
-	bandH := height / RegionCount
 	bandScores := make([]float64, RegionCount)
 
 	for band := 0; band < RegionCount; band++ {
-		lo := band * bandH
-		hi := lo + bandH
-		if band == RegionCount-1 {
-			hi = height
+		loF := 0.0
+		if band > 0 {
+			loF = bandFracAt(band - 1)
 		}
+		hiF := 1.0
+		if band < RegionCount-1 {
+			hiF = bandFracAt(band)
+		}
+		lo := int(float64(loF) * float64(height))
+		hi := int(float64(hiF) * float64(height))
 		if lo >= hi {
 			bandScores[band] = 0
 			continue
