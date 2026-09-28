@@ -24,7 +24,17 @@ func testServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	// Close runs first (cleanups are LIFO) and its failure is logged, not
+	// swallowed: the one shuffle strike this suite has taken failed later in
+	// TempDir RemoveAll with "t.db: being used by another process" (seed
+	// 1790617374610972100, 2026-09-29, not reproducible on the same seed) —
+	// the holder was never named because the close result was discarded.
+	// A close error here is the lead the next strike needs.
+	t.Cleanup(func() {
+		if cerr := db.Close(); cerr != nil {
+			t.Logf("test db close failed (TempDir removal will name what it held): %v", cerr)
+		}
+	})
 
 	cfg := config.Default()
 	cfg.Workspace = root
