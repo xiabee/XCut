@@ -306,7 +306,35 @@ if ($testExit -ne 0) {
     }
     Write-Host "go test stderr tail:"
     Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
-    throw "go test failed with exit code $testExit"
+
+    # One isolated retry of exactly the packages that failed. This host has a
+    # documented load-flake family (PROJECT_STATE; three strikes in one night
+    # 2026-09-28/29 across the worker and api packages): a timing-sensitive
+    # test fails under full parallel package load — each time a different one —
+    # and passes the same test in isolation, which is that family's documented
+    # acceptance. The gate performs the isolation re-run itself instead of
+    # leaving every strike to a human: the first failure stays printed above
+    # as the evidence, the verdict line discloses the recovery, and a retry
+    # that also fails is thrown as the real failure it looks like. One retry,
+    # failed packages only — not a loop, and not a threshold relaxed.
+    $failedPkgs = $FailedKeys | ForEach-Object { ($_ -split "\|")[0] } | Sort-Object -Unique
+    Write-Host "== go test: isolated retry of $($failedPkgs.Count) failed package(s) (known load-flake family)"
+    $retryLines = @(go test -count=1 -json $failedPkgs 2>$testErrFile | ForEach-Object { "$_" })
+    $retryExit = $LASTEXITCODE
+    $retryFail = @()
+    foreach ($line in $retryLines) {
+        if (-not $line.StartsWith("{")) { continue }
+        $ev = $null
+        try { $ev = $line | ConvertFrom-Json } catch { continue }
+        if ($ev.Action -eq "fail" -and $ev.Test) { $retryFail = $retryFail + "$($ev.Package)|$($ev.Test)" }
+    }
+    if ($retryExit -ne 0 -or $retryFail.Count -gt 0) {
+        Write-Host "== isolated retry FAILED — not the load flake, a real failure"
+        Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
+        throw "go test failed twice (full run: exit $testExit; isolated retry: exit $retryExit, $($retryFail.Count) failed test(s))"
+    }
+    $script:FlakeRecovered = ($failedPkgs | ForEach-Object { ($_ -split '/')[-1] }) -join ", "
+    Write-Host "== go test: isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
 }
 # An empty run is not a green run. Every count above is zero when the step never
 # reached a test — which is what the colliding temp file caused — and the verdict line
@@ -424,4 +452,6 @@ if ($Mode -eq "full") {
 
 $skipNote = ""
 if ($TestSkips.Count -gt 0) { $skipNote = "; tests skipped: $($TestSkips.Count) (see '== go test' above)" }
-Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" })$skipNote)"
+$flakeNote = ""
+if ($script:FlakeRecovered) { $flakeNote = "; flake-recovered: $script:FlakeRecovered (failed under full load, passed the isolated retry — first failure printed above)" }
+Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" })$skipNote$flakeNote)"
