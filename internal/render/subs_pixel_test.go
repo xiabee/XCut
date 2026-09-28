@@ -211,3 +211,97 @@ func TestBurnedCaptionWrapsAboveTheMarginLine(t *testing.T) {
 		t.Errorf("wrapped caption bottom y=%d runs under the margin line", band.Max.Y)
 	}
 }
+
+// brightClasses counts glyph pixels by color class on the black fixture:
+// yellow (the karaoke sung fill), white (the unsung text), and the total.
+func brightClasses(t *testing.T, path string) (yellow, white int) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open frame: %v", err)
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("decode frame png: %v", err)
+	}
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			r8, g8, b8 := int(r>>8), int(g>>8), int(bl>>8)
+			if r8 > 180 && g8 > 180 && b8 < 100 {
+				yellow++
+			} else if r8 > 180 && g8 > 180 && b8 > 180 {
+				white++
+			}
+		}
+	}
+	return yellow, white
+}
+
+// TestBurnedKaraokeFillGrowsMonotonically measures the \kf sweep in pixels:
+// the KTV fill is the karaoke path's centerpiece claim and was pinned only at
+// the file level (\kf tags present, hold rules correct). A two-word cue
+// burned onto the black canvas must show the yellow fill growing across the
+// cue — partially sung mid-word, fully sung at the end, nothing unsung left —
+// which is what libass actually renders, not what the file promises.
+func TestBurnedKaraokeFillGrowsMonotonically(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "black.mp4",
+		[]testmedia.Scene{{Seconds: 2, Color: "black", Frequency: 440}},
+		pxCanvasW, pxCanvasH, 15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	tr := &subs.Transcript{Segments: []subs.Segment{{
+		Start: 0.2, End: 1.0, Text: "你好",
+		Words: []subs.Word{
+			{Start: 0.2, End: 0.6, Word: "你"},
+			{Start: 0.6, End: 1.0, Word: "好"},
+		},
+	}}}
+	if err := subs.WriteKaraokeASS(tr, subs.KaraokeStyle{Width: pxCanvasW, Height: pxCanvasH}, &sb); err != nil {
+		t.Fatalf("write karaoke ass: %v", err)
+	}
+	assPath := filepath.Join(dir, "karaoke.ass")
+	if err := os.WriteFile(assPath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe", Threads: 2}
+	burned := filepath.Join(dir, "burned.mp4")
+	if err := BurnSubtitles(context.Background(), tools, "", src, assPath, burned); err != nil {
+		t.Fatalf("burn: %v", err)
+	}
+
+	// Frame times inside the cue (0.2 → 1.0: the last cue borrows silence
+	// only up to the NEXT cue, and there is none, so the cue ends with the
+	// speech). 0.9, not 0.95: at 15 fps the frame carrying PTS 1.0 is the
+	// first one libass no longer paints — a cue is [start, end).
+	mid1y, mid1w := brightClasses(t, grabFrame(t, tools, burned, 0.4))
+	mid2y, _ := brightClasses(t, grabFrame(t, tools, burned, 0.8))
+	doneY, doneW := brightClasses(t, grabFrame(t, tools, burned, 0.9))
+
+	if mid1y == 0 && mid1w == 0 && mid2y == 0 {
+		t.Fatal("no glyph pixels in either mid-cue frame — libass rendered nothing visible")
+	}
+	if mid1y == 0 {
+		t.Errorf("mid-first-word frame has no sung fill (%d yellow, %d white) — the sweep never started", mid1y, mid1w)
+	}
+	if mid1w == 0 {
+		t.Errorf("mid-first-word frame has no unsung text (%d yellow, %d white) — everything is pre-filled", mid1y, mid1w)
+	}
+	if !(mid1y < mid2y && mid2y <= doneY) {
+		t.Errorf("sung fill not growing: %d → %d → %d across the cue", mid1y, mid2y, doneY)
+	}
+	if doneY == 0 {
+		t.Error("fully-sung frame has no yellow fill")
+	}
+	if doneW > mid1w {
+		t.Errorf("unsung text grew by the end (%d → %d white)", mid1w, doneW)
+	}
+}
