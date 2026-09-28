@@ -133,6 +133,18 @@ func startServeCore(a *App, addr string) (*runningServe, error) {
 		fmt.Fprintf(a.Stdout, "reclaimed %d staged upload(s)\n", staged)
 	}
 
+	// Cache crash debris: the same lock argument as the temp sweep. The
+	// eviction walk never deletes another writer's scratch, and `xcut
+	// cleanup` is lock-refused while this serve runs, so a .tmp-* orphan
+	// under cache/ would squat inside the cache budgets until the next
+	// restart — sweep it now, while every previous writer is provably dead.
+	if debris, dbytes, err := a.Workspace().CleanupCacheDebris(false); err != nil {
+		a.Log.Warn("startup cache debris sweep failed", "err", err)
+	} else if debris > 0 {
+		a.Log.Info("swept cache debris at startup", "entries", debris, "bytes", dbytes)
+		fmt.Fprintf(a.Stdout, "reclaimed %d cache debris entries (%d bytes)\n", debris, dbytes)
+	}
+
 	httpServer := newHTTPServer(addr, srv.Handler())
 
 	ln, err := net.Listen("tcp", addr)

@@ -291,21 +291,45 @@ func (w *Workspace) CleanupTemp(dryRun bool) (removed []string, bytes int64, err
 // and never user data. dry-run reports without removing. Returns the number
 // of entries and their bytes.
 func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err error) {
-	root := w.ProjectsDir()
+	return removeDebrisUnder(w.ProjectsDir(), func(name string) bool {
+		return strings.HasSuffix(name, ".partial") || strings.HasPrefix(name, ".tmp-")
+	}, dryRun, "projects")
+}
+
+// CleanupCacheDebris removes crash debris under cache/: the atomic-write
+// scratch (.tmp-*) the analysis cache and the proxy store leave behind when
+// a process dies mid-write. The eviction walk never deletes scratch it did
+// not create (deleting a live writer's half-written temp makes its rename
+// fail with ENOENT), so an orphaned one would sit inside the cache budgets
+// forever — counted by Usage, reclaimed by nobody. The workspace writer lock
+// is what makes this sweep safe: both callers (xcut cleanup, serve startup)
+// hold it, and with the lock held every previous writer is provably dead, so
+// any scratch found is crash debris by construction. dry-run reports without
+// removing. Returns the number of entries and their bytes.
+func (w *Workspace) CleanupCacheDebris(dryRun bool) (count int, bytes int64, err error) {
+	return removeDebrisUnder(w.CacheDir(), func(name string) bool {
+		return strings.HasPrefix(name, ".tmp-")
+	}, dryRun, "cache")
+}
+
+// removeDebrisUnder is the scoped-root debris walk behind CleanupPartials
+// and CleanupCacheDebris: it unlinks the files isDebris names, never the
+// directories, and a dry run only counts.
+func removeDebrisUnder(root string, isDebris func(name string) bool, dryRun bool, label string) (count int, bytes int64, err error) {
 	if _, serr := os.Stat(root); os.IsNotExist(serr) {
 		return 0, 0, nil
 	}
 	// Deletion goes through a scoped root instead of os.Remove(path). The walk
 	// resolves a name, and between that resolution and the unlink a parent
-	// directory could be swapped for a symlink pointing outside projects/ — the
+	// directory could be swapped for a symlink pointing outside root — the
 	// TOCTOU window gosec calls G122. os.Root refuses to traverse a symlinked
-	// parent, so a cleanup can only ever land inside projects/. That swap cannot
+	// parent, so a cleanup can only ever land inside root. That swap cannot
 	// be staged from a test, so treat it as a regression gate; the shape that
 	// can be staged (a debris *name* that is itself a symlink) is pinned by
-	// TestCleanupPartialsRemovesALinkNotItsTarget.
+	// the link-not-its-target tests.
 	scoped, oerr := os.OpenRoot(root)
 	if oerr != nil {
-		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot open the projects folder for cleanup", oerr)
+		return 0, 0, xcerr.E(xcerr.CodeInternal, "cannot open the "+label+" folder for cleanup", oerr)
 	}
 	defer scoped.Close()
 	werr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -315,8 +339,7 @@ func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err er
 		if d.IsDir() {
 			return nil
 		}
-		isDebris := strings.HasSuffix(d.Name(), ".partial") || strings.HasPrefix(d.Name(), ".tmp-")
-		if !isDebris {
+		if !isDebris(d.Name()) {
 			return nil
 		}
 		size := int64(0)
@@ -331,13 +354,13 @@ func (w *Workspace) CleanupPartials(dryRun bool) (count int, bytes int64, err er
 				return rerr
 			}
 			if rerr := scoped.Remove(rel); rerr != nil {
-				return xcerr.E(xcerr.CodeInternal, "cannot remove partial "+d.Name(), rerr)
+				return xcerr.E(xcerr.CodeInternal, "cannot remove debris "+d.Name(), rerr)
 			}
 		}
 		return nil
 	})
 	if werr != nil {
-		return count, bytes, xcerr.E(xcerr.CodeInternal, "cannot scan projects dir for partials", werr)
+		return count, bytes, xcerr.E(xcerr.CodeInternal, "cannot scan "+label+" dir for debris", werr)
 	}
 	return count, bytes, nil
 }

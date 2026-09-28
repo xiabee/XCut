@@ -192,6 +192,134 @@ func TestCleanupPartialsRemovesALinkNotItsTarget(t *testing.T) {
 	}
 }
 
+// TestCleanupCacheDebris pins the cache-scratch sweep: a .tmp-* orphan under
+// cache/analysis or cache/proxy is reclaimed, the finalized entries beside it
+// and the directory tree itself survive, dry-run keeps everything, and a
+// second run is a no-op.
+func TestCleanupCacheDebris(t *testing.T) {
+	w := New(t.TempDir())
+	if err := w.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	analysis := filepath.Join(w.CacheDir(), "analysis")
+	proxy := filepath.Join(w.CacheDir(), "proxy")
+	for _, dir := range []string{analysis, proxy} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(analysis, ".tmp-orphan"), "crash scratch")
+	write(filepath.Join(analysis, "abcdef.json"), `{"ok":true}`)
+	write(filepath.Join(proxy, ".tmp-orphan.mp4"), "half-written proxy")
+	write(filepath.Join(proxy, "fingerprint.mp4"), "VERIFIED PROXY")
+
+	count, bytes, err := w.CleanupCacheDebris(true)
+	if err != nil || count != 2 || bytes == 0 {
+		t.Fatalf("dry run: count=%d bytes=%d err=%v", count, bytes, err)
+	}
+	for _, keep := range []string{
+		filepath.Join(analysis, ".tmp-orphan"),
+		filepath.Join(proxy, ".tmp-orphan.mp4"),
+	} {
+		if _, serr := os.Stat(keep); serr != nil {
+			t.Fatalf("dry run must keep %s: %v", keep, serr)
+		}
+	}
+
+	count, _, err = w.CleanupCacheDebris(false)
+	if err != nil || count != 2 {
+		t.Fatalf("cleanup: count=%d err=%v", count, err)
+	}
+	for _, gone := range []string{
+		filepath.Join(analysis, ".tmp-orphan"),
+		filepath.Join(proxy, ".tmp-orphan.mp4"),
+	} {
+		if _, serr := os.Stat(gone); !os.IsNotExist(serr) {
+			t.Fatalf("%s must be removed", gone)
+		}
+	}
+	// Finalized entries and the store directories survive the sweep.
+	for _, keep := range []string{
+		filepath.Join(analysis, "abcdef.json"),
+		filepath.Join(proxy, "fingerprint.mp4"),
+		analysis,
+		proxy,
+	} {
+		if _, serr := os.Stat(keep); serr != nil {
+			t.Fatalf("%s must survive the sweep: %v", keep, serr)
+		}
+	}
+	if count, _, err := w.CleanupCacheDebris(false); err != nil || count != 0 {
+		t.Fatalf("second cleanup: count=%d err=%v", count, err)
+	}
+}
+
+// TestCleanupCacheDebrisLeavesNonDebrisNames pins the prefix discipline: only
+// the atomic-write scratch prefix (.tmp-) is claimed under cache/. An upload
+// staging file and an ordinary entry are not scratch, wherever they sit.
+func TestCleanupCacheDebrisLeavesNonDebrisNames(t *testing.T) {
+	w := New(t.TempDir())
+	if err := w.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(w.CacheDir(), "analysis")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".upload-123", "kept.json"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count, _, err := w.CleanupCacheDebris(false)
+	if err != nil || count != 0 {
+		t.Fatalf("count=%d err=%v — only .tmp- names are debris", count, err)
+	}
+	for _, name := range []string{".upload-123", "kept.json"} {
+		if _, serr := os.Stat(filepath.Join(dir, name)); serr != nil {
+			t.Fatalf("%s must survive: %v", name, serr)
+		}
+	}
+}
+
+// TestCleanupCacheDebrisRemovesALinkNotItsTarget mirrors the projects/ pin
+// for the cache walk: debris is matched by *name*, and unlinking a name that
+// is a symlink must not touch what it points at.
+func TestCleanupCacheDebrisRemovesALinkNotItsTarget(t *testing.T) {
+	w := New(t.TempDir())
+	if err := w.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "keep-me.bin")
+	if err := os.WriteFile(victim, []byte("user data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(w.CacheDir(), "analysis")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".tmp-pointing-away")
+	if err := os.Symlink(victim, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	count, _, err := w.CleanupCacheDebris(false)
+	if err != nil || count != 1 {
+		t.Fatalf("cleanup: count=%d err=%v", count, err)
+	}
+	if _, lerr := os.Lstat(link); !os.IsNotExist(lerr) {
+		t.Fatalf("the debris link is still there (%v)", lerr)
+	}
+	if _, serr := os.Stat(victim); serr != nil {
+		t.Fatalf("cleanup destroyed the link target instead of the link: %v", serr)
+	}
+}
+
 func TestNewTempDirBudget(t *testing.T) {
 	ws := newTestWS(t)
 	// Stuff temp/ beyond a tiny budget (simulates failed-run debris).

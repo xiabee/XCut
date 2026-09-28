@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,5 +40,44 @@ func TestCleanupDryRunKeepsCache(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(cacheDir); len(entries) != 2 {
 		t.Fatalf("default budget must keep the seeded entries, found %d", len(entries))
+	}
+}
+
+// TestCleanupReclaimsCacheDebris: the .tmp-* scratch a dead process left
+// under cache/ is never an eviction victim, so cleanup is its only remover
+// on the CLI path. Running the real command also exercises the writer-lock
+// gate the sweep's safety argument stands on — Run acquires it for cleanup.
+func TestCleanupReclaimsCacheDebris(t *testing.T) {
+	root := testWorkspace(t)
+	proxyDir := seedProxy(t, root)
+	debris := filepath.Join(proxyDir, ".tmp-orphan.mp4")
+	if err := os.WriteFile(debris, []byte("half-written proxy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := runCapture(t, "cleanup", "--dry-run")
+	if code != 0 {
+		t.Fatalf("cleanup --dry-run failed: %s", errOut)
+	}
+	if !strings.Contains(out, "cache debris: would remove 1 entries") {
+		t.Errorf("dry-run output missing the debris plan:\n%s", out)
+	}
+	if _, err := os.Stat(debris); err != nil {
+		t.Fatal("dry run must keep the debris")
+	}
+
+	code, out, errOut = runCapture(t, "cleanup")
+	if code != 0 {
+		t.Fatalf("cleanup failed: %s", errOut)
+	}
+	if !strings.Contains(out, "cache debris: removed 1 entries") {
+		t.Errorf("cleanup output missing the debris reclaim:\n%s", out)
+	}
+	if _, err := os.Stat(debris); !os.IsNotExist(err) {
+		t.Fatal("the debris must be removed")
+	}
+	proxy := filepath.Join(proxyDir, "deadbeef.mp4")
+	if _, err := os.Stat(proxy); err != nil {
+		t.Fatalf("the finalized proxy must survive: %v", err)
 	}
 }

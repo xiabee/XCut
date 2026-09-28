@@ -95,10 +95,11 @@ func TestServeFileLogRecordsWhileServing(t *testing.T) {
 	requireLogged(t, logPath, "server shutting down")
 }
 
-// TestServeStartupSweepsWhatItClaims covers the three sweeps serve does before
-// it listens — the orphaned-job reconcile, the temp sweep and the upload
-// staging sweep. They are destructive (they delete files and finish job rows),
-// so they are asserted individually: what is reclaimed, and what must survive.
+// TestServeStartupSweepsWhatItClaims covers the four sweeps serve does before
+// it listens — the orphaned-job reconcile, the temp sweep, the upload staging
+// sweep and the cache debris sweep. They are destructive (they delete files
+// and finish job rows), so they are asserted individually: what is reclaimed,
+// and what must survive.
 func TestServeStartupSweepsWhatItClaims(t *testing.T) {
 	a, out, root := serveTestApp(t)
 	ws := a.Workspace()
@@ -134,6 +135,12 @@ func TestServeStartupSweepsWhatItClaims(t *testing.T) {
 	}
 	writeAt(t, filepath.Join(imports, ".upload-1234"), "staged, never renamed")
 	writeAt(t, filepath.Join(imports, "landed.mp4"), "a finished upload")
+	cacheAnalysis := filepath.Join(ws.CacheDir(), "analysis")
+	if err := os.MkdirAll(cacheAnalysis, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAt(t, filepath.Join(cacheAnalysis, ".tmp-orphan"), "scratch from a dead writer")
+	writeAt(t, filepath.Join(cacheAnalysis, "abcdef.json"), `{"ok":true}`)
 	db.Close()
 
 	r, err := startServeCore(a, "127.0.0.1:0")
@@ -146,6 +153,7 @@ func TestServeStartupSweepsWhatItClaims(t *testing.T) {
 		"reconciled 1 orphaned job(s)",
 		"reclaimed 1 temp entries",
 		"reclaimed 1 staged upload(s)",
+		"reclaimed 1 cache debris entries",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("serve startup did not report %q\nstdout was:\n%s", want, out.String())
@@ -162,6 +170,7 @@ func TestServeStartupSweepsWhatItClaims(t *testing.T) {
 	for _, gone := range []string{
 		filepath.Join(ws.TempDir(), "job-scratch.tmp"),
 		filepath.Join(imports, ".upload-1234"),
+		filepath.Join(cacheAnalysis, ".tmp-orphan"),
 	} {
 		if _, err := os.Stat(gone); err == nil {
 			t.Errorf("%s survived the startup sweep", filepath.Base(gone))
@@ -169,6 +178,9 @@ func TestServeStartupSweepsWhatItClaims(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(imports, "landed.mp4")); err != nil {
 		t.Errorf("a landed upload was deleted by the sweep: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cacheAnalysis, "abcdef.json")); err != nil {
+		t.Errorf("a finalized cache entry was deleted by the sweep: %v", err)
 	}
 	// The sweep must not have taken the log directory with it.
 	requireLogged(t, filepath.Join(root, "logs", "serve.log"), "server started")

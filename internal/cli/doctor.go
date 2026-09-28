@@ -170,6 +170,17 @@ func cmdCleanup(a *App, args []string) error {
 	fmt.Fprintf(a.Stdout, "partials: %s %d entries, %.1f MB%s\n",
 		verb, partialRemoved, float64(partialBytes)/(1024*1024), map[bool]string{true: " (dry run)", false: ""}[dryRun])
 
+	// 5. Cache crash debris: the .tmp-* scratch a dead process left under
+	// cache/ is never an eviction victim (that would break a live writer),
+	// so this command — lock-held, every other writer excluded — is the
+	// remover the eviction walk's comment names.
+	debrisRemoved, debrisBytes, err := ws.CleanupCacheDebris(dryRun)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "cache debris: %s %d entries, %.1f MB%s\n",
+		verb, debrisRemoved, float64(debrisBytes)/(1024*1024), map[bool]string{true: " (dry run)", false: ""}[dryRun])
+
 	return nil
 }
 
