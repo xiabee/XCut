@@ -298,6 +298,13 @@ Every item states how it is measured before it is built, because the eval harnes
       Measured: the DOM-structure guards the repo already has, plus a browser
       probe reading the *computed style of the nodes that changed* — a CSS rule
       that renders on nothing has fooled this project before.
+      Partially landed as B6f (2026-09-29): the Regions picker's third target
+      draws the person filter's spot — the same drag code, the player-spot
+      wire (rect array + drawn-at moment), a status line that distinguishes a
+      measured signature from a bare rect, and a text guard pinning the
+      client to the server's route and fields. Not opened in a browser (the
+      standing IAB-night limitation), so the on-screen form rests on the
+      DOM/i18n guards like B6c/B6d.
       Partially landed as B6a (the pacing chip: `GET …/timeline` returns a derived
       `pacing` object computed by the same `timeline.Pacing` the CLI line uses, the
       chip renders it including the unscored-document branch, its wire keys are

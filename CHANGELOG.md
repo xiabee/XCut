@@ -13,8 +13,11 @@ sections are tagged; anything above the newest one is unreleased.
   malformed rect in seconds, before any import). The same seed reached HTTP:
   `GET/PUT/DELETE /api/v1/projects/{id}/assets/{assetID}/player-spot` mirrors the roi
   routes, validates with the storage layer's own rule, and answers with the asset row's
-  own spot JSON. Redrawing drops the previously measured signature on both surfaces —
-  the next analyze measures against the rect actually drawn, never replays the old model.
+  own spot JSON. The web UI's Regions picker gained the matching third target — the same
+  drag code, a status line that tells a measured signature from a bare rect, and a PUT
+  that carries the frame the user drew against. Redrawing drops the previously measured
+  signature on every surface — the next analyze measures against the rect actually drawn,
+  never replays the old model.
 - **`xcut eval` runs the person filter through its own production write**, and the
   presence path it exercises (Phase-1 single-histogram scoring, the one
   `min_player_presence` actually runs) is covered by tests for the first time — patch

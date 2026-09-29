@@ -290,6 +290,24 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 
 </details>
 
+## 👤 人像过滤（Person Filter）
+
+无 AI 依赖的人物标记：在源视频某一帧上框住自己，分析阶段从这块区域量出
+一个 HSV 色签（18×3×3 直方图），presence 扫描按滑动窗口回答"这一帧里
+'我'在场的强度"——`min_player_presence` 风格项据此筛掉你不在场的片段。
+三种播种入口走同一条存储规则，重框即弃旧签名、下次分析按新框重测：
+
+```sh
+xcut player <project> --asset <id> --set x,y,w,h [--at seconds]  # 框选并显示状态
+xcut analyze <project>                                           # 量取色签
+```
+
+Web UI 的 Regions 面板第三个目标就是它（画框 → 保存 → 运行分析）；
+评测台 manifest 也能按 case 播种 `player_spot:{x,y,w,h,at}`，让
+`min_player_presence` 在标注素材上可 A/B。诚实边界：单一直方图不认人
+——同色系两个人无法区分；多人区分属后续多区域/检测器路线
+（docs/PERSON_FILTER_ROADMAP.md）。
+
 ## ⚙️ 配置
 
 `./xcut config show` 打印生效配置；优先级为
