@@ -29,6 +29,11 @@ func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIPut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIDelete)
+	// The person filter's seed surface: the CLI's `xcut player --set` over HTTP,
+	// same storage rule, same re-measure-on-redraw semantics.
+	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotGet)
+	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotPut)
+	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotDelete)
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScorePut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreDelete)
