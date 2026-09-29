@@ -61,6 +61,12 @@ internal/storage          SQLite (no CGO), migrations, typed stores
 internal/workspace        data dir layout, SafeJoin, temp lifecycle
 internal/config           defaults < file < env < flags, resource budgets
 internal/worker           worker-process client (JSON over stdin/stdout)
+internal/player           person filter: color-signature presence, no AI
+internal/subs             caption/lyric styling and ASS/SRT writers
+internal/eval             measurement harness (`xcut eval`) and its manifest
+internal/setup            pinned one-click FFmpeg installer (opt-in, Windows)
+internal/brandicon        Windows icon embedding for the desktop builds
+internal/architecture     no production code — static guards for AGENTS.md rules
 internal/xcerr            typed error model
 internal/version          build identity
 internal/testmedia        lavfi fixture generator (tests only)
