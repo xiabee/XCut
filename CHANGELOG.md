@@ -51,6 +51,12 @@ sections are tagged; anything above the newest one is unreleased.
   everywhere; the win32 halves are best-effort like the icon plumbing.
 
 ### Fixed
+- **`xcut auto --player-spot` never worked.** The flag had parse code, an apply step and
+  an announce line, but was never registered in the command's flag table — every run
+  refused it as an unknown flag, and the feature shipped dead-on-arrival because nothing
+  tested it (the same commit left the debug test, a dead formatter and two dead helpers
+  behind). Registered now, usage lines updated, and the one-shot's own e2e proves the
+  seed lands on the asset row and the run's analyze measures the signature from it.
 - **hevc_nvenc reels tag their track `hvc1`**, without which Apple players refuse an
   otherwise valid HEVC MP4.
 - **The app comes back to the project the user left open.** A reload used to drop the
