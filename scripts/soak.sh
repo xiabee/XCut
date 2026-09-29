@@ -245,7 +245,7 @@ print(json.dumps(d['timeline']))" > "$WS/good.json"
     #     clear -> second clear 404. The person filter's API joins the
     #     standing tripwire with the rest of the write surfaces; a redraw
     #     must leave a bins-less spot (re-measure, never replay).
-    spotA=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID/assets" | python -c "import json,sys; d=json.load(sys.stdin); print(d['assets'][0]['id'])")
+    spotA=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID" | python -c "import json,sys; d=json.load(sys.stdin); print(d['assets'][0]['id'])")
     spot_put=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X PUT         -H "Content-Type: application/json" -d '{"rect":[0.3,0.3,0.2,0.2],"at":7}'         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
     spot_get=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot" | python -c "import json,sys; d=json.load(sys.stdin); s=d['spot']; print('ok' if s and s['rect'][0]==0.3 and s['at']==7 and not s.get('bins') else 'wrong')")
     spot_bad=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X PUT         -H "Content-Type: application/json" -d '{"rect":[0.9,0.9,0.5,0.5],"at":0}'         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
