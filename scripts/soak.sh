@@ -10,7 +10,7 @@
 # Each round: analyze (duplicate -> 409) -> two render triggers (one 409)
 # -> timeline regenerate -> stale-revision PUT (must 409) -> matching PUT
 # (must 200) -> subtitles status -> junk upload (must not import, must not
-# litter imports/) -> export tap (409 at the door beside a provably active
+# litter imports/) -> player-spot surface (seed/read/refuse/clear/404) -> export tap (409 at the door beside a provably active
 # render, 409 for a second tap beside a provably active child render, solo
 # tap queues and lands a reel). Every request carries --max-time. Exit 0 =
 # all rounds green. Setup additionally uploads the fixture content twice
@@ -127,6 +127,7 @@ n_files=$(ls "$IMPORTS_DIR" 2>/dev/null | wc -l)
 errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=0
 dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
 expDoor=0; expDoorSkip=0; expDoorLate=0; expQueued=0; expDup=0; expDupSkip=0; expDupLate=0; expDone=0
+spotOK=0
 
 job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
     curl -s --max-time 5 "$BASE/jobs" | python -c "
@@ -239,6 +240,22 @@ print(json.dumps(d['timeline']))" > "$WS/good.json"
     # 5. subtitles status answers 200 either way
     code=$(get_code "/projects/$PROJ_ID/subtitles")
     if [ "$code" = "200" ]; then subsOK=$((subsOK+1)); else err="$err subs-status $code"; fi
+
+    # 5b. player-spot surface: seed -> read back -> a bad rect is refused ->
+    #     clear -> second clear 404. The person filter's API joins the
+    #     standing tripwire with the rest of the write surfaces; a redraw
+    #     must leave a bins-less spot (re-measure, never replay).
+    spotA=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID/assets" | python -c "import json,sys; d=json.load(sys.stdin); print(d['assets'][0]['id'])")
+    spot_put=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X PUT         -H "Content-Type: application/json" -d '{"rect":[0.3,0.3,0.2,0.2],"at":7}'         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
+    spot_get=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot" | python -c "import json,sys; d=json.load(sys.stdin); s=d['spot']; print('ok' if s and s['rect'][0]==0.3 and s['at']==7 and not s.get('bins') else 'wrong')")
+    spot_bad=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X PUT         -H "Content-Type: application/json" -d '{"rect":[0.9,0.9,0.5,0.5],"at":0}'         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
+    spot_del=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X DELETE         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
+    spot_del2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X DELETE         "$BASE/projects/$PROJ_ID/assets/$spotA/player-spot")
+    if [ "$spot_put" = "200" ] && [ "$spot_get" = "ok" ] && [ "$spot_bad" = "400" ]        && [ "$spot_del" = "200" ] && [ "$spot_del2" = "404" ]; then
+        spotOK=$((spotOK+1))
+    else
+        err="$err spot-arm put=$spot_put get=$spot_get bad=$spot_bad del=$spot_del del2=$spot_del2"
+    fi
 
     # 6. junk upload: the probe refuses the content and the copy is cleaned
     #    up — imports/ must still hold exactly the 2 setup files.
@@ -435,5 +452,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone spotOK=$spotOK"
 [ "$errors" -eq 0 ]
