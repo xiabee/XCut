@@ -34,59 +34,6 @@ type Sample struct {
 	V float64
 }
 
-// scanTimes enumerates the decode timestamps for [start, end) at scan fps.
-func scanTimes(start, end float64) []float64 {
-	step := 1.0 / PresenceScanFPS
-	n := int((end-start)/step) + 1
-	times := make([]float64, 0, n)
-	for t := start; t < end; t += step {
-		times = append(times, t)
-	}
-	return times
-}
-
-// measureTimes spreads n samples across the duration and appends the spot's
-// own moment (deduplicated, sorted). n scales mildly with duration: long
-// recordings do not need hundreds of frames for a histogram.
-func measureTimes(duration, spotAt float64) []float64 {
-	if duration <= 0 {
-		return []float64{spotAt}
-	}
-	n := 6
-	if duration > 1200 {
-		n = 10
-	}
-	times := make([]float64, 0, n+1)
-	for i := 0; i < n; i++ {
-		t := duration * (float64(i) + 0.5) / float64(n)
-		if t > duration {
-			t = duration
-		}
-		times = append(times, t)
-	}
-	times = append(times, spotAt)
-
-	seen := make(map[float64]bool, len(times))
-	out := times[:0]
-	for _, t := range times {
-		t = float64(int64(t*1000)) / 1000
-		if !seen[t] {
-			seen[t] = true
-			out = append(out, t)
-		}
-	}
-	sortF64(out)
-	return out
-}
-
-func sortF64(vs []float64) {
-	for i := 1; i < len(vs); i++ {
-		for j := i; j > 0 && vs[j] < vs[j-1]; j-- {
-			vs[j], vs[j-1] = vs[j-1], vs[j]
-		}
-	}
-}
-
 // rectPixels converts a normalized rect to integer pixel geometry.
 
 func clamp01(v float64) float64 {
