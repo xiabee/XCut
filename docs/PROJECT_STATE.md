@@ -3,9 +3,60 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-29 07:0x +0800 (session #25's paragraph below is the state that holds now).
+Updated: 2026-09-30 0X:XX +0800 (session #26's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `## Version / HEAD`.
+last paragraph before `Session #26 (night 2026-09-29) opened with a coverage sweep and closed
+around one theme: the person filter — shipped in Phase 1 as the color-signature
+presence scan — had a **dead flag, zero tests on its production path, and no
+surface beyond one CLI command**, and every piece of that got fixed or built
+tonight.
+
+The headline find is a real product defect: `xcut auto --player-spot` parsed,
+applied and announced its argument, but the flag was never registered in the
+command's flag table, so every run refused it as "unknown flag" — the feature
+shipped dead-on-arrival in `f437d41` and nobody noticed because nothing tested
+it. That commit's other residue fell the same night to the sweep plus caller
+greps: a debug test with no assertions printing into test output
+(`tmp_beatdebug_test.go`), a config formatter (`Describe`/`ramNote`) whose
+comment claimed doctor used it while doctor formatted inline, two dead rally
+helpers in style (`rallyTailSeconds`, `hitTailEps`) orbiting an
+end-anchor value no code ever assigned (`anchorRallyEnd` — the constant
+conditions checked but nothing produced), the dead `scanTimes`/
+`measureTimes`/`sortF64` trio in the presence package, and event's uncalled
+`peakWindow`/`gapPenalty`. All deleted; a usage-docs gate
+(`TestUsageDocsMirrorTheBinary`) caught its own first real drift when the fix
+changed the auto usage line. A flag-declaration-vs-registration audit across
+the CLI found `--player-spot` was the only instance.
+
+The person filter's production path (Phase 1 single-histogram scoring — the
+one `min_player_presence` actually runs) measured 0% by test while its unwired
+multi-region successor had the tests. It is now covered at every link: the
+patch statistic's concentration property, spot-rect validation, the signature
+contract and cache hash, frame reassembly across odd-sized child writes
+(player); the flag-to-row seam for both CLI spellings and `xcut player` end to
+end (cli); the analyzer wrapper on real media plus the cache's
+re-seed-must-rescan property at the Run level (analysis); and the style gate
+itself — strong kept, weak-measured dropped, unmeasured never vetoed, inert
+without the knob (style). Then the surfaces that never existed were built:
+an eval manifest can seed `player_spot` per case so `min_player_presence` is
+A/B-able on labeled footage; `GET/PUT/DELETE …/assets/{id}/player-spot`
+mirrors the roi routes; the web UI's Regions picker gained the third target
+(same drag code, wire pinned by a Go text guard; the on-screen form rests on
+the DOM/i18n guards like B6c/B6d — no browser at night); and the README
+finally has a person-filter section. Redrawing a spot drops the previously
+measured signature on every surface, so the next analyze measures against the
+rect actually drawn.
+
+Also this night: the beat-grid seam's leftover debug print became four named
+tests (three mutations); a coverage re-sweep ended at 15 exempt-class 0.0%
+functions (was ~30 of mixed real gaps); the new-test packages were raced
+explicitly (14 packages, zero DATA RACE — the fast gate's race subset does not
+cover them); `xnightops ci run` without `--node` was re-verified as the
+local-CI recording path session #25's handoff asked for; and the
+round-8 export-dup instrument from last night stayed silent through the night's
+soak rounds.
+
+## Version / HEAD`.
 
 **Known flake (this host):** `scripts/check.ps1 fast` intermittently fails one
 timing-sensitive test (a different one each run — originally cli auto/render
