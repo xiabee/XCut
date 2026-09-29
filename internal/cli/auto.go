@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h] [--encoder name]"), cmdAuto)
+	register("auto", "one-shot: import → analyze → timeline → (captions) → render", usageSyntax("xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h] [--player-spot x,y,w,h[,at]] [--encoder name]"), cmdAuto)
 }
 
 // cmdAuto runs the full deterministic pipeline in one shot. It reuses the
@@ -32,15 +32,16 @@ func cmdAuto(a *App, args []string) error {
 	playerSpotFlag := "" // normalized x,y,w,h[,at] where the person filter looks; "" = none
 	encoderFlag := ""    // hardware/software encoder override for this run's render
 	pos, err := parseCommandArgs(args, map[string]*string{
-		"style":      &styleName,
-		"duration":   &durationFlag,
-		"beat-snap":  &beatFlag,
-		"music":      &musicFlag,
-		"project":    &projectName,
-		"out":        &outPath,
-		"subs":       &subsFlag,
-		"score-crop": &scoreCropFlag,
-		"encoder":    &encoderFlag,
+		"style":       &styleName,
+		"duration":    &durationFlag,
+		"beat-snap":   &beatFlag,
+		"music":       &musicFlag,
+		"project":     &projectName,
+		"out":         &outPath,
+		"subs":        &subsFlag,
+		"score-crop":  &scoreCropFlag,
+		"player-spot": &playerSpotFlag,
+		"encoder":     &encoderFlag,
 	})
 	if err != nil {
 		return err
@@ -63,7 +64,7 @@ func cmdAuto(a *App, args []string) error {
 	}
 	if len(pos) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h]", nil)
+			"usage: xcut auto <file...> [--style name] [--duration seconds] [--beat-snap seconds|off] [--music file] [--subs on|off|auto|file] [--project name] [--out path] [--score-crop x,y,w,h] [--player-spot x,y,w,h[,at]]", nil)
 	}
 	inputs := pos
 
