@@ -345,6 +345,21 @@ func evalRunCase(ea *App, db *storage.DB, c eval.Case, styleName string, duratio
 			return nil, 0, err
 		}
 	}
+	// Per-case person-filter seed: stored on the asset row so the analyze
+	// pass measures the color signature from it exactly as it would from a
+	// UI-drawn spot (manifest A/B support for min_player_presence styles).
+	if c.PlayerSpot != nil {
+		if !c.PlayerSpot.Valid() {
+			return nil, 0, xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("case %s: player_spot must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 with at >= 0", c.Name), nil)
+		}
+		if err := db.SetAssetPlayerSpot(ea.Ctx, asset.ID, &storage.PlayerSpot{
+			Rect: []float64{c.PlayerSpot.X, c.PlayerSpot.Y, c.PlayerSpot.W, c.PlayerSpot.H},
+			At:   c.PlayerSpot.At,
+		}); err != nil {
+			return nil, 0, err
+		}
+	}
 	marks := 0
 	if c.ScoreROI != nil {
 		var serr error

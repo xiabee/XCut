@@ -33,6 +33,12 @@ type Case struct {
 	// (via the AI sidecar) instead of running past them — the A/B that decides
 	// whether scoreboard marks are worth the extra scan.
 	ScoreROI *ROI `json:"score_roi,omitempty"`
+	// PlayerSpot (optional) seeds the person filter: the rect is where the
+	// subject stands in one frame and At is that frame's source second. The
+	// analyze pass measures the color signature from it exactly as it would
+	// from a UI-drawn spot, so a manifest can A/B a min_player_presence style
+	// the same way it A/Bs the court region.
+	PlayerSpot *Spot `json:"player_spot,omitempty"`
 }
 
 // ROI is a normalized region of interest (0..1). Same rule as the
@@ -42,6 +48,31 @@ type ROI struct {
 	Y float64 `json:"y"`
 	W float64 `json:"w"`
 	H float64 `json:"h"`
+}
+
+// Spot is a player-spot seeding: a normalized rect plus the source second it
+// was drawn against. Kept local like ROI.
+type Spot struct {
+	X  float64 `json:"x"`
+	Y  float64 `json:"y"`
+	W  float64 `json:"w"`
+	H  float64 `json:"h"`
+	At float64 `json:"at"`
+}
+
+// Valid mirrors the storage-side spot rule and requires a finite,
+// non-negative drawn-at moment.
+func (s *Spot) Valid() bool {
+	if s == nil {
+		return false
+	}
+	for _, v := range []float64{s.X, s.Y, s.W, s.H, s.At} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return s.X >= 0 && s.Y >= 0 && s.W > 0 && s.H > 0 &&
+		s.X+s.W <= 1 && s.Y+s.H <= 1 && s.At >= 0
 }
 
 // Valid mirrors style.Validate's motion_roi rule.
@@ -148,6 +179,11 @@ func (m *Manifest) Validate() error {
 					fmt.Sprintf("case %q: %s must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 (got %v)",
 						c.Name, region.name, *region.r), nil)
 			}
+		}
+		if c.PlayerSpot != nil && !c.PlayerSpot.Valid() {
+			return xcerr.E(xcerr.CodeValidation,
+				fmt.Sprintf("case %q: player_spot must satisfy 0<=x,y and 0<w,h and x+w,y+h<=1 with at >= 0 (got %v)",
+					c.Name, *c.PlayerSpot), nil)
 		}
 	}
 	return nil
