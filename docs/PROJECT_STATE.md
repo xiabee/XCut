@@ -54,7 +54,22 @@ explicitly (14 packages, zero DATA RACE — the fast gate's race subset does not
 cover them); `xnightops ci run` without `--node` was re-verified as the
 local-CI recording path session #25's handoff asked for; and the
 round-8 export-dup instrument from last night stayed silent through the night's
-soak rounds.
+soak rounds. The soak itself learned the person filter: `scripts/soak.sh`
+runs a five-assertion spot arm every round (seed, read-back with no invented
+signature, a refused rect, clear, second-clear 404) — 205/205 green across
+the night — and the soak taught its author two damage classes in return:
+editing the script mid-run shifts bash's read offsets, and `rm -rf` of the
+live workspace deletes the media the later rounds re-read. Both cascades
+produce the same signature — the probe arms keep answering correctly while
+the pipeline arms answer file-not-found — which is how operator damage
+announces itself here, and both incidents are recorded rather than smoothed.
+
+A Windows ISP outage took the host's internet from ~02:45 until past 06:00:
+every commit after `a2e49cd` is local-only until push recovers, remote
+acceptance never stopped (the win-devops node consumes a LAN push_snapshot),
+and govulncheck could not refresh its database (last clean scan 02:13, which
+covers all of tonight's code — the later commits are tests and docs plus one
+flag registration).
 
 ## Version / HEAD`.
 
