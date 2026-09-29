@@ -320,6 +320,28 @@ capabilities (pipeline consumption of it is future work);
 
 </details>
 
+## 👤 Person filter
+
+AI-free subject marking: draw a rectangle around yourself on one frame of a
+source, and the analyze pass measures an HSV color signature (an 18×3×3
+histogram) from it. The presence scan then answers, per frame, how strongly
+"you" are in view via a sliding-window patch match — a style's
+`min_player_presence` drops the segments where you are absent. Three seeding
+entry points share one storage rule; redrawing drops the previously measured
+signature, and the next analyze measures against the rect actually drawn:
+
+```sh
+xcut player <project> --asset <id> --set x,y,w,h [--at seconds]  # draw and show status
+xcut analyze <project>                                           # measure the signature
+```
+
+The web UI's Regions panel has it as the third target (draw → save → run
+analyze); an eval manifest can seed `player_spot:{x,y,w,h,at}` per case, which
+makes `min_player_presence` A/B-able on labeled footage. Honest limit: a
+single histogram does not identify people — two subjects in the same colors
+are indistinguishable; multi-person separation is future roadmap
+(docs/PERSON_FILTER_ROADMAP.md).
+
 ## ⚙️ Configuration
 
 `./xcut config show` prints the effective config; precedence is
