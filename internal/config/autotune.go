@@ -34,19 +34,6 @@ type ResourceRecommendation struct {
 	MaxRenderWorkers   int
 }
 
-// Describe renders one human line (doctor, config show notes).
-func (r ResourceRecommendation) Describe(spec MachineSpec) string {
-	return fmt.Sprintf("profile=auto: %d ffmpeg children × %d threads (of %d logical CPUs%s), analysis workers %d",
-		r.MaxFFmpegProcesses, r.FFmpegThreads, spec.LogicalCPU, ramNote(spec), r.MaxAnalysisWorkers)
-}
-
-func ramNote(spec MachineSpec) string {
-	if spec.TotalMemoryBytes == 0 {
-		return ", RAM unknown"
-	}
-	return fmt.Sprintf(", %.0f GB RAM", float64(spec.TotalMemoryBytes)/(1<<30))
-}
-
 // RecommendResources sizes the concurrency knobs. Politeness budget: ffmpeg
 // may use at most half of the logical CPUs (children × threads ≤ logical/2)
 // and at most half of RAM (children × 1.5 GB ≤ RAM/2). Everything below the
