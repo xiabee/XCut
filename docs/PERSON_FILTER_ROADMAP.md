@@ -6,7 +6,9 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
 ## Phase 1 — Color Signature v2 (shipped)
 
 - HSV 色签（18×3×3 = 162 bins，L1 归一化）
-- 用户在源视频某一帧上框选自己所在的矩形（`xcut player --set x,y,w,h`）
+- 用户在源视频某一帧上框选自己所在的矩形（`xcut player --set x,y,w,h`；
+  2026-09-29 起 HTTP `PUT …/assets/{id}/player-spot` 与 eval manifest 的
+  `player_spot` 走同一存储规则——重框即弃旧签名，下次 analyze 重测）
 - presence 扫描：整帧解码 → 滑动窗口 patch-max（积分图）→ 每帧 0..1 分
 - **限制**：单一直方图无法区分"同色系的不同人"
 

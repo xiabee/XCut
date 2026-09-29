@@ -6,6 +6,23 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **The person filter is seedable from manifests and HTTP.** An eval manifest can carry
+  `player_spot: {x, y, w, h, at}` — the analyze pass measures the color signature from it
+  exactly as it would from a CLI-drawn spot, so a `min_player_presence` style can be A/B'd
+  on labeled footage the same way the court region already could (`--check` refuses a
+  malformed rect in seconds, before any import). The same seed reached HTTP:
+  `GET/PUT/DELETE /api/v1/projects/{id}/assets/{assetID}/player-spot` mirrors the roi
+  routes, validates with the storage layer's own rule, and answers with the asset row's
+  own spot JSON. Redrawing drops the previously measured signature on both surfaces —
+  the next analyze measures against the rect actually drawn, never replays the old model.
+- **`xcut eval` runs the person filter through its own production write**, and the
+  presence path it exercises (Phase-1 single-histogram scoring, the one
+  `min_player_presence` actually runs) is covered by tests for the first time — patch
+  statistics, spot-rect validation, signature contract, frame reassembly from a chatty
+  child — after a coverage sweep showed the shipped filter at 0% while its unwired
+  successor had the tests.
+
+### Added
 - **GPU-accelerated rendering with automatic detection (`render.encoder`).** The knob is
   `auto` by default: at first render the machine's hardware H.264 encoders (NVENC / AMF /
   QSV / VAAPI, platform order) are probed with a real tiny encode — a name present in the
