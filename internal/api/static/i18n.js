@@ -5,6 +5,15 @@
  * substituted by tf() in app.js. */
 window.XCUT_I18N = {
   "zh": {
+    "player spot (person filter)": "人物标记（人像过滤）",
+    "person filter": "人像过滤",
+    "draw player spot…": "框选人物位置…",
+    "drag a rectangle around yourself in one frame — the analyze run measures your color signature from it.": "在某一帧里框住你自己——下一次分析会从这块区域量出你的色签。",
+    "player spot {crop} at {at}s — your signature is measured": "人物标记 {crop}（第 {at} 秒）——色签已量出",
+    "player spot {crop} at {at}s stored — run analyze to measure your signature": "人物标记 {crop}（第 {at} 秒）已存——运行分析以量取色签",
+    "no player spot": "未设人物标记",
+    "Player spot saved — the color signature is measured on the next analyze run": "人物标记已存——下次分析将量取色签",
+    "Player spot cleared": "人物标记已清除",
     "no project": "未选择工程",
     "new project name": "新工程名称",
     "create project": "创建工程",

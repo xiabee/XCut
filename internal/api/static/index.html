@@ -115,16 +115,17 @@
     </section>
 
     <section class="panel" id="panel-roi">
-      <h2><span data-i18n="Regions">Regions</span> <span id="roi-tag-motion" class="tag" data-i18n="motion region">motion region</span><span id="roi-tag-score" class="tag" hidden data-i18n="scoreboard region">scoreboard region</span></h2>
+      <h2><span data-i18n="Regions">Regions</span> <span id="roi-tag-motion" class="tag" data-i18n="motion region">motion region</span><span id="roi-tag-score" class="tag" hidden data-i18n="scoreboard region">scoreboard region</span><span id="roi-tag-spot" class="tag" hidden data-i18n="person filter">person filter</span></h2>
       <div class="row">
         <label for="roi-target" data-i18n="region to draw">region to draw</label>
         <select id="roi-target">
           <option value="roi" data-i18n="court region (motion)">court region (motion)</option>
           <option value="score" data-i18n="scoreboard region (point ends)">scoreboard region (point ends)</option>
+          <option value="spot" data-i18n="player spot (person filter)">player spot (person filter)</option>
         </select>
       </div>
       <div class="row">
-        <button id="btn-roi"><span id="btn-roi-label-court" data-i18n="draw court ROI…">draw court ROI…</span><span id="btn-roi-label-score" data-i18n="draw scoreboard region…" hidden>draw scoreboard region…</span></button>
+        <button id="btn-roi"><span id="btn-roi-label-court" data-i18n="draw court ROI…">draw court ROI…</span><span id="btn-roi-label-score" data-i18n="draw scoreboard region…" hidden>draw scoreboard region…</span><span id="btn-roi-label-spot" data-i18n="draw player spot…" hidden>draw player spot…</span></button>
         <button id="btn-roi-clear" class="ghost" hidden data-i18n="clear">clear</button>
         <span id="roi-status" class="hint" data-i18n="checking…">checking…</span>
       </div>
@@ -138,6 +139,7 @@
           <button id="btn-roi-cancel" class="ghost" data-i18n="cancel">cancel</button>
           <span id="roi-hint-court" class="hint" data-i18n="drag a rectangle over the court area — saved for this asset; it overrides the style's region.">drag a rectangle over the court area — saved for this asset; it overrides the style's region.</span>
           <span id="roi-hint-score" class="hint" hidden data-i18n="drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.">drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.</span>
+          <span id="roi-hint-spot" class="hint" hidden data-i18n="drag a rectangle around yourself in one frame — the analyze run measures your color signature from it.">drag a rectangle around yourself in one frame — the analyze run measures your color signature from it.</span>
         </div>
       </div>
     </section>

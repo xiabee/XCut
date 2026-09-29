@@ -1614,10 +1614,16 @@ function roiStyleName() { return $("style").value; }
 function roiAsset() { return $("subs-asset").selectedOptions[0] || null; }
 // "roi" (court) or "score" (scoreboard): the same picker, the same drag code,
 // two endpoints that take the same rectangle shape.
-function roiTarget() { return $("roi-target").value === "score" ? "score" : "roi"; }
+function roiTarget() {
+  const v = $("roi-target").value;
+  return v === "score" || v === "spot" ? v : "roi";
+}
 function roiIsScore() { return roiTarget() === "score"; }
+function roiIsSpot() { return roiTarget() === "spot"; }
 function roiUrl(assetValue) {
-  return `/api/v1/projects/${currentProject.id}/assets/${assetValue}/${roiTarget()}`;
+  // The spot endpoint is spelled player-spot; roi and score name themselves.
+  const t = roiTarget();
+  return `/api/v1/projects/${currentProject.id}/assets/${assetValue}/${t === "spot" ? "player-spot" : t}`;
 }
 
 function fmtROI(label, roi) {
@@ -1638,15 +1644,35 @@ async function refreshROIStatus() {
   // label — wrong when the user switched target OR asset in between (a
   // target switch and an asset switch each fire this function again).
   const stale = () => target !== roiTarget() || assetValue !== roiAsset().value;
-  $("roi-hint-court").hidden = roiIsScore();
-  $("roi-hint-score").hidden = !roiIsScore();
-  $("roi-tag-motion").hidden = roiIsScore();
-  $("roi-tag-score").hidden = !roiIsScore();
-  $("btn-roi-label-court").hidden = roiIsScore();
-  $("btn-roi-label-score").hidden = !roiIsScore();
+  const tgt = roiTarget();
+  $("roi-hint-court").hidden = tgt !== "roi";
+  $("roi-hint-score").hidden = tgt !== "score";
+  $("roi-hint-spot").hidden = tgt !== "spot";
+  $("roi-tag-motion").hidden = tgt !== "roi";
+  $("roi-tag-score").hidden = tgt !== "score";
+  $("roi-tag-spot").hidden = tgt !== "spot";
+  $("btn-roi-label-court").hidden = tgt !== "roi";
+  $("btn-roi-label-score").hidden = tgt !== "score";
+  $("btn-roi-label-spot").hidden = tgt !== "spot";
   if (!currentProject || !asset) { status.textContent = ""; clearBtn.hidden = true; return; }
   const pid = currentProject.id;
   try {
+    if (roiIsSpot()) {
+      const own = await api(`/api/v1/projects/${pid}/assets/${asset.value}/player-spot`);
+      if (projectChangedSince(pid) || stale()) return;
+      const spot = own.spot;
+      clearBtn.hidden = !spot;
+      if (spot && spot.bins && spot.bins.length > 0) {
+        status.textContent = tf("player spot {crop} at {at}s — your signature is measured",
+          { crop: fmtCrop(spot.rect), at: Number(spot.at).toFixed(1) });
+      } else if (spot) {
+        status.textContent = tf("player spot {crop} at {at}s stored — run analyze to measure your signature",
+          { crop: fmtCrop(spot.rect), at: Number(spot.at).toFixed(1) });
+      } else {
+        status.textContent = t("no player spot");
+      }
+      return;
+    }
     if (target === "score") {
       const own = await api(`/api/v1/projects/${pid}/assets/${asset.value}/score`);
       if (projectChangedSince(pid) || stale()) return;
@@ -1730,7 +1756,8 @@ $("btn-roi-clear").addEventListener("click", async () => {
   if (!currentProject || !asset) return;
   try {
     await api(roiUrl(asset.value), { method: "DELETE" });
-    banner(roiIsScore() ? t("Scoreboard region cleared") : t("Per-source ROI cleared — this asset falls back to the style's region"));
+    banner(roiIsSpot() ? t("Player spot cleared")
+      : roiIsScore() ? t("Scoreboard region cleared") : t("Per-source ROI cleared — this asset falls back to the style's region"));
     refreshROIStatus();
   } catch (e) { banner(tf("Clear failed: {msg}", { msg: e.message })); }
 });
@@ -1739,12 +1766,19 @@ $("btn-roi-save").addEventListener("click", async () => {
   const asset = roiAsset();
   if (!asset) return;
   try {
+    // The spot's wire shape carries the rect as an array and the frame the
+    // user drew it against; roi and score posts stay bare rects.
+    const body = roiIsSpot()
+      ? { rect: [roiRect.x, roiRect.y, roiRect.w, roiRect.h], at: $("roi-video").currentTime || 1 }
+      : roiRect;
     await api(roiUrl(asset.value), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(roiRect),
+      body: JSON.stringify(body),
     });
-    banner(roiIsScore()
+    banner(roiIsSpot()
+      ? t("Player spot saved — the color signature is measured on the next analyze run")
+      : roiIsScore()
       ? t("Scoreboard region saved — the point boundaries are measured on the next analyze run")
       : t("Court ROI saved for this asset — it overrides the style's region"));
     closeROIEditor();
