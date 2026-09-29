@@ -311,12 +311,10 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				continue
 			}
 			// Beat snapping only applies where nothing else has fixed the end: a
-			// measured point end outranks the grid, and so does a rally's own
-			// landing — a clip that stops at last-hit-plus-tail keeps that
-			// landing even when a beat sits nearer (the grid, built from the
-			// same onsets, ends at the last hit anyway).
+			// measured point end outranks the grid, and every other end rule —
+			// segment head, peak window — is free to move onto it.
 			atBeat := 0.0
-			if atBoundary == 0 && anchor != anchorRallyEnd {
+			if atBoundary == 0 {
 				if snapped, moved := snapEnd(preset, srcStart, srcEnd, c.seg, c.beats); moved {
 					srcEnd, atBeat = snapped, snapped
 				}
@@ -356,8 +354,9 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				md["point_end"] = strconv.FormatFloat(round4(atBoundary), 'f', 2, 64)
 			}
 			if anchor != "" && anchor != anchorBoundary {
-				// The end rule is visible per clip too: "last hit + landing
-				// tail" is the answer to why a clip stops where it stops.
+				// The end rule is visible per clip too: "segment head" or
+				// "peak window" is the answer to why a clip stops where it
+				// stops when no point end did.
 				md["end_anchor"] = anchor
 			}
 			if atBeat > 0 {
@@ -707,28 +706,10 @@ func trimSegment(p *Preset, seg event.Segment, remaining float64, boundaries []f
 	return round4(start), round4(end), atBoundary, anchor, true
 }
 
-// defaultRallyTail mirrors internal/event's default rally_pad: the landing
-// tail a clip keeps after the last hit when the style says nothing.
-const defaultRallyTail = 1.2
-
-// rallyTailSeconds is the landing tail a clip keeps after the last hit: the
-// style's own rally_pad (the seconds that already pad segment bounds), so the
-// space between "last hit" and "players walk away" stays one number.
-func rallyTailSeconds(p *Preset) float64 {
-	if p.EventConfig.RallyPad > 0 {
-		return p.EventConfig.RallyPad
-	}
-	return defaultRallyTail
-}
-
-// hitTailEps absorbs round4 rounding on hit timestamps.
-const hitTailEps = 0.01
-
 // Clip-end anchors, recorded into clip metadata so a reel explains not only
 // why a clip was picked but also why it stops where it stops.
 const (
 	anchorBoundary   = "scoreboard point end"
-	anchorRallyEnd   = "last hit + landing tail"
 	anchorPeakWindow = "peak window"
 	anchorHead       = "segment head"
 )
