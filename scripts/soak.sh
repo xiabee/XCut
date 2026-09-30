@@ -128,6 +128,7 @@ errors=0; dup409=0; stale409=0; goodPUT=0; renderQueued=0; subsOK=0; upNoLitter=
 dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
 expDoor=0; expDoorSkip=0; expDoorLate=0; expQueued=0; expDup=0; expDupSkip=0; expDupLate=0; expDone=0
 spotOK=0
+carryOK=0
 
 job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
     curl -s --max-time 5 "$BASE/jobs" | python -c "
@@ -255,6 +256,58 @@ print(json.dumps(d['timeline']))" > "$WS/good.json"
         spotOK=$((spotOK+1))
     else
         err="$err spot-arm put=$spot_put get=$spot_get bad=$spot_bad del=$spot_del del2=$spot_del2"
+    fi
+
+    # 5c. motion-carry surface (session #27): the picker plans a drift (needs
+    #     no region), a region-less roi plan is refused, a wild zoom is
+    #     refused, and a pick saved onto the lead clip survives the next
+    #     regeneration on the same source window (this style frames nothing,
+    #     so the carry is the only way the plan comes back).
+    mA=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID" | python -c "import json,sys; d=json.load(sys.stdin); print(d['assets'][0]['id'])")
+    plan=$(curl -s --max-time 10 -X POST -H "Content-Type: application/json" \
+        -d "{\"mode\":\"drift\",\"asset\":\"$mA\",\"ordinal\":0}" \
+        "$BASE/projects/$PROJ_ID/motion/plan")
+    plan_ok=$(printf '%s' "$plan" | python -c "import json,sys; d=json.load(sys.stdin); m=d.get('motion') or {}; print('ok' if m.get('zoom') and m.get('from') and m.get('to') else 'wrong')" 2>/dev/null)
+    plan_roi=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
+        -H "Content-Type: application/json" -d "{\"mode\":\"roi\",\"asset\":\"$mA\"}" \
+        "$BASE/projects/$PROJ_ID/motion/plan")
+    plan_zoom=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
+        -H "Content-Type: application/json" -d "{\"mode\":\"drift\",\"asset\":\"$mA\",\"zoom\":5}" \
+        "$BASE/projects/$PROJ_ID/motion/plan")
+    pick_zoom=$(printf '%s' "$plan" | python -c "import json,sys; print(json.load(sys.stdin)['motion']['zoom'])" 2>/dev/null)
+    curl -s --max-time 10 "$BASE/projects/$PROJ_ID/timeline" | MOTION_PLAN="$plan" WS_OUT="$WS/picked.json" python -c "
+import json,os,sys
+d=json.load(sys.stdin)['timeline']
+p=json.loads(os.environ['MOTION_PLAN'])
+c=d['tracks'][0]['clips'][0]
+c['motion']=p['motion']
+c.setdefault('metadata',{})['framing']=p['framing']
+open(os.environ['WS_OUT'],'w').write(json.dumps(d))
+print(c['source_start'], c['source_end'])" > "$WS/pickwin.txt" 2>/dev/null
+    pick_start=$(cut -d' ' -f1 "$WS/pickwin.txt" 2>/dev/null)
+    pick_end=$(cut -d' ' -f2 "$WS/pickwin.txt" 2>/dev/null)
+    pick_put=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X PUT \
+        -H "Content-Type: application/json" --data-binary @"$WS/picked.json" \
+        "$BASE/projects/$PROJ_ID/timeline")
+    mcode=$(post_code "/projects/$PROJ_ID/timeline" '{"style":"generic_highlight"}')
+    mregen=bad
+    if [ "$mcode" = "202" ] || [ "$mcode" = "200" ]; then
+        mst=$(wait_job timeline)
+        [ "$mst" = "succeeded" ] && mregen=ok
+    fi
+    carry_get=$(curl -s --max-time 10 "$BASE/projects/$PROJ_ID/timeline" \
+        | PICK_START="$pick_start" PICK_END="$pick_end" PICK_ZOOM="$pick_zoom" python -c "
+import json,os,sys
+d=json.load(sys.stdin)['timeline']
+start,end,zoom=float(os.environ['PICK_START']),float(os.environ['PICK_END']),float(os.environ['PICK_ZOOM'])
+hit=[c for c in d['tracks'][0]['clips'] if abs(c['source_start']-start)<1e-6 and abs(c['source_end']-end)<1e-6]
+ok=bool(hit) and bool(hit[0].get('motion')) and abs(hit[0]['motion']['zoom']-zoom)<1e-9 and hit[0].get('metadata',{}).get('framing')=='drift'
+print('ok' if ok else 'wrong')" 2>/dev/null)
+    if [ "$plan_ok" = "ok" ] && [ "$plan_roi" = "400" ] && [ "$plan_zoom" = "400" ] \
+        && [ "$pick_put" = "200" ] && [ "$mregen" = "ok" ] && [ "$carry_get" = "ok" ]; then
+        carryOK=$((carryOK+1))
+    else
+        err="$err carry-arm plan=$plan_ok roi=$plan_roi zoom=$plan_zoom put=$pick_put regen=$mregen get=$carry_get"
     fi
 
     # 6. junk upload: the probe refuses the content and the copy is cleaned
@@ -452,5 +505,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone spotOK=$spotOK"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone spotOK=$spotOK carryOK=$carryOK"
 [ "$errors" -eq 0 ]
