@@ -156,3 +156,33 @@ func TestBeatTicksIsBounded(t *testing.T) {
 			got.Ticks[0], got.Ticks[len(got.Ticks)-1])
 	}
 }
+
+func TestBeatTicksReadsEveryTrack(t *testing.T) {
+	// The ruler shows the composite: a clip on the audio track plays the same
+	// material the video track does, and the beat it shares must draw once.
+	tl := &Timeline{
+		Version: Version,
+		Canvas:  Canvas{Width: 640, Height: 360, FPS: 30},
+		Tracks: []Track{
+			{ID: "v1", Kind: "video", Clips: []Clip{{ID: "c0", AssetID: "a", SourceStart: 0, SourceEnd: 2, TimelineStart: 0, Speed: 1}}},
+			{ID: "a1", Kind: "audio", Clips: []Clip{{ID: "c1", AssetID: "a", SourceStart: 0, SourceEnd: 2, TimelineStart: 0, Speed: 1}}},
+		},
+		Metadata: map[string]string{MetaBeatBPM: "60", MetaBeatPhase: "0"},
+	}
+	got := tl.BeatTicks()
+	want := []float64{0, 1, 2}
+	if !reflect.DeepEqual(got.Ticks, want) {
+		t.Errorf("ticks = %v, want %v (the two tracks' shared beats once each)", got.Ticks, want)
+	}
+}
+
+func TestBeatTicksCombinesOffsetAndSpeed(t *testing.T) {
+	// Both mappings at once: the clip starts at output 5 and runs at 2x, so the
+	// beat at source 1.0 lands at 5 + 0.5. Either term alone is tested above;
+	// this pins their composition.
+	got := gridDoc(120, 0, 0.5, 2.5, 5.0, 2).BeatTicks()
+	want := []float64{5.0, 5.25, 5.5, 5.75, 6.0}
+	if !reflect.DeepEqual(got.Ticks, want) {
+		t.Errorf("ticks = %v, want %v (source 0.5..2.5 inclusive, halved and shifted to 5.0..6.0)", got.Ticks, want)
+	}
+}

@@ -186,3 +186,15 @@ func TestCarryTieGoesToTheEarlierClip(t *testing.T) {
 		t.Fatalf("the tie went to zoom %v; want the earlier clip's 1", got)
 	}
 }
+
+func TestCarryIsSpeedAgnosticOntoTheSameSourceWindow(t *testing.T) {
+	// The plan aims at source material, so the regeneration may hand the pick
+	// to a clip that plays the same window faster — the match is on the source
+	// window, never on played duration.
+	prev := oneClipDoc(carryDoc("a", 10, 18, roiPlan(), "roi"))
+	next := carryDoc("a", 10, 18, nil, "")
+	next.Speed = 2
+	if n := carryHandMotion(prev, oneClipDoc(next)); n != 1 {
+		t.Fatalf("carried %d onto a 2x clip over the same window; want 1", n)
+	}
+}
