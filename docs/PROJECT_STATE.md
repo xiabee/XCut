@@ -3,9 +3,99 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-09-30 0X:XX +0800 (session #26's paragraph below is the state that holds now).
+Updated: 2026-10-01 0X:XX +0800 (session #27's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Session #26 (night 2026-09-29) opened with a coverage sweep and closed
+last paragraph before `Session #27 (night 2026-09-30) closed Phase 5's last open line and hardened
+the acceptance machinery around the flake family the night's own gates kept
+exercising.
+
+B6g (ffc3abb): a reel's document now states the grid its cuts were snapped
+against (`beat_bpm` + `beat_phase` in the metadata — the bed's when a bed
+won, else the one distinct asset grid whose assets contributed clips; two
+different asset lattices state neither, because a document-level grid over
+both would be fiction). The timeline GET derives a `beat` object beside
+`pacing` — the beats mapped into output time through each clip's own trim
+and speed, microsecond-rounded, deduplicated, capped at 4 096 where
+enumeration also stops (the cap is a work bound as much as a wire bound) —
+and the ruler draws the served marks verbatim, clickable, hidden when null.
+A bare BPM never earns an invented phase, so documents built before this
+night honestly draw nothing. Measured at four layers: the
+mapping/refusal/speed/bounds/dedupe/cap table tests, the real path (snap on
+states ~120 BPM and the derived ticks land on that lattice; snap off states
+neither key), the two-ended wire pins (handler, script text, i18n, CSS
+rule), and nine mutations each killed by its named assertion — two of which
+were pins too weak in the first round (`env.beat` satisfied by the
+substring `env.beats`; a CSS pin satisfied by the surviving `:hover` rule)
+and were strengthened before the mutation died. The per-GET cost is
+measured in docs/PERFORMANCE.md (21–28 µs on a realistic reel, 351–485 µs
+at the cap) beside the carry benchmark below.
+
+M2 (34943ed): hand-picked motion survives regenerating the reel — the
+limitation the pane used to warn about. Publishing a regeneration carries
+each pick onto the clip that still describes it: same asset, source-window
+IoU ≥ 0.9 (a beat-snap nudge follows, re-cut material does not; the floor
+is honest at its boundary — 0.9009 carries, 0.8929 refuses), highest IoU
+wins, ties to the earlier clip. The style's own framing yields to nothing —
+regeneration re-runs the style, so a preset's camera_motion outranks a pick
+made under the previous document. The framing claim travels with the plan
+and is never forged for a pick that carried none. Eleven table tests, the
+real path (pick, publish, regenerate, read the pick off the new document
+AND off the published bytes), and seven mutations — one of which caught the
+first implementation saying the opposite of its own comment (`>=` keeps the
+LATER clip). The soak learned the surface as a sixth standing arm
+(carryOK 105/105 across the night, 135 rounds errors=0 total).
+
+The gates (6c3dbe7, a60dc15): the documented load-flake family struck the
+fast gate's `-race` subset for the first time (worker's reaper test blew
+its 60 s call deadline under the gate's own load and passed the same test
+in isolation at 8.7 s), and the race step turned out to be the one step
+without the isolate-and-retry the plain go test step has had since session
+#25. Both gates now retry exactly the failed packages once, disclose
+`race flake-recovered:` in the verdict line, keep the first failure as
+evidence, and still throw on a second failure — validated by a REAL strike
+the same night (cli fell at 224 s under load, the gate re-ran only cli,
+149 s green, verdict line carried the disclosure). The bash gate's version
+caught its own first bug in the synthetic harness: go test's bare `FAIL`
+banner line has no second field, and its empty awk output rode into the
+retry command as an empty argument until an `NF >= 2` guard (the ps1
+version's `\s+(\S+)` regex was immune by construction).
+
+Docs truth (f977b21, 0496704): the roadmap's notched beat-ticks entry still
+said "still open" after B6g closed it, and B6d's "not done" line said xcut
+auto has no caption step three lines above where the same entry records B6e
+shipping it. Both now tell the truth — the notch struck through with the
+design difference from its own sketch stated (bpm+phase beats a per-cut
+`music_beats` key on exactness, wire size, and the honest case the key
+would have been silent in), and the stale note marks its own caption half
+outdated instead of contradicting the section it sits in.
+
+A whole-repo coverage sweep at the night's head: 0% functions down to 13,
+all exempt-class (GUI/window paths, the non-Windows sandbox stubs, main,
+the test helper's no-ffmpeg branch) — the night's new code is fully
+covered, statement coverage 83.9% (-coverpkg). Security scans ran twice on
+the final code: gosec HIGH/HIGH 0 issues, gitleaks clean; govulncheck
+remained network-blocked all night and could not refresh its database. The
+precise claim, stated rather than smoothed: no third-party dependencies
+were added, so the dependency half of the scan is unchanged; the first-party
+half is covered by gosec above, but the stdlib call paths the new code
+opens (encoding/json, strconv, math, sort, os) are read by a database
+snapshot from 02:13 the previous night — the refresh is an operator task
+for when the network returns.
+
+Remote acceptance (win-devops, LAN push_snapshot): PASS at ffc3abb,
+6c3dbe7, 34943ed, f977b21, 6cd7928 — with one FAIL en route whose cause is
+the night's sharpest operational lesson: the 01:47 dispatch raced a
+half-written working tree, and **push_snapshot includes working-tree WIP**,
+so the node compiled a test file that referenced a method that did not
+exist yet. Same head passed at 2 m48 s once the tree was complete. Dispatch
+remote only from a clean or committed tree.
+
+Push remained blocked all night by the ISP outage that began 02:45 the
+previous night (DNS resolved, TCP to github dead): every commit above is
+local-only, each accepted through the fast gate and the LAN node before its
+commit — the backlog is push-ready, never a reason to roll back.
+
+Session #26 (night 2026-09-29) opened with a coverage sweep and closed
 around one theme: the person filter — shipped in Phase 1 as the color-signature
 presence scan — had a **dead flag, zero tests on its production path, and no
 surface beyond one CLI command**, and every piece of that got fixed or built
