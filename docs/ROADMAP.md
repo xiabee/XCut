@@ -403,9 +403,9 @@ Every item states how it is measured before it is built, because the eval harnes
       rebuilds, the body always transcribes, the skip stops naming itself, the render
       runs inside the tap, `export` leaves the exclusive set, v7's type list narrows).
       Not done: no browser was opened to watch the readout render — its markup, keys
-      and request literal are pinned by tests, its on-screen form is not — and
-      `xcut auto` still has no caption step, so the CLI's one shot stays the
-      three-step one.
+      and request literal are pinned by tests, its on-screen form is not. (The caption
+      half of this note is stale as written: B6e below delivered `xcut auto --subs`,
+      so the CLI's one shot stopped being the three-step one the same night.)
 - [x] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.
