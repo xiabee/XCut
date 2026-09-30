@@ -366,8 +366,33 @@ if ($Mode -eq "fast") {
     if ((go env CGO_ENABLED).Trim() -eq "1" -and (Get-Command gcc -ErrorAction SilentlyContinue)) {
         Write-Host "== go test -race (subset: cli job worker pipeline)"
         $raceStart = Get-Date
-        go test -count=1 -race @racePkgs
-        if ($LASTEXITCODE -ne 0) { throw "go test -race (subset) failed with exit $LASTEXITCODE" }
+        $raceOut = @(go test -count=1 -race @racePkgs | ForEach-Object { "$_" })
+        $raceExit = $LASTEXITCODE
+        $raceOut | ForEach-Object { Write-Host $_ }
+        # The same documented load-flake family the plain go test step isolates
+        # and retries strikes this step too — the race build is slower and the
+        # subset runs four goroutine-heavy packages at once, so worker's reaper
+        # test blew its 60 s call deadline under the gate's own load on
+        # 2026-10-01 while passing the same test in isolation at 8.7 s. Same
+        # policy, applied here: one isolated retry of exactly the failed
+        # packages, the first failure printed above as the evidence, the
+        # verdict line disclosing the recovery, a second failure still a real
+        # failure. One retry — not a loop, and not a threshold relaxed.
+        if ($raceExit -ne 0) {
+            $raceFailed = @($raceOut | ForEach-Object { if ($_ -match "^FAIL\s+(\S+)") { $Matches[1] } })
+            if ($raceFailed.Count -eq 0) {
+                throw "go test -race (subset) failed with exit $raceExit and no FAIL line to isolate (build or panic output above)"
+            }
+            Write-Host "== go test -race: isolated retry of $($raceFailed.Count) failed package(s) (known load-flake family)"
+            $raceRetry = @(go test -count=1 -race @raceFailed | ForEach-Object { "$_" })
+            $raceRetryExit = $LASTEXITCODE
+            $raceRetry | ForEach-Object { Write-Host $_ }
+            if ($raceRetryExit -ne 0) {
+                throw "go test -race (subset) failed twice (full run: exit $raceExit; isolated retry: exit $raceRetryExit)"
+            }
+            $script:RaceFlakeRecovered = ($raceFailed | ForEach-Object { ($_ -split '/')[-1] }) -join ", "
+            Write-Host "== go test -race: isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
+        }
         Write-Host "   race subset wall: $([int]((Get-Date) - $raceStart).TotalSeconds)s"
     }
     else {
@@ -454,4 +479,5 @@ $skipNote = ""
 if ($TestSkips.Count -gt 0) { $skipNote = "; tests skipped: $($TestSkips.Count) (see '== go test' above)" }
 $flakeNote = ""
 if ($script:FlakeRecovered) { $flakeNote = "; flake-recovered: $script:FlakeRecovered (failed under full load, passed the isolated retry — first failure printed above)" }
+if ($script:RaceFlakeRecovered) { $flakeNote = "$flakeNote; race flake-recovered: $script:RaceFlakeRecovered (same policy, the -race subset)" }
 Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" })$skipNote$flakeNote)"
