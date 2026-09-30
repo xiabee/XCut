@@ -6,6 +6,16 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **Beat ticks on the timeline ruler.** A reel whose document states the grid it
+  was cut against (`beat_bpm` + `beat_phase`, stamped by the build — the music
+  bed's grid when a bed won, else the one asset grid that served the cut) now
+  draws its beats on the editing ruler: thin marks you can click to seek, mapped
+  into output time through each clip's own trim and speed by the same derived
+  `beat` object the timeline GET computes beside `pacing` (`null` — no marks —
+  when the document states no grid; a phase is never invented from a bare BPM,
+  so documents built before this change simply draw none). Two assets cut
+  against two different lattices state neither, because a document-level grid
+  over both would be fiction.
 - **The person filter is seedable from manifests and HTTP.** An eval manifest can carry
   `player_spot: {x, y, w, h, at}` — the analyze pass measures the color signature from it
   exactly as it would from a CLI-drawn spot, so a `min_player_presence` style can be A/B'd

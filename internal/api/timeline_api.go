@@ -38,8 +38,12 @@ func (s *Server) handleTimelineGet(w http.ResponseWriter, r *http.Request) {
 	// summary line then read one measurement of one document instead of keeping
 	// two arithmetic implementations that can disagree. A client that echoes this
 	// envelope back to PUT is refused (the document is nested), so the derived
-	// field cannot become an input.
-	writeJSON(w, http.StatusOK, map[string]any{"timeline": tl, "has_backup": hasBackup, "pacing": tl.Pacing()})
+	// field cannot become an input. `beat` is derived the same way — the grid the
+	// document states it was cut against, mapped into output time; null when the
+	// document states no grid.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"timeline": tl, "has_backup": hasBackup, "pacing": tl.Pacing(), "beat": tl.BeatTicks(),
+	})
 }
 
 // handleTimelinePut replaces the project timeline with the posted document.

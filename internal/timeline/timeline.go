@@ -56,6 +56,16 @@ const (
 	// grid worth believing — a reader should not have to re-analyze the audio to
 	// learn what the edit thought.
 	MetaMusicBPM = "music_bpm"
+	// MetaBeatBPM and MetaBeatPhase record the grid the cuts actually snapped
+	// to, whatever audio carried it — the bed's when a bed won, else the one
+	// asset grid that served the build (a reel cut against two different asset
+	// grids states neither, because a document-level grid would be fiction).
+	// BPM is the grid's tempo, phase its first beat, both in the timebase the
+	// snap itself ran in (source time under the bed convention). A reader needs
+	// both keys: bpm alone draws ticks at the wrong places. BeatTicks is the
+	// consumer; it never derives a phase this document does not state.
+	MetaBeatBPM   = "beat_bpm"
+	MetaBeatPhase = "beat_phase"
 )
 
 // Motion describes the framed window as a zoom factor and the normalized center

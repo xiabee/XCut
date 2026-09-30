@@ -385,6 +385,13 @@ button.warn:disabled { background: var(--warn-soft); color: var(--warn); }
   transition: color var(--fast);
 }
 .tl-ruler .tick:hover { color: var(--dim); }
+/* Beat ticks: the grid the document states it was cut against, drawn under the
+   time labels so the pulse shows without crowding them. */
+.tl-ruler .tl-beat {
+  position: absolute; top: 12px; bottom: 0; width: 2px; margin-left: -1px;
+  background: var(--acc-soft); cursor: pointer; transition: background var(--fast);
+}
+.tl-ruler .tl-beat:hover { background: var(--acc); }
 .tl-track { position: relative; height: calc(100% - 20px); min-height: 90px; }
 .tl-clip {
   position: absolute; top: 10px; bottom: 10px;

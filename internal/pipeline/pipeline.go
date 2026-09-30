@@ -13,6 +13,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -650,6 +652,10 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		}
 
 		var items []style.AssetEvents
+		// Per-asset grids are kept beside their assets: after the build names
+		// the clips that survived, only those assets' grids can claim to be
+		// the grid the document was cut against (stampBeatGrid below).
+		var grids []assetBeatGrid
 		for i := range assets {
 			asset := assets[i]
 			// Same input resolution as the analyze stage: with proxy_enabled
@@ -690,6 +696,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 						"asset", asset.ID, "marksCrop", m.Crop, "region", asset.ScoreCrop)
 				}
 			}
+			g, hasGrid := beatGridFor(d.Log, res, &asset, preset)
 			items = append(items, style.AssetEvents{
 				Asset: style.AssetInfo{
 					ID:          asset.ID,
@@ -702,8 +709,11 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 				},
 				Segments:   segs,
 				Boundaries: marks,
-				Beats:      bedWins(bed, beatGridFor(d.Log, res, &asset, preset)),
+				Beats:      bedWins(bed, g.Beats),
 			})
+			if hasGrid {
+				grids = append(grids, assetBeatGrid{assetID: asset.ID, grid: g})
+			}
 			progress(float64(i+1) / float64(len(assets)+1))
 		}
 		tl, err := style.Build(preset, project.ID, items)
@@ -711,6 +721,7 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 			return err
 		}
 		stampBed(tl, bed)
+		stampBeatGrid(tl, bed, gridsServedBy(tl, grids))
 		if err := d.WriteRegeneratedTimeline(project, tl); err != nil {
 			return err
 		}
@@ -736,12 +747,12 @@ func AssetMotionROI(a *storage.Asset) *style.MotionROI {
 // It reads the onset track analysis already cached and estimates from there, so
 // the grid has no cache entry of its own — the estimate costs microseconds, while
 // another stored track would be one more thing to invalidate (docs/ARCHITECTURE.md
-// on the analysis cache). Returns nil when the style does not snap, the asset has
-// no onsets, or the onsets carry no grid worth believing; the caller then selects
-// exactly as it did before this rule existed.
-func beatGridFor(log *slog.Logger, res *analysis.Result, a *storage.Asset, preset *style.Preset) []float64 {
+// on the analysis cache). Returns false when the style does not snap, the asset
+// has no onsets, or the onsets carry no grid worth believing; the caller then
+// selects exactly as it did before this rule existed.
+func beatGridFor(log *slog.Logger, res *analysis.Result, a *storage.Asset, preset *style.Preset) (analysis.BeatGrid, bool) {
 	if preset.BeatSnapTolerance <= 0 {
-		return nil
+		return analysis.BeatGrid{}, false
 	}
 	var onsets []float64
 	for _, tr := range res.Tracks {
@@ -755,11 +766,84 @@ func beatGridFor(log *slog.Logger, res *analysis.Result, a *storage.Asset, prese
 	if !ok {
 		log.Debug("no beat grid in this asset's audio; cuts stay where the length rules put them",
 			"asset", a.ID, "onsets", len(onsets))
-		return nil
+		return analysis.BeatGrid{}, false
 	}
 	log.Info("beat grid estimated", "asset", a.ID, "bpm", grid.BPM,
 		"coverage", grid.Coverage, "beats", len(grid.Beats), "onsets", len(onsets))
-	return grid.Beats
+	return grid, true
+}
+
+// assetBeatGrid pairs a per-asset grid with the asset that carried it, so the
+// post-build stamp can tell which grids the reel's own clips were cut against
+// (a grid whose asset contributed nothing did not shape the document).
+type assetBeatGrid struct {
+	assetID string
+	grid    analysis.BeatGrid
+}
+
+// gridsServedBy returns the asset grids whose assets contributed at least one
+// clip to the document — a grid whose asset contributed nothing did not shape
+// the reel, and must not claim it.
+func gridsServedBy(tl *timeline.Timeline, grids []assetBeatGrid) []assetBeatGrid {
+	served := map[string]bool{}
+	for _, tr := range tl.Tracks {
+		for _, c := range tr.Clips {
+			served[c.AssetID] = true
+		}
+	}
+	var out []assetBeatGrid
+	for _, g := range grids {
+		if served[g.assetID] {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// stampBeatGrid records the grid the cuts snapped to (MetaBeatBPM +
+// MetaBeatPhase) so the UI's ruler can draw the pulse without re-deriving it.
+// The bed's grid wins when a bed won — every end that moved, moved onto it —
+// otherwise the assets that contributed clips must agree on exactly one
+// distinct grid, or a document-level grid would be fiction the ticks would
+// draw. The reader (timeline.BeatTicks) refuses a half-stamped pair, so this
+// writer stamps both keys or neither.
+func stampBeatGrid(tl *timeline.Timeline, bed *musicBed, grids []assetBeatGrid) {
+	var bpm, phase float64
+	switch {
+	case bed != nil && bed.bpm > 0:
+		bpm, phase = bed.bpm, bed.phase
+	case len(oneGrid(grids)) == 1:
+		bpm = oneGrid(grids)[0].grid.BPM
+		phase = oneGrid(grids)[0].grid.Phase
+	default:
+		return
+	}
+	if tl.Metadata == nil {
+		tl.Metadata = map[string]string{}
+	}
+	tl.Metadata[timeline.MetaBeatBPM] = strconv.FormatFloat(bpm, 'f', 4, 64)
+	tl.Metadata[timeline.MetaBeatPhase] = strconv.FormatFloat(phase, 'f', 4, 64)
+}
+
+// oneGrid collapses asset grids that are the same lattice (the same audio
+// fitted twice — identical onsets through the same estimator land on the same
+// floats) and returns what remains, so two clips cut against one shared grid
+// count as one document grid while two different lattices count as two.
+func oneGrid(grids []assetBeatGrid) []assetBeatGrid {
+	var out []assetBeatGrid
+	for _, g := range grids {
+		dup := false
+		for _, k := range out {
+			if k.grid.BPM == g.grid.BPM && slices.Equal(k.grid.Beats, g.grid.Beats) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // eventConfigFor returns the event config for ONE asset: an asset-scoped

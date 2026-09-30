@@ -25,8 +25,11 @@ const DefaultBeatSnap = 0.12
 // pipeline learned from it: the grid the cuts snap to and the two mix levels the
 // render will use.
 type musicBed struct {
-	path       string
-	beats      []float64
+	path  string
+	beats []float64
+	// phase is the grid's first-beat position (analysis.BeatGrid.Phase), kept
+	// beside the tempo so the document can state the pair the ruler draws.
+	phase      float64
 	bpm        float64
 	musicGain  float64
 	sourceGain float64
@@ -86,6 +89,7 @@ func (d Deps) prepareBed(ctx context.Context, req TimelineRequest, preset *style
 		return bed, nil
 	}
 	bed.beats = grid.Beats
+	bed.phase = grid.Phase
 	bed.bpm = grid.BPM
 	// Asking for a bed asks for the cut to follow it, so a run that named a track
 	// and no tolerance gets the product's default snap. req.BeatSnap has already

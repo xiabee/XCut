@@ -131,6 +131,7 @@ window.XCUT_I18N = {
     "music bed “{name}” at {bpm} BPM · its beat was measured, and no cut needed to move to it": "背景音乐「{name}」{bpm} BPM · 节拍已经测出，但没有剪辑点需要移动",
     "music bed “{name}” plays under the reel · its audio had no beat a grid could be believed in": "背景音乐「{name}」垫在成片之下 · 这段音频没有能被相信的节拍网格",
     "{n} of {total} cuts landed on the source audio's own beat": "{n}/{total} 个剪辑点落在素材自身的节拍上",
+    "beat at {t}": "节拍 {t}",
     "trim in (s)": "入点裁剪（秒）",
     "trim out (s)": "出点裁剪（秒）",
     "speed (×)": "速度（×）",

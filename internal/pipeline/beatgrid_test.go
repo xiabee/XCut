@@ -34,9 +34,9 @@ func TestBeatGridForStaysNilWhenTheStyleDoesNotSnap(t *testing.T) {
 	res := &analysis.Result{Tracks: []analysis.FeatureTrack{onsetTrack(onsets)}}
 	asset := &storage.Asset{DurationSec: 14.3}
 
-	beats := beatGridFor(beatGridLogger(), res, asset, &style.Preset{})
-	if beats != nil {
-		t.Fatalf("a snapping-less style produced %d beats; want nil so selection is untouched", len(beats))
+	grid, ok := beatGridFor(beatGridLogger(), res, asset, &style.Preset{})
+	if ok {
+		t.Fatalf("a snapping-less style produced a %d-beat grid; want none so selection is untouched", len(grid.Beats))
 	}
 }
 
@@ -53,9 +53,9 @@ func TestBeatGridForReadsOnlyTheOnsetTrack(t *testing.T) {
 	asset := &storage.Asset{DurationSec: 14.3}
 	preset := &style.Preset{BeatSnapTolerance: 0.25}
 
-	beats := beatGridFor(beatGridLogger(), res, asset, preset)
-	if beats != nil {
-		t.Fatalf("a frame_diff track founded a %d-beat grid; only audio_onset may", len(beats))
+	grid, ok := beatGridFor(beatGridLogger(), res, asset, preset)
+	if ok {
+		t.Fatalf("a frame_diff track founded a %d-beat grid; only audio_onset may", len(grid.Beats))
 	}
 }
 
@@ -75,7 +75,11 @@ func TestBeatGridForReturnsTheFittedLattice(t *testing.T) {
 	asset := &storage.Asset{DurationSec: 14.3}
 	preset := &style.Preset{BeatSnapTolerance: 0.25}
 
-	beats := beatGridFor(beatGridLogger(), res, asset, preset)
+	grid, ok := beatGridFor(beatGridLogger(), res, asset, preset)
+	if !ok {
+		t.Fatal("a 28-onset click train founded no grid; the fitted lattice was the answer")
+	}
+	beats := grid.Beats
 	if len(beats) < 20 {
 		t.Fatalf("a 28-onset click train produced only %d beats", len(beats))
 	}
@@ -108,8 +112,8 @@ func TestBeatGridForRefusesAnIrregularTrain(t *testing.T) {
 	asset := &storage.Asset{DurationSec: 60}
 	preset := &style.Preset{BeatSnapTolerance: 0.25}
 
-	beats := beatGridFor(beatGridLogger(), res, asset, preset)
-	if beats != nil {
-		t.Fatalf("%d irregular onsets produced %d beats; an ungridded train must stay nil", len(onsets), len(beats))
+	grid, ok := beatGridFor(beatGridLogger(), res, asset, preset)
+	if ok {
+		t.Fatalf("%d irregular onsets produced a %d-beat grid; an ungridded train must stay griddless", len(onsets), len(grid.Beats))
 	}
 }

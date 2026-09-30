@@ -312,8 +312,33 @@ Every item states how it is measured before it is built, because the eval harnes
       the note that no browser runs in CI, so that last level is a performed
       observation, not a gate) and B6b (the music-bed field, the three-way beat-snap
       selector, and a second line stating what the saved document chose — bed + BPM +
-      how many cuts followed it, or which of the three "no" cases applied). Remaining:
-      beat ticks on the ruler.
+      how many cuts followed it, or which of the three "no" cases applied).
+      B6g — the last line of this item, the beat ticks on the ruler — landed
+      2026-10-01 (session #27). The build now states the grid the cuts actually
+      snapped to in the document metadata (`beat_bpm` + `beat_phase`): the music
+      bed's when a bed won, else the one distinct asset grid whose assets
+      contributed clips — two different asset lattices state neither, because a
+      document-level grid over both would be fiction the ticks would draw. The
+      timeline GET derives a `beat` object beside `pacing` (`{bpm, ticks}`, null
+      when the document states no grid — a bare BPM never earns an invented phase
+      zero, so pre-existing documents honestly draw nothing), with the beats
+      mapped into output time through each clip's own trim and speed, microsecond-
+      rounded, deduplicated, and capped at 4 096 where enumeration also stops (the
+      cap is a work bound, not just a wire bound — a pathological document costs
+      O(cap) per GET, not O(beats)). The ruler draws the served marks verbatim —
+      thin, clickable to seek, hidden when null — and never re-derives a grid from
+      the BPM in the page, so the picture cannot drift from the cut the document
+      made; like the pacing chip they describe the saved document, and a save
+      refreshes them. Measured: mapping, refusal, speed, bounds, dedupe, cap and
+      the two-ended wire pins are table tests and text guards; nine mutations,
+      each killed by its named assertion — including two pins that were too weak
+      the first round (`env.beat` satisfied by the substring `env.beats`; a CSS
+      pin satisfied by the surviving `:hover` rule) and were strengthened before
+      the mutation died. The stamp is proven through the real path too: a click
+      fixture built with snapping on states ~120 BPM and the derived ticks land
+      on that lattice; the same build with snapping off states neither key. Not
+      claimed: no browser was opened (the standing IAB-night limitation) — the
+      marks' on-screen form rests on the DOM/i18n/CSS guards like B6c/B6d/B6f.
       B6c — the per-clip motion picker — was specified here before it was built, and it
       hit the numbers. The mode→geometry rule moved into `style.MotionFor`, which
       `framingPlan` now calls, so the builder and the picker cannot hold two versions of

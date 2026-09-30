@@ -793,12 +793,14 @@ let timelineDoc = null;   // last fetched timeline JSON
 let clipEdits = null;     // working copy of timelineDoc.tracks[0].clips
 let dragIndex = -1;       // clipEdits index being dragged (HTML5 DnD reorder)
 let selectedIndex = -1;   // clip open in the inspector
+let timelineBeat = null;  // derived `beat` from the envelope; null = the document states no grid
 
 async function refreshTimeline() {
   timelineDoc = null;
   clipEdits = null;
   dragIndex = -1;
   selectedIndex = -1;
+  timelineBeat = null;
   const prev = $("clip-preview");
   if (prev) { prev.hidden = true; prev.removeAttribute("src"); prev.load(); }
   renderInspector();
@@ -816,6 +818,7 @@ async function refreshTimeline() {
     clipEdits = JSON.parse(JSON.stringify(timelineDoc.tracks[0].clips));
     $("btn-tl-restore").hidden = !env.has_backup;
     pacing = env.pacing || null;
+    timelineBeat = env.beat || null;
   } catch (_) { /* no timeline yet — expected before first generation */ }
   renderTimeline();
   renderFootageNote();
@@ -1009,6 +1012,22 @@ function renderTimeline() {
     tick.textContent = fmtClock(t);
     tick.addEventListener("click", (e) => { e.stopPropagation(); seekPreviewTo(t); });
     ruler.appendChild(tick);
+  }
+  // Beat ticks: the grid the saved document states it was cut against, already
+  // mapped into output time by the server (timelineBeat.ticks) — the page draws
+  // the numbers it was served and never re-derives a grid from the BPM, so the
+  // marks cannot drift from the cut the document actually made. They describe
+  // the saved document, like the pacing chip: an unsaved trim moves the clips,
+  // not the grid that was cut against.
+  if (timelineBeat && Array.isArray(timelineBeat.ticks)) {
+    for (const at of timelineBeat.ticks) {
+      const b = document.createElement("div");
+      b.className = "tl-beat";
+      b.style.left = px(at) + "px";
+      b.title = tf("beat at {t}", { t: fmtClock(at) });
+      b.addEventListener("click", (e) => { e.stopPropagation(); seekPreviewTo(at); });
+      ruler.appendChild(b);
+    }
   }
   strip.appendChild(ruler);
 

@@ -196,6 +196,24 @@ func TestTheScriptReadsTheseWireKeys(t *testing.T) {
 			t.Errorf("the timeline document still writes %q, but nothing in the UI reads it any more", field)
 		}
 	}
+	// The ruler's beat marks read the derived object (env.beat → timelineBeat),
+	// and inside it the two keys the server writes. A rename on either side
+	// must fail here rather than leave a ruler that silently draws nothing.
+	// "env.beat" is pinned with its trailing context — "env.beats" would
+	// otherwise satisfy the substring while reading a key nobody writes.
+	for _, field := range []string{"env.beat ||", "timelineBeat.ticks", "timelineBeat &&"} {
+		if !strings.Contains(src, field) {
+			t.Errorf("app.js never reads %q, but the envelope still writes it — the ruler would draw no beat marks", field)
+		}
+	}
+	// The marks carry a class the script assigns by name, which the classList
+	// guard (TestToggledClassesAreStyled) cannot see — so the stylesheet's half
+	// of that pairing is pinned here: a class no rule reads is a mark that
+	// renders invisible.
+	css := staticFile(t, "static/style.css")
+	if !strings.Contains(css, ".tl-beat") {
+		t.Error("style.css has no rule for .tl-beat — the beat marks would render invisible")
+	}
 	// The request the UI sends must name the fields the API body decodes.
 	for _, field := range []string{"req.music", "req.beat_snap"} {
 		if !strings.Contains(src, field) {
