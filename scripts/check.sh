@@ -328,7 +328,34 @@ if [ "$mode" = "fast" ]; then
     if go env CGO_ENABLED | grep -q '^1$' && command -v gcc >/dev/null 2>&1; then
         echo "== go test -race (subset: cli job worker pipeline)"
         race_start=$(date +%s)
-        go test -race -count=1 $RACE_PKGS
+        RACE_FLAKE_NOTE=""
+        if ! race_out=$(go test -race -count=1 $RACE_PKGS); then
+            # Same documented load-flake family, same policy the Windows gate
+            # applies to its plain go test step and, since 2026-10-01, to its
+            # race subset: one isolated retry of exactly the failed packages,
+            # the first failure printed as the evidence, the recovery disclosed
+            # in the verdict, a second failure still fatal.
+            printf '%s\n' "$race_out"
+            # The bare "FAIL" banner line has no second field; a package line
+            # is "FAIL<tab><import path><tab><elapsed>". Without the NF guard
+            # the empty field rides into the retry as an empty argument.
+            race_failed=$(printf '%s\n' "$race_out" | grep '^FAIL' | awk 'NF >= 2 {print $2}' | sort -u)
+            if [ -z "$race_failed" ]; then
+                echo "go test -race failed with no FAIL line to isolate (build or panic above)" >&2
+                exit 1
+            fi
+            echo "== go test -race: isolated retry of $(printf '%s\n' "$race_failed" | wc -l) failed package(s) (known load-flake family)"
+            if ! retry_out=$(go test -race -count=1 $race_failed); then
+                printf '%s\n' "$retry_out"
+                echo "go test -race (subset) failed twice (isolated retry included)" >&2
+                exit 1
+            fi
+            printf '%s\n' "$retry_out"
+            RACE_FLAKE_NOTE="; race flake-recovered: $(printf '%s\n' "$race_failed" | awk -F/ '{print $NF}' | paste -sd, -) (failed under load, passed the isolated retry)"
+            echo "== go test -race: isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
+        else
+            printf '%s\n' "$race_out"
+        fi
         echo "   race subset wall: $(($(date +%s) - race_start))s"
     else
         echo "== go test -race: SKIPPED (no cgo/C toolchain; the full leg covers it)" >&2
