@@ -514,11 +514,13 @@ web UI stays the same asset tree served to browsers).
 
 ## Notched, with the reason
 
-- **Beat ticks on the ruler (B6e's sibling, still open).** The pieces exist: a laid bed
-  already carries its beat times (`musicBed.beats`), clips already record which one they
-  snapped to (`c.metadata.beat`), and a `music_beats` metadata key would let the ruler
-  draw the grid the snapper actually used rather than a tempo re-derivation that can
-  disagree with the cut it claims to explain. It is notched because nothing has asked for
-  it and no measurement says a user cannot edit without it — if it is picked up again it
-  should start from a complaint about the current two lines (the pacing chip and the bed
-  note), not from the observation that ticks would look good.
+- ~~**Beat ticks on the ruler**~~ — closed 2026-10-01 (session #27, B6g; see the B6
+  entry above), picked up not from aesthetics but because it was B6's last open line.
+  The shipped shape differs from this notch's sketch on purpose: instead of a
+  `music_beats` key carrying the snapper's beat *times* (per-cut evidence, unbounded
+  in count), the build stamps the grid it cut against (`beat_bpm` + `beat_phase`) and
+  the timeline GET derives the ticks from it through the clips' own windows — smaller
+  on the wire, exact where the notch feared a tempo re-derivation could disagree
+  (the phase is the stamped one, never re-derived), and honest where the notch's key
+  would have been silent: a bed whose beat was measured but moved nothing still draws
+  its pulse. The per-cut `c.metadata.beat` evidence is unchanged beside it.
