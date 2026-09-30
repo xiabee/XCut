@@ -104,8 +104,13 @@ xcut client                     xcut serve (unchanged)
   whose width is proportional to timeline duration; joins show a
   transition badge (cut / fade / xfade + seconds) that is editable;
   blocks drag to reorder (HTML5 DnD, same save path as today);
-  clicking selects for the inspector; the ruler seeks the preview.
-  Save/Reset/Restore and the revision guard keep their exact semantics.
+  clicking selects for the inspector; the ruler seeks the preview and,
+  when the document states the grid it was cut against (`beat_bpm` +
+  `beat_phase`), draws the beat marks the timeline GET derives — thin
+  marks under the time labels, seek-on-click, hidden when the document
+  states no grid. Pacing chip and the music-bed note read the same
+  document. Save/Reset/Restore and the revision guard keep their exact
+  semantics.
 - **Inspector** (right): context-sensitive. Clip selected → trim
   in/out, speed, volume, transition, remove (also the Delete key).
   Nothing selected → project summary (counts, style, render state).
