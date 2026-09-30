@@ -901,6 +901,7 @@ func (d Deps) WriteRegeneratedTimeline(project *storage.Project, tl *timeline.Ti
 	// the user last had (manual edits included), so keep the previous
 	// document around before replacing it.
 	var prevRevision int64
+	var prevDoc *timeline.Timeline
 	if prev, rerr := os.ReadFile(outPath); rerr == nil {
 		backupPath, err := d.TimelineBackupPath(project.ID)
 		if err != nil {
@@ -909,10 +910,19 @@ func (d Deps) WriteRegeneratedTimeline(project *storage.Project, tl *timeline.Ti
 		if err := WriteAtomic(backupPath, prev); err != nil {
 			return err
 		}
-		var prevDoc timeline.Timeline
-		if json.Unmarshal(prev, &prevDoc) == nil {
-			prevRevision = prevDoc.Revision
+		parsed := timeline.Timeline{}
+		if json.Unmarshal(prev, &parsed) == nil {
+			prevRevision = parsed.Revision
+			prevDoc = &parsed
 		}
+	}
+	// Hand-picked framing survives the regeneration it is about to be erased
+	// by — where it still describes the material (same asset, near-identical
+	// window) and the style framed nothing there itself. The count is the log
+	// line's answer to "what happened to my picks".
+	if n := carryHandMotion(prevDoc, tl); n > 0 && d.Log != nil {
+		d.Log.Info("hand-picked motion carried across the regeneration", "clips", n,
+			"project", project.ID)
 	}
 	// Regeneration advances the document revision so stale editors get
 	// the same 409 protection against it that they get against PUTs.

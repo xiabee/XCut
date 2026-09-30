@@ -360,8 +360,20 @@ Every item states how it is measured before it is built, because the eval harnes
       framing claim is never answered, the zoom bound is dropped, the builder stops
       asking the shared rule, and the page writes the geometry without its claim.
       Not done: no browser was opened, so the select's on-screen behaviour rests on
-      `node --check` and that text guard, and hand-picked motion still does not survive
-      regenerating the reel — which the pane already says.
+      `node --check` and that text guard. The other half — hand-picked motion did not
+      survive regenerating the reel, which the pane said — closed 2026-10-01
+      (session #27): publishing a regeneration now carries each pick onto the clip
+      that still describes it — same asset, source-window IoU ≥ 0.9 (a beat-snap
+      nudge follows; re-cut material does not), highest IoU wins, ties to the earlier
+      clip, and the style's own framing yields to nothing (a preset's camera_motion
+      outranks a pick made under the previous document; a pick only fills a void).
+      The framing claim travels with the plan and is never forged for a pick that
+      carried none. Measured: eleven table tests (the floor at its boundary —
+      0.9009 carries, 0.8929 does not), the real path (pick → publish → regenerate →
+      read the pick off the new document AND off the published bytes), and seven
+      mutations each killed by its named assertion — one of which (tie keeps the
+      LATER clip) caught the first implementation saying the opposite of its comment.
+      The pane's design note says the new truth; no browser was opened.
       B6e — the one-shot's caption step — is small enough to fold in rather than plan:
       `xcut auto --subs=on` (or `--subs=<file>`) transcribes between the reel and the
       render, so the CLI's single command delivers what the tap delivers. Its acceptance

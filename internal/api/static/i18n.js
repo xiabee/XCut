@@ -58,7 +58,7 @@ window.XCUT_I18N = {
     "2 · Timeline": "2 · 时间线",
     "3 · Render": "3 · 渲染",
     "burn subtitles into the render": "将字幕烧录进成片",
-    "analyze → timeline → render; every step records a job. Regenerating (step 2) overwrites manual edits saved in the timeline — that is by design.": "分析 → 时间线 → 渲染；每一步都会记录任务。重新生成（第 2 步）会覆盖时间线中已保存的手动编辑——这是有意设计。",
+    "analyze → timeline → render; every step records a job. Regenerating (step 2) overwrites manual edits saved in the timeline — hand-picked motion follows the clip it was drawn for (same material, and the style's own framing still wins); other manual edits are overwritten by design.": "分析 → 时间线 → 渲染；每一步都会记录任务。重新生成（第 2 步）会覆盖时间线中已保存的手动编辑——手动挑选的运镜会跟着它所针对的片段走（素材一致才跟随，且风格自带的运镜优先）；其余手动编辑被覆盖是有意设计。",
 
     "Subtitles": "字幕",
     "AI sidecar": "AI 边车",

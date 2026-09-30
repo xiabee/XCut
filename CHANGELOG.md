@@ -6,6 +6,11 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **Hand-picked motion survives regenerating the reel.** The pane used to warn that
+  it did not; now the pick follows the clip it was drawn for — same asset, a source
+  window the regenerated clip still describes (IoU ≥ 0.9, so a beat-snap nudge
+  carries and re-cut material does not), the style's own framing still winning over
+  a pick made under the previous document. The framing claim travels with the plan.
 - **Beat ticks on the timeline ruler.** A reel whose document states the grid it
   was cut against (`beat_bpm` + `beat_phase`, stamped by the build — the music
   bed's grid when a bed won, else the one asset grid that served the cut) now
