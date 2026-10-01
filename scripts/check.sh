@@ -113,7 +113,7 @@ fi
 
 echo "== sh -n"
 # The release path is shell: this file, build-release.sh, smoke-release.sh,
-# fetch-arm64-ffmpeg.sh, verify-arm64.sh. A typo in any of them is invisible to gofmt,
+# fetch-stock-ffmpeg.sh, verify-arm64.sh. A typo in any of them is invisible to gofmt,
 # go vet and go build — the gate that ships them has to at least parse them. Offenders
 # are named, the count has a floor (a step that scanned zero files is not a pass), and a
 # host with no /usr/bin/sh reports the step as not run rather than as passing.

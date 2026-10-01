@@ -171,7 +171,7 @@ See DECISIONS.md D12 (rotation) and D14 (sessions).
 
 The distro FFmpeg on Kylin V10 SP1 cannot run this project's test suite (the two rows
 in the table below), so an ARM64 verification is run against a stock build that the
-repository pins: `sh scripts/fetch-arm64-ffmpeg.sh [destdir]` downloads the
+repository pins: `sh scripts/fetch-stock-ffmpeg.sh arm64 [destdir]` downloads the
 FFmpeg 9.0.2 `linuxarm64-gpl` tarball from the immutable release tag
 `autobuild-2026-09-20-13-11`, checks its size and SHA256, refuses a mismatch, checks
 the `xfade` filter is present, and prints the `bin` directory.
@@ -196,7 +196,7 @@ To use the stock build for something other than the suite — the shipped binary
 command line — fetch it on its own and point at it:
 
 ```sh
-BIN=$(sh scripts/fetch-arm64-ffmpeg.sh .tools | tail -1)   # last line is the bin dir
+BIN=$(sh scripts/fetch-stock-ffmpeg.sh arm64 .tools | tail -1)   # last line is the bin dir
 export XCUT_FFMPEG="$BIN/ffmpeg" XCUT_FFPROBE="$BIN/ffprobe"
 ```
 
@@ -208,7 +208,7 @@ per-run injection — the pinned build lives at `/opt/arm64-ffmpeg/<pin-dir>/` w
 node with the same two commands the install used:
 
 ```sh
-sh scripts/fetch-arm64-ffmpeg.sh /opt/arm64-ffmpeg        # verifies size + SHA256 + xfade
+sh scripts/fetch-stock-ffmpeg.sh arm64 /opt/arm64-ffmpeg        # verifies size + SHA256 + xfade
 ln -sf /opt/arm64-ffmpeg/<pin-dir>/bin/ff{mpeg,probe} /usr/local/bin/
 ```
 

@@ -109,7 +109,7 @@ Invoke-Step "gofmt" {
     if ($unformatted) { throw "unformatted files: $unformatted" }
 }
 # Twin of check.sh's "== sh -n". The release path is shell (build-release.sh,
-# smoke-release.sh, fetch-arm64-ffmpeg.sh, verify-arm64.sh, this gate's own twin), and
+# smoke-release.sh, fetch-stock-ffmpeg.sh, verify-arm64.sh, this gate's own twin), and
 # gofmt/vet/build cannot see a typo in any of it. Deliberately at script scope, like the
 # race block below: `$NotRun +=` inside an Invoke-Step scriptblock would only append to a
 # local copy and the verdict line would keep saying "steps not run: none".

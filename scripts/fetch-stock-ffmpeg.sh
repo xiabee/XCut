@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch the stock arm64 FFmpeg that the ARM64 verification run uses.
+# Fetch a stock FFmpeg build the repository pins, for the host architecture.
 #
 # Why a pin exists at all: the Kylin V10 SP1 distro build cannot drive XCut — its
 # Hisilicon OMX decoder writes logs to stdout while ffprobe is answering JSON there
@@ -10,15 +10,18 @@
 # tag, a fixed file, a size and a SHA256, and it refuses a mismatch rather than
 # running something else.
 #
-# How the digest was established, stated plainly: GitHub's release API publishes no
-# upstream digest for this asset (`digests: null`, checked 2026-09-23), so this is
-# not publisher-signed. It is the hash the tagged URL served to two independent
-# fetches on 2026-09-23 — the aarch64 host it is meant for, and an x86_64 laptop —
-# which agreed at the byte count recorded below. The tag is an autobuild tag, so its
-# assets do not move; `master-latest`, which does move, is deliberately not used.
-#
-# Usage: scripts/fetch-arm64-ffmpeg.sh [destdir]   (default: <repo>/.tools)
+# Usage: scripts/fetch-stock-ffmpeg.sh [arm64|x64] [destdir]
+#   (default: this host's own architecture; destdir default <repo>/.tools)
 # Prints the bin directory on the last line.
+#
+# How each digest was established, stated plainly: GitHub's release API publishes no
+# upstream digest for these assets (`digests: null`, checked 2026-09-23), so this is
+# not publisher-signed. arm64: the hash the tagged URL served to two independent
+# fetches on 2026-09-23 — the aarch64 host it is meant for, and an x86_64 laptop —
+# which agreed at the byte count recorded below. x64: the same procedure on
+# 2026-10-02 — an x86_64 laptop and the x86_64 compat node, independent fetches of
+# the same tag. The tag is an autobuild tag, so its assets do not move;
+# `master-latest`, which does move, is deliberately not used.
 #
 # For `go test ./...` that directory must go on PATH: the suite resolves ffmpeg and
 # ffprobe by name (internal/testmedia, media.requireFFmpeg), so XCUT_FFMPEG and
@@ -26,17 +29,45 @@
 # do not reach it. The overrides are the right lever for the shipped binary.
 set -eu
 
+ARCH=${1:-}
+case "$ARCH" in
+    arm64|x64)
+        shift
+        ;;
+    "")
+        case "$(uname -m)" in
+            aarch64) ARCH=arm64 ;;
+            x86_64)  ARCH=x64 ;;
+            *) echo "host is $(uname -m); name the arch explicitly: $0 arm64|x64 [destdir]" >&2; exit 2 ;;
+        esac
+        ;;
+    *)
+        echo "usage: $0 [arm64|x64] [destdir]" >&2
+        exit 2
+        ;;
+esac
+
 TAG="autobuild-2026-09-20-13-11"
-FILE="ffmpeg-n9.0.2-3-ga5923073bf-linuxarm64-gpl-9.0.tar.xz"
-DIR="ffmpeg-n9.0.2-3-ga5923073bf-linuxarm64-gpl-9.0"
-SHA256="031d4336d6a9fab8c0bc26c3bca4fab0c09fcfdd405a7ef6ce2aa4b535fddce9"
-BYTES=126904212
+case "$ARCH" in
+    arm64)
+        FILE="ffmpeg-n9.0.2-3-ga5923073bf-linuxarm64-gpl-9.0.tar.xz"
+        SHA256="031d4336d6a9fab8c0bc26c3bca4fab0c09fcfdd405a7ef6ce2aa4b535fddce9"
+        BYTES=126904212
+        ;;
+    x64)
+        FILE="ffmpeg-n9.0.2-3-ga5923073bf-linux64-gpl-9.0.tar.xz"
+        SHA256="7569c7c00a421d4fb4636925a126e96e051bb5cdd0b0e0a91576ddfadddd9bff"
+        BYTES=150145424
+        ;;
+esac
+DIR="${FILE%.tar.xz}"
 URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$TAG/$FILE"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# `$1` is the destination as given; a relative one resolves against the repo root.
-# Joining the two unconditionally is what made an absolute argument land *inside* the
-# checkout (`<repo>//abs/path/tools`), which then downloaded 121 MB into the snapshot.
+# `$1` (now $1 after the arch shift) is the destination as given; a relative one
+# resolves against the repo root. Joining the two unconditionally is what made an
+# absolute argument land *inside* the checkout (`<repo>//abs/path/tools`), which then
+# downloaded 121 MB into the snapshot.
 if [ $# -ge 1 ] && [ "$1" != "" ]; then
     OUT="$1"
     case "$OUT" in [!/]*) OUT="$ROOT/$OUT" ;; esac
@@ -61,10 +92,14 @@ if [ -x "$CD/bin/ffmpeg" ] && [ -x "$CD/bin/ffprobe" ]; then
     exit 0
 fi
 
-[ "$(uname -m)" = "aarch64" ] || echo "note: host is $(uname -m), the archive is for aarch64 — the binaries below will not run here" >&2
+case "$ARCH" in
+    arm64) WANT_UNAME=aarch64 ;;
+    x64)   WANT_UNAME=x86_64 ;;
+esac
+[ "$(uname -m)" = "$WANT_UNAME" ] || echo "note: host is $(uname -m), the archive is for $WANT_UNAME — the binaries below will not run here" >&2
 
 mkdir -p "$OUT"
-TMP="$OUT/arm64-ffmpeg.tar.xz.part"
+TMP="$OUT/$ARCH-ffmpeg.tar.xz.part"
 echo "fetching $URL" >&2
 curl -fL --retry 3 -o "$TMP" "$URL"
 

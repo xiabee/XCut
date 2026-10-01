@@ -42,7 +42,7 @@ command -v go >/dev/null 2>&1 || fail "no go toolchain on PATH"
 
 # The fetch script's own status, not the pipeline's: `| tail -1` would report tail's 0
 # even when the download refused, which is how a pin stops being a pin.
-FETCHED=$(sh scripts/fetch-arm64-ffmpeg.sh "$TOOLS") || fail "the pinned FFmpeg refused to fetch"
+FETCHED=$(sh scripts/fetch-stock-ffmpeg.sh arm64 "$TOOLS") || fail "the pinned FFmpeg refused to fetch"
 BIN=$(printf '%s\n' "$FETCHED" | tail -1)
 [ -x "$BIN/ffmpeg" ] && [ -x "$BIN/ffprobe" ] || fail "no ffmpeg/ffprobe at $BIN"
 
