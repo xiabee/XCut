@@ -358,3 +358,90 @@ func GenerateVideoOnly(dir, name string, width, height, fps, seconds int) (strin
 	}
 	return out, nil
 }
+
+// GeneratePanBursts builds a small fixture whose content MOVES: `bursts`
+// horizontal-pan scenes alternate with still flat-color scenes. The pan scene
+// is a temporally static boxed pattern laid out on a canvas three scene-widths
+// wide, cropped by a time-driven window that sweeps the full width once — so
+// the in-scene frame diff is sustained and high while the window moves and ~0
+// in the still scenes, which is the shape real handheld footage has and the
+// color-card fixtures (static frames + cuts) do not. The eval notes name
+// exactly this as the missing input behind the degenerate activity rows.
+func GeneratePanBursts(dir, name string, width, height, fps int, panSec, stillSec float64, bursts int) (string, error) {
+	if bursts < 1 {
+		return "", errNoScenes
+	}
+	var args []string
+	var vparts, aparts []string
+	scene := 0
+	addPan := func() error {
+		s := scene
+		scene++
+		sweep := formatFloat(panSec)
+		// SMPTE bars on a canvas three scene-widths wide: temporally static,
+		// spatially seven high-contrast bars, so the sliding window changes
+		// a wide band of strong-amplitude pixels every frame — the first
+		// boxed-pattern draft measured under the default motion floor (two
+		// small boxes move too few pixels per frame), the bars clear it by
+		// a wide margin.
+		pan := fmt.Sprintf(
+			"smptebars=s=%dx%d:r=%d:d=%s,crop=w=%d:h=%d:x='(in_w-out_w)*t/%s':y=0",
+			3*width, height, fps, sweep, width, height, sweep)
+		args = append(args,
+			"-f", "lavfi", "-i", pan,
+			"-f", "lavfi", "-i", "sine=frequency=660:duration="+sweep,
+		)
+		vparts = append(vparts, "["+itoa(s*2)+":v]")
+		aparts = append(aparts, "["+itoa(s*2+1)+":a]")
+		return nil
+	}
+	addStill := func() {
+		s := scene
+		scene++
+		d := formatFloat(stillSec)
+		args = append(args,
+			"-f", "lavfi", "-i", "color=c=0x303040:s="+itoa(width)+"x"+itoa(height)+":r="+itoa(fps)+":d="+d,
+			"-f", "lavfi", "-i", "sine=frequency=220:duration="+d,
+		)
+		vparts = append(vparts, "["+itoa(s*2)+":v]")
+		aparts = append(aparts, "["+itoa(s*2+1)+":a]")
+	}
+	for i := 0; i < bursts; i++ {
+		if err := addPan(); err != nil {
+			return "", err
+		}
+		addStill()
+	}
+	for i := range vparts {
+		vparts[i] += "setsar=1[v" + itoa(i) + "]"
+		aparts[i] += "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a" + itoa(i) + "]"
+	}
+	var vc, ac []string
+	for i := range vparts {
+		vc = append(vc, "[v"+itoa(i)+"]")
+		ac = append(ac, "[a"+itoa(i)+"]")
+	}
+	filter := strings.Join(vparts, ";") + ";" +
+		strings.Join(vc, "") + "concat=n=" + itoa(len(vparts)) + ":v=1:a=0[vout];" +
+		strings.Join(aparts, ";") + ";" +
+		strings.Join(ac, "") + "concat=n=" + itoa(len(aparts)) + ":v=0:a=1[aout]"
+
+	out := filepath.Join(dir, name)
+	args = append(args,
+		"-filter_complex", filter,
+		"-map", "[vout]", "-map", "[aout]",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "96k",
+		"-movflags", "+faststart",
+		"-y", out,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return "", errFFmpeg(outb, err)
+	}
+	return out, nil
+}

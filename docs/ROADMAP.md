@@ -235,8 +235,19 @@ Every item states how it is measured before it is built, because the eval harnes
       broadcast camera (`chunks_considered=0`), so its eval row is 0.000/1 clip —
       the shipped `generic_highlight` behaves identically here, which is the content
       talking, not the preset. Its shape is carried by constructed segments plus 7
-      mutations, each killed by the named assertion. A multi-cut moving source is
-      the missing input (same gap as the second-match question).
+      mutations, each killed by the named assertion.
+      The multi-cut moving input stopped being absent in the synthetic form
+      (2026-10-02): `testmedia.GeneratePanBursts` lays SMPTE bars on a
+      three-scene-wide canvas and sweeps a crop window across it, alternating with
+      still scenes — sustained in-scene motion, which the color-card fixtures never
+      had. Through the real chain (fixture → analyze → activity segmentation →
+      `beat_shortform` build) it yields **3 clips, one per pan burst, each inside a
+      pan window and inside the preset's 1.0–2.8 s clip span**; the cut-less static
+      control stays at the one-span selection; and a mutation that neutralizes the
+      pan movement kills the test. Still unclaimed: any footage — the fixture
+      proves the segmentation and selection respond to motion, not that they
+      respond correctly to real content (same gap as the second-match question,
+      owner-supplied).
 - [ ] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
       subtitle burn and the KTV lyric path.
