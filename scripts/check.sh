@@ -16,6 +16,13 @@ if [ "$mode" != "fast" ] && [ "$mode" != "full" ]; then
     exit 2
 fi
 
+# Same loud-death rule as ci-local.sh: without go the gate is meaningless, and
+# set -e used to kill it at the first `go env` with no word in the log.
+if ! command -v go >/dev/null 2>&1; then
+    echo "check.sh: go is not on PATH — a non-login ssh PATH is the usual cause; export PATH or install the toolchain" >&2
+    exit 127
+fi
+
 # Prefer a repo-local FFmpeg (.tools/, gitignored) when PATH has none.
 if ! command -v ffmpeg >/dev/null 2>&1; then
     for d in .tools/ffmpeg/bin .tools/ffmpeg-*; do
