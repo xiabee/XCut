@@ -36,6 +36,14 @@ const (
 	pxMarginV = 40
 	// outline (2) + shadow (1) + antialiasing slack.
 	pxBleed = 5
+
+	// The landscape reference frame: scale 1 by construction (short side 720),
+	// so every pixel field is the unscaled constant the other canvases derive
+	// from. marginV = 40 * 720/720 = 40, same as the portrait block's — the two
+	// constants exist because the *canvases* differ, not the numbers.
+	pxCanvasWL = 1280
+	pxCanvasHL = 720
+	pxMarginVL = 40
 )
 
 // brightBand returns the bounding box of the bright (caption) pixels in the
@@ -274,6 +282,63 @@ func TestBurnedCaptionOnTheVerticalReel(t *testing.T) {
 	}
 	if band.Max.X > w-marginLR+bleed {
 		t.Errorf("vertical caption ends at x=%d, right of the margin (%d)", band.Max.X, w-marginLR)
+	}
+}
+
+// TestBurnedCaptionOnTheReferenceFrame measures the scale-1 canvas every
+// pre-vertical document was laid out against — 1280×720, the frame() defaults
+// (Fontsize 48, margins 60/60/40, outline 2, shadow 1). The two portrait
+// canvases above exercise the scaled paths; this one pins the unscaled
+// baseline the arithmetic scales FROM.
+func TestBurnedCaptionOnTheReferenceFrame(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "black.mp4",
+		[]testmedia.Scene{{Seconds: 2, Color: "black", Frequency: 440}},
+		pxCanvasWL, pxCanvasHL, 15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	tr := &subs.Transcript{Segments: []subs.Segment{
+		{Start: 0.2, End: 1.2, Text: "HELLO CAPTION"},
+	}}
+	if err := subs.WriteCaptionASS(tr, subs.KaraokeStyle{Width: pxCanvasWL, Height: pxCanvasHL}, &sb); err != nil {
+		t.Fatalf("write caption ass: %v", err)
+	}
+	assPath := filepath.Join(dir, "cap.ass")
+	if err := os.WriteFile(assPath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe", Threads: 2}
+	burned := filepath.Join(dir, "burned.mp4")
+	if err := BurnSubtitles(context.Background(), tools, "", src, assPath, burned); err != nil {
+		t.Fatalf("burn: %v", err)
+	}
+
+	band, count := brightBand(t, grabFrame(t, tools, burned, 0.7))
+	if count < 50 {
+		t.Fatalf("only %d caption pixels — the caption is barely there", count)
+	}
+	if band.Max.Y > pxCanvasHL-pxMarginVL+pxBleed {
+		t.Errorf("reference caption bottom y=%d runs under the margin line (%d-%d)", band.Max.Y, pxCanvasHL, pxMarginVL)
+	}
+	if band.Max.Y < pxCanvasHL-pxMarginVL-pxFont {
+		t.Errorf("reference caption bottom y=%d floats more than a line above the margin line", band.Max.Y)
+	}
+	if height := band.Dy(); height < pxFont/2 || height > 2*pxFont {
+		t.Errorf("reference caption band height %d is not one line of a %dpx font", height, pxFont)
+	}
+	if center := (band.Min.X + band.Max.X) / 2; math.Abs(float64(center-pxCanvasWL/2)) > pxFont/2 {
+		t.Errorf("reference caption centre x=%d is off the frame centre by more than half an em", center)
+	}
+	if band.Min.X < pxMarginL-pxBleed {
+		t.Errorf("reference caption starts at x=%d, left of the margin (%d)", band.Min.X, pxMarginL)
+	}
+	if band.Max.X > pxCanvasWL-pxMarginR+pxBleed {
+		t.Errorf("reference caption ends at x=%d, right of the margin (%d)", band.Max.X, pxCanvasWL-pxMarginR)
 	}
 }
 
