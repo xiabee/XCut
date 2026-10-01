@@ -4,6 +4,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -19,6 +20,21 @@ import (
 // far longer than the call's deadline, so *how long the call takes* separates "the budget
 // was enforced on the descriptors too" from "the budget was a suggestion".
 func TestHelperPipeHolder(t *testing.T) {
+	if payload := os.Getenv("XCUT_TEST_JSON_THEN_HOLD"); payload == "1" {
+		body := os.Getenv("XCUT_TEST_JSON_PAYLOAD")
+		os.Stdout.WriteString(body)
+		sleeper, err := exec.LookPath("sleep")
+		if err != nil {
+			os.Exit(3)
+		}
+		hold := exec.Command(sleeper, "60")
+		hold.Stdout = os.Stdout
+		hold.Stderr = os.Stderr
+		if err := hold.Start(); err != nil {
+			os.Exit(5)
+		}
+		os.Exit(0)
+	}
 	if os.Getenv("XCUT_TEST_PIPE_HOLDER") != "1" {
 		return
 	}
@@ -94,3 +110,44 @@ func TestStreamedCallDoesNotWaitForAStrayPipeHolder(t *testing.T) {
 // reads after Wait), so they prove the mechanism; the other two sites follow by
 // construction rather than by measurement, and that distinction is recorded in
 // docs/PROJECT_STATE.md rather than implied by four green lines.
+
+// TestProbeRecoversCompleteJSONFromWaitDelay stages the campaign strike
+// (night 2026-10-02, TestE2EAutoWithProxy): a child writes its full JSON
+// answer, hands the pipe to a longer-lived grandchild and exits — so Run's
+// WaitDelay fires while the answer sits complete in the captured buffer. The
+// recovery decision must call that answer complete; and a TRUNCATED payload
+// through the same mechanism must fail closed.
+func TestProbeRecoversCompleteJSONFromWaitDelay(t *testing.T) {
+	full := `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","width":640,"height":360}],"format":{"format_name":"mov,mp4","duration":"3.000000"}}`
+	truncated := `{"streams":[{"index":0,"codec_type":"vi`
+	for name, payload := range map[string]struct {
+		body   string
+		wantOK bool
+	}{
+		"complete":  {full, true},
+		"truncated": {truncated, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			out, _, err := Run(ctx, jsonThenHoldCmd(t, payload.body), holderArgs, "-test.v=false")
+			if !errors.Is(err, exec.ErrWaitDelay) {
+				t.Fatalf("expected ErrWaitDelay from a pipe held past the grace, got %v", err)
+			}
+			if got := probeWaitDelayRecoverable(out); got != payload.wantOK {
+				t.Fatalf("recoverable=%v, want %v (out=%q)", got, payload.wantOK, out)
+			}
+		})
+	}
+}
+
+// jsonThenHoldCmd re-execs the test binary as a child that writes `payload` to
+// stdout, hands that descriptor to a sleeping grandchild and exits — the
+// descriptor outlives the writer, which is what fires WaitDelay with the
+// payload already delivered.
+func jsonThenHoldCmd(t *testing.T, payload string) string {
+	t.Helper()
+	t.Setenv("XCUT_TEST_JSON_THEN_HOLD", "1")
+	t.Setenv("XCUT_TEST_JSON_PAYLOAD", payload)
+	return os.Args[0]
+}

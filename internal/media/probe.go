@@ -30,6 +30,24 @@ type Probe struct {
 	Raw         json.RawMessage `json:"raw,omitempty"`
 }
 
+// probeWaitDelayRecoverable reports whether a probe that came back with
+// exec.ErrWaitDelay nevertheless carries a complete answer. WaitDelay fires when
+// the child has exited but its descriptors are still open after the grace — and
+// under real load that is also what scheduling starvation looks like from the
+// parent: the JSON bytes are sitting complete in the pipe, the copy goroutine
+// just has not been scheduled. The JSON is the product, so completeness is
+// decidable: a full ffprobe -show_streams answer always carries streams, so a
+// payload that parses AND names one is the answer; a truncated one is a real
+// failure (campaign strike, night 2026-10-02: TestE2EAutoWithProxy recorded a
+// good render as failed because the clip probe starved past the grace).
+func probeWaitDelayRecoverable(out []byte) bool {
+	var po probeOutput
+	if err := json.Unmarshal(out, &po); err != nil {
+		return false
+	}
+	return len(po.Streams) > 0
+}
+
 // probeOutput mirrors the subset of ffprobe JSON we consume.
 type probeOutput struct {
 	Streams []struct {
@@ -83,6 +101,16 @@ func ProbeFile(ctx context.Context, tools Tools, path string) (*Probe, error) {
 		if ctx.Err() != nil {
 			return nil, xcerr.E(xcerr.CodeFFmpegFailure, "probe timed out or was cancelled", ctx.Err())
 		}
+		// The strict rule for output-bearing paths (the pipe is the product)
+		// keeps this error unless the product demonstrably arrived: a
+		// WaitDelay lapse over a parseable, stream-bearing payload is drain
+		// scheduling, not data loss. Everything else — truncation, a real
+		// exit failure — still fails the probe below.
+		if errors.Is(err, exec.ErrWaitDelay) && probeWaitDelayRecoverable(out) {
+			err = nil
+		}
+	}
+	if err != nil {
 		// A missing/unrunnable ffprobe is an environment problem, not a
 		// property of the file — mislabeling it as unsupported media sends
 		// users chasing the wrong file.
