@@ -5,6 +5,19 @@ sections are tagged; anything above the newest one is unreleased.
 
 ## [Unreleased] — after v0.1.9-alpha
 
+### Fixed
+- **The shell gate runs on POSIX-only hosts, and the compat CI nodes went green.** The
+  `sh -n` step validated every `scripts/*.sh` with `sh` — half of them declare bash, and
+  a host whose `/bin/sh` is dash failed them on syntax only bash owns, so both compat
+  nodes had failed every dispatch since the shell entry existed (work-vm in ~200 ms,
+  kylin-pc in 30 s, neither saying why). Each script is now parsed with the interpreter
+  its own shebang names; the race subset names a kernel that refuses TSan
+  (`race-subset(tsan-vma)` in the verdict) instead of dying red on a platform where no
+  test ever started; and with the repository's pinned stock FFmpeg installed at
+  `/opt` on the arm64 node, the full suite runs there — 788 passed / 21 skipped where
+  the same dispatch had been a loud product refusal of the distro ffprobe's corrupted
+  JSON output.
+
 ### Added
 - **Hand-picked motion survives regenerating the reel.** The pane used to warn that
   it did not; now the pick follows the clip it was drawn for — same asset, a source
