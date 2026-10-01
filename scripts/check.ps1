@@ -121,12 +121,30 @@ if ($sh) {
         throw "only $($shellFiles.Count) shell scripts found under scripts/ — this step is not reading what it claims"
     }
     $shellBad = @()
+    # Parse each script with the interpreter its own shebang names — the twin of
+    # check.sh's shebang rule. Half of scripts/*.sh declare bash; a host whose sh
+    # is a real POSIX shell (dash) fails a bash script on syntax only bash owns,
+    # and both compat nodes died in exactly that step (night 2026-10-01). Here sh
+    # is usually Git Bash's (bash in POSIX mode), so the selection is about
+    # symmetry with the sh gate and about a host that ever puts a real dash
+    # first on PATH.
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
     # A real syntax error is reported on stderr, and Stop promotes native stderr to a
     # terminating error: downgrade for the probe so the step names the offender instead
     # of dying on the first line sh ever wrote.
     $ErrorActionPreference = "Continue"
     foreach ($f in $shellFiles) {
-        & $sh.Source -n $f.FullName 2>$null | Out-Null
+        $shebang = ""
+        try { $shebang = (Get-Content $f.FullName -TotalCount 1 -ErrorAction Stop) } catch { $shebang = "" }
+        $probe = $sh.Source
+        if ($shebang -match "bash" -and $bash) {
+            $probe = $bash.Source
+        }
+        elseif ($shebang -match "bash" -and -not $bash) {
+            $NotRun += "sh-n(no-bash)"
+            continue
+        }
+        & $probe -n $f.FullName 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { $shellBad += $f.Name }
     }
     $ErrorActionPreference = "Stop"

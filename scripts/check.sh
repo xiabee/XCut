@@ -117,20 +117,41 @@ echo "== sh -n"
 # go vet and go build — the gate that ships them has to at least parse them. Offenders
 # are named, the count has a floor (a step that scanned zero files is not a pass), and a
 # host with no /usr/bin/sh reports the step as not run rather than as passing.
+#
+# Each script is parsed with the interpreter its own shebang names, not with sh
+# unconditionally: half of scripts/*.sh declare bash, and a host whose /bin/sh is
+# dash fails a bash script on syntax only bash owns — both compat nodes died in
+# this step on every dispatch since the sh entry existed (kylin-pc/work-vm job
+# logs, night 2026-10-01; reproduced on WSL dash). A bash-less host skips those
+# files rather than failing on its missing tool, and says so in the verdict.
 if command -v sh >/dev/null 2>&1; then
     shell_count=0
     shell_bad=""
+    shell_errs=""
     for shell_file in scripts/*.sh; do
         if [ -f "$shell_file" ]; then
             shell_count=$((shell_count + 1))
-            if ! sh -n "$shell_file" 2>/dev/null; then
+            interpreter=sh
+            case "$(head -n 1 "$shell_file" 2>/dev/null)" in
+            *bash*)
+                if command -v bash >/dev/null 2>&1; then
+                    interpreter=bash
+                else
+                    NOT_RUN="$NOT_RUN sh-n(no-bash)"
+                    continue
+                fi
+                ;;
+            esac
+            if ! shell_err=$("$interpreter" -n "$shell_file" 2>&1); then
                 shell_bad="$shell_bad $shell_file"
+                shell_errs="$shell_errs  $shell_file: $(printf '%s' "$shell_err" | head -1)
+"
             fi
         fi
     done
     if [ -n "$shell_bad" ]; then
         echo "shell syntax errors in:$shell_bad" >&2
-        sh -n $shell_bad || true
+        printf '%s' "$shell_errs" >&2
         exit 1
     fi
     if [ "$shell_count" -lt 5 ]; then
