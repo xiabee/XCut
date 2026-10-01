@@ -357,7 +357,19 @@ if [ "$mode" = "fast" ]; then
         echo "== go test -race (subset: cli job worker pipeline)"
         race_start=$(date +%s)
         RACE_FLAKE_NOTE=""
-        if ! race_out=$(go test -race -count=1 $RACE_PKGS); then
+        # stderr joins the capture so a toolchain-level FATAL lands next to the
+        # FAIL lines it explains: on the arm64 compat nodes the kernel's VMA
+        # layout refuses TSan outright ("unsupported VMA range", the limit the
+        # roadmap has carried since D17) and every package fails in 0.01s with
+        # no test ever starting — a platform ineligibility, not a finding.
+        # Named in the verdict rather than red: the same honesty rule the
+        # no-C-toolchain branch below already follows.
+        if ! race_out=$(go test -race -count=1 $RACE_PKGS 2>&1); then
+            if printf '%s\n' "$race_out" | grep -q 'ThreadSanitizer: unsupported VMA range' &&
+                ! printf '%s\n' "$race_out" | grep -q -- '--- FAIL'; then
+                echo "== go test -race: SKIPPED (this kernel refuses TSan: unsupported VMA range — no test ran)" >&2
+                NOT_RUN="$NOT_RUN race-subset(tsan-vma)"
+            else
             # Same documented load-flake family, same policy the Windows gate
             # applies to its plain go test step and, since 2026-10-01, to its
             # race subset: one isolated retry of exactly the failed packages,
@@ -381,6 +393,7 @@ if [ "$mode" = "fast" ]; then
             printf '%s\n' "$retry_out"
             RACE_FLAKE_NOTE="; race flake-recovered: $(printf '%s\n' "$race_failed" | awk -F/ '{print $NF}' | paste -sd, -) (failed under load, passed the isolated retry)"
             echo "== go test -race: isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
+            fi
         else
             printf '%s\n' "$race_out"
         fi
