@@ -129,6 +129,7 @@ dlOK=0; rangeOK=0; busy409=0; busySkip=0; idleDelOK=0
 expDoor=0; expDoorSkip=0; expDoorLate=0; expQueued=0; expDup=0; expDupSkip=0; expDupLate=0; expDone=0
 spotOK=0
 carryOK=0
+dupLate=0
 
 job_status_pid() { # job_status_pid PROJECT TYPE -> latest job's status ('' if none)
     curl -s --max-time 5 "$BASE/jobs" | python -c "
@@ -190,15 +191,31 @@ for round in $(seq 1 "$ROUNDS"); do
     esac
 
     # 2. two render triggers: exactly one accepted, one 409 — the soak's
-    #    headline exclusivity guarantee, now actually asserted.
-    c1=$(post_code "/projects/$PROJ_ID/render" '{}')
+    #    headline exclusivity guarantee, now actually asserted. The first
+    #    POST's body is kept so the double-accept case can re-probe THE ROW
+    #    IT NAMED: a 5 s fixture render can reach terminal state inside the
+    #    ~20 ms gap between the two POSTs (fired once in 100 rounds, night
+    #    2026-10-01, round 90 — the first row's finished_at equalled the
+    #    second's created_at), and an acceptance over a terminal render is
+    #    the guard answering correctly. Still-live at the re-probe = a real
+    #    precheck race, still an error (the expDoor arm's rule, applied to
+    #    the arm that never got it).
+    r1_resp=$(curl -s -w "|%{http_code}" --max-time 15 -X POST \
+        -H "Content-Type: application/json" -d '{}' "$BASE/projects/$PROJ_ID/render")
+    c1="${r1_resp##*|}"
+    r1_id=$(echo "${r1_resp%|*}" | python -c "import json,sys; print(json.load(sys.stdin).get('job_id',''))" 2>/dev/null)
     c2=$(post_code "/projects/$PROJ_ID/render" '{}')
     accepted=0; conflicts=0
     for c in $c1 $c2; do
         case "$c" in 202|200) accepted=$((accepted+1)); renderQueued=$((renderQueued+1));; 409) conflicts=$((conflicts+1)); dup409=$((dup409+1));; *) err="$err render-pair $c";; esac
     done
     if [ "$accepted" -gt 1 ] || [ "$conflicts" -lt 1 ]; then
-        err="$err render-dedup broken (accepted=$accepted conflicts=$conflicts)"
+        r1_now=$(job_status_by_id "$r1_id")
+        if [ "$accepted" -gt 1 ] && [ -n "$r1_id" ] && case "$r1_now" in succeeded|failed|cancelled) true;; *) false;; esac; then
+            dupLate=$((dupLate+1))
+        else
+            err="$err render-dedup broken (accepted=$accepted conflicts=$conflicts r1=$r1_now)"
+        fi
     fi
     if [ "$accepted" -ge 1 ]; then
         st=$(wait_job render)
@@ -505,5 +522,5 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
     fi
 done
 
-echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone spotOK=$spotOK carryOK=$carryOK"
+echo "soak: $ROUNDS rounds, errors=$errors dup409=$dup409 stale409=$stale409 goodPUT=$goodPUT renderQueued=$renderQueued subsOK=$subsOK upNoLitter=$upNoLitter dlOK=$dlOK rangeOK=$rangeOK busy409=$busy409 busySkip=$busySkip idleDelOK=$idleDelOK expDoor=$expDoor/$expDoorSkip/$expDoorLate expQueued=$expQueued expDup=$expDup/$expDupSkip/$expDupLate expDone=$expDone dupLate=$dupLate spotOK=$spotOK carryOK=$carryOK"
 [ "$errors" -eq 0 ]
