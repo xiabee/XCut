@@ -255,6 +255,16 @@ Every item states how it is measured before it is built, because the eval harnes
       caption rather than an error.
       Remaining: any pixel claim about where the caption lands — libass's own layout
       is not verified here, only the file handed to it.
+      Closed 2026-09-29 (`9293dbe`, `a4dc33e`): the burn pass is measured in pixels
+      on a black 720×1280 fixture — the caption's bounding box against the margin
+      line, the side margins, the centre and the font size the ASS header declares;
+      the wrapped two-line cue's height; and the karaoke `\kf` sweep growing
+      monotonically across a cue (sung fill up, unsung text down). The vertical
+      reel joined it 2026-10-01: the same bounding-box contract at 1080×1920, the
+      shape the one-tap export ships (Fontsize 72, MarginV 107, side margins 90).
+      Not claimed: libass's exact glyph raster — the bounds carry outline+shadow+
+      antialiasing slack, and canvases other than these two ride on the same
+      frame-derived arithmetic being pinned at unit level.
       B5d closed the half of that which was silently wrong rather than merely
       unmeasured: the one tap answered "the project already has subtitles" from the
       existence of a file, so a project that changed shape — the tap's own default is

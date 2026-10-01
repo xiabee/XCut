@@ -212,6 +212,71 @@ func TestBurnedCaptionWrapsAboveTheMarginLine(t *testing.T) {
 	}
 }
 
+// TestBurnedCaptionOnTheVerticalReel measures the caption on the shape the
+// one-tap export actually ships — 1080×1920, the B5a headline numbers
+// (Fontsize 72, MarginV 107, side margins 90) — because every pixel claim
+// above was taken at 720×1280 and libass has never been watched on the
+// flagship canvas.
+func TestBurnedCaptionOnTheVerticalReel(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	const (
+		w        = 1080
+		h        = 1920
+		font     = 72
+		marginLR = 90
+		marginV  = 107
+		bleed    = 5 // outline (3) + shadow (2) + antialiasing slack
+	)
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "black.mp4",
+		[]testmedia.Scene{{Seconds: 2, Color: "black", Frequency: 440}},
+		w, h, 15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	tr := &subs.Transcript{Segments: []subs.Segment{
+		{Start: 0.2, End: 1.2, Text: "HELLO CAPTION"},
+	}}
+	if err := subs.WriteCaptionASS(tr, subs.KaraokeStyle{Width: w, Height: h}, &sb); err != nil {
+		t.Fatalf("write caption ass: %v", err)
+	}
+	assPath := filepath.Join(dir, "cap.ass")
+	if err := os.WriteFile(assPath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe", Threads: 2}
+	burned := filepath.Join(dir, "burned.mp4")
+	if err := BurnSubtitles(context.Background(), tools, "", src, assPath, burned); err != nil {
+		t.Fatalf("burn: %v", err)
+	}
+
+	band, count := brightBand(t, grabFrame(t, tools, burned, 0.7))
+	if count < 50 {
+		t.Fatalf("only %d caption pixels — the caption is barely there", count)
+	}
+	if band.Max.Y > h-marginV+bleed {
+		t.Errorf("vertical caption bottom y=%d runs under the margin line (%d-%d)", band.Max.Y, h, marginV)
+	}
+	if band.Max.Y < h-marginV-font {
+		t.Errorf("vertical caption bottom y=%d floats more than a line above the margin line", band.Max.Y)
+	}
+	if height := band.Dy(); height < font/2 || height > 2*font {
+		t.Errorf("vertical caption band height %d is not one line of a %dpx font", height, font)
+	}
+	if center := (band.Min.X + band.Max.X) / 2; math.Abs(float64(center-w/2)) > font/2 {
+		t.Errorf("vertical caption centre x=%d is off the frame centre by more than half an em", center)
+	}
+	if band.Min.X < marginLR-bleed {
+		t.Errorf("vertical caption starts at x=%d, left of the margin (%d)", band.Min.X, marginLR)
+	}
+	if band.Max.X > w-marginLR+bleed {
+		t.Errorf("vertical caption ends at x=%d, right of the margin (%d)", band.Max.X, w-marginLR)
+	}
+}
+
 // brightClasses counts glyph pixels by color class on the black fixture:
 // yellow (the karaoke sung fill), white (the unsung text), and the total.
 func brightClasses(t *testing.T, path string) (yellow, white int) {
