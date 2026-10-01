@@ -73,6 +73,14 @@ recur: the staged test is unix-tagged, Windows vet could not see it, and
 linux vet caught the compile error — cross-compile the packages behind any
 build-tagged file you touch.
 
+The fix was then verified the way it was found: the same campaign design
+replayed its ten loaded cli runs at the new head — zero strikes, and the very
+iteration that had struck (run 8) passed. The statistical power of ten runs
+against a ~1-in-10 strike rate is limited by arithmetic, and that is stated
+rather than smoothed: the mechanism-level exclusion is the decision plus its
+staged end-to-end on the unix leg; the standing detectors (soak batteries,
+gates) carry it from here.
+
 work-vm joined the media suite the same night. The pinned-FFmpeg fetcher
 became fetch-stock-ffmpeg.sh (an arch argument over a two-row pin table;
 arm64's row unchanged), the x64 row established the way the arm64 one was —
