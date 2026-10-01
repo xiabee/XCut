@@ -3,11 +3,104 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-01 0X:XX +0800 (session #27's paragraph below is the state that holds now).
+Updated: 2026-10-02 02:XX +0800 (session #28's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Session #27 (night 2026-09-30) closed Phase 5's last open line and hardened
-the acceptance machinery around the flake family the night's own gates kept
-exercising.
+last paragraph before `Session #28 (night 2026-10-01) took the compat CI nodes from
+every-dispatch-red to green, three linked defects deep, and gave the eval harness
+the moving input it was missing`.
+
+Session #28 (night 2026-10-01) took the compat CI nodes from every-dispatch-red
+to green — three linked defects, each fix exposing the next — and closed the
+eval harness's missing-input gap in synthetic form.
+
+The compat chain, in the order it surrendered: the shell gate's `sh -n` step
+validated every `scripts/*.sh` with `sh`, and half of those scripts declare bash —
+a host whose /bin/sh is dash (both compat nodes) failed them on syntax only bash
+owns, which is why work-vm died in 200 ms and kylin-pc in 30 s every night since
+the sh entry existed, and why Windows gates never saw it (Git Bash's sh IS bash).
+Each script is parsed with the interpreter its own shebang names now (159bae9),
+and the node-side job logs that named the culprit were themselves a discovery:
+the agents serve /api/v1/jobs/<id>/log behind the control plane's per-node
+tokens — "unauthorized from this machine" was never a dead end. Fix two: the
+media half of kylin's suite ran against the distro FFmpeg 4.2.2 and died in the
+product's own loud refusal of its corrupted ffprobe JSON, so the repository's
+pinned stock build (D17) went onto the node at /opt/arm64-ffmpeg with
+/usr/local/bin symlinks ahead of /usr/bin — 788 passed / 21 skipped on the next
+dispatch where minutes earlier the same run had been sixteen media failures
+(3aba67f's paperwork: OPERATIONS carries the install recipe). Fix three: the
+suite green, the race subset still died — "ThreadSanitizer: unsupported VMA
+range", the kernel refusing TSan outright exactly as D17 recorded — so the gate
+now names that platform ineligibility in its verdict (`race-subset(tsan-vma)`)
+instead of red, and kylin-pc's first fully-green dispatch followed within the
+hour (1m57s). win-devops PASS at every code head; work-vm's first green came
+even earlier (2m20s, its media half honestly skipped — no FFmpeg there at all).
+The M10 PARTIAL from session #27 is closed; the exec-bit half of its fix stands
+as POSIX hygiene, the go-guard as diagnosability — the runner had invoked the
+entry with bash all along.
+
+The eval harness's "multi-cut moving source is the missing input" lost its
+missing input in synthetic form: GeneratePanBursts lays SMPTE bars on a
+three-scene-wide canvas and sweeps a crop window across it, alternating with
+still scenes, and through the real chain (fixture -> analyze -> activity
+segmentation -> beat_shortform build) it yields 3 clips, one per pan burst,
+each inside a pan window and the preset's 1.0-2.8 s clip span — while the
+cut-less static control stays at the one-span selection the eval notes
+describe, and a mutation neutralizing the pan kills the test (7a8d0f2). Two
+drawing lessons rode along, both recorded in the fixture: the first draft
+(two boxes on a dark canvas) measured under the default motion floor and was
+replaced by the bars; and the color card is NOT the degenerate control — cut
+spikes alone segment it into four clips, which is why the degenerate row
+needed a camera that never cuts. The footage claim is unchanged: correctness
+on real content remains owner-supplied.
+
+The flake family's oldest member finally broke, evidence first. The campaign
+design from session #26 (the Fatalf that ships stdout/stderr) met the load it
+needed on the first try: run 8 of ten cli-under-load iterations struck
+TestE2EAutoWithProxy, and the captured output named the mechanism precisely —
+the render's clip probe died "unsupported media: exec: WaitDelay expired
+before I/O complete" while ffprobe had already exited and its JSON sat
+complete in the pipe; the parent's copy goroutine starved past the 1 s drain
+grace and the strict output-bearing rule (the pipe is the product, 32335bc)
+recorded a good render as failed. The probe path now asks the question the
+rule's own rationale implies — is the product here? A payload that parses as
+probeOutput and names a stream is a complete answer and the probe recovers;
+truncated or streamless payloads fail as before (c021faa; the decision is
+table-tested on every platform and the mechanism is staged end to end on the
+unix leg, where a child hands its descriptor to a longer-lived grandchild).
+The same recovery rides along for the proxy-decision and presence probes,
+which share ProbeFile. Lesson from the first draft, recorded because it will
+recur: the staged test is unix-tagged, Windows vet could not see it, and
+linux vet caught the compile error — cross-compile the packages behind any
+build-tagged file you touch.
+
+work-vm joined the media suite the same night. The pinned-FFmpeg fetcher
+became fetch-stock-ffmpeg.sh (an arch argument over a two-row pin table;
+arm64's row unchanged), the x64 row established the way the arm64 one was —
+two independent machines agreeing on the hash through an egress window that
+degraded from 550 KB/s to sub-50 KB/s resets (the `curl -C -` resume loop is
+what got both copies home) — and installed node-level at /opt/ffmpeg-x64
+with /usr/local/bin symlinks. work-vm had no FFmpeg at all, so its gate ran
+141 tests as honest skips; the next dispatch ran them: 788 passed /
+23 skipped, `not run: nothing` (7f8a0f9).
+
+Also this night: the roadmap's B5 pixel-claim remainder was closed days after
+the pixels were actually measured (9293dbe/a4dc33e at 720x1280) — the vertical
+reel (1080x1920, Fontsize 72 / MarginV 107, the one-tap export's shape) and
+the scale-1 reference frame joined the ledger, so all three shipped canvases
+now have their burn measured in pixels (0c9edb7, 8f19864); the B5d restyle
+sentence spoke in a present tense B5e had falsified and now reads as history
+(a5171e9); the pixel-claims and roadmap drift were found by sweeping every
+"Remaining/Not claimed/Still open" marker against the code. The soak's
+render-dup arm fired for the first time in 550+ green rounds (round 90 of the
+night's 100-round battery) and the kept workspace adjudicated it in minutes:
+the 5 s fixture render reached terminal state inside the ~20 ms gap between
+the two POSTs (first row's finished_at equal to the second's created_at), so
+the arm learned the by-id honest-late re-probe its export siblings already had
+(03cf166) and the next battery ran 100 rounds errors=0 with the new dupLate
+counter in the summary. The pending-25-commit push backlog from the ISP outage
+cleared at 23:18; govulncheck refreshed its database for the first time since
+09-30 and found no vulnerabilities.
+
 
 B6g (ffc3abb): a reel's document now states the grid its cuts were snapped
 against (`beat_bpm` + `beat_phase` in the metadata — the bed's when a bed

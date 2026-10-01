@@ -6,6 +6,15 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Fixed
+- **A good render is no longer recorded as failed under load.** The clip probe that
+  follows every clip encode runs ffprobe and reads its JSON — the pipe is the product,
+  so a drain that missed its grace was a hard failure. Under real load the drain is
+  scheduling, not data: a probe whose answer demonstrably arrived (the payload parses
+  and names a stream) now recovers, and a truncated one still fails as before. Found
+  by an evidence campaign against the long-standing cli load-flake family — the first
+  strike to arrive with its own full output — and verified by replaying the same
+  loaded conditions post-fix (10/10 green where the pre-fix run struck at the same
+  iteration).
 - **The shell gate runs on POSIX-only hosts, and the compat CI nodes went green.** The
   `sh -n` step validated every `scripts/*.sh` with `sh` — half of them declare bash, and
   a host whose `/bin/sh` is dash failed them on syntax only bash owns, so both compat
