@@ -63,7 +63,13 @@ Living document. Near-term milestones are concrete; far-term is directional.
 - [x] ARM64 *test* verification (session #18, D17): the suite now runs green on the Kylin
       box against a pinned stock FFmpeg (`scripts/fetch-arm64-ffmpeg.sh`) — what it
       replaced was a ledger line that could not tell an environmental failure from a real
-      one. Not wired into a gate yet, and `-race` cannot start on that kernel.
+      one. Wired into the compat dispatch 2026-10-02: the node keeps the pin at
+      `/opt/arm64-ffmpeg` with `/usr/local/bin` symlinks ahead of the distro binaries, so
+      `xnightops ci run --node kylin-pc` → `scripts/ci-local.sh` runs the whole suite on
+      it (788 passed / 21 skipped on the first dispatch; before the install the same run
+      was a loud product refusal of the distro ffprobe's corrupted JSON). `-race` cannot
+      start on that kernel; the gate names it — `race-subset(tsan-vma)` in the verdict's
+      not-run list — instead of dying red (2026-10-02).
 - [ ] FFmpeg component install off Windows: the pinned one-click installer is
       Windows-only, so a Kylin/ARM64 box needs a manual `XCUT_FFMPEG`/
       `XCUT_FFPROBE` — proven to work, unproven as product UX. Deciding this

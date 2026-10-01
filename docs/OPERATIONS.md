@@ -200,6 +200,22 @@ BIN=$(sh scripts/fetch-arm64-ffmpeg.sh .tools | tail -1)   # last line is the bi
 export XCUT_FFMPEG="$BIN/ffmpeg" XCUT_FFPROBE="$BIN/ffprobe"
 ```
 
+**Node-level install (kylin-pc compat node, 2026-10-02):** the CI dispatch path needs no
+per-run injection — the pinned build lives at `/opt/arm64-ffmpeg/<pin-dir>/` with
+`/usr/local/bin/ffmpeg` and `/usr/local/bin/ffprobe` symlinked into it, which precedes
+`/usr/bin` on the default PATH, so both the distro binaries (left untouched at
+`/usr/bin`) and every fresh push_snapshot job dir resolve to the pin. Re-do it on a new
+node with the same two commands the install used:
+
+```sh
+sh scripts/fetch-arm64-ffmpeg.sh /opt/arm64-ffmpeg        # verifies size + SHA256 + xfade
+ln -sf /opt/arm64-ffmpeg/<pin-dir>/bin/ff{mpeg,probe} /usr/local/bin/
+```
+
+First dispatch after the install: the plain suite ran `788 passed / 21 skipped` where the
+same run had been a loud product refusal ("this ffprobe build writes decoder-plugin logs
+to stdout and corrupts its own JSON output") minutes earlier.
+
 What that verifies, and what it does not: the whole suite passes on aarch64 against
 the pinned build, which is more than the distro build ever allowed (15+ tests failed
 on environment alone). `-race` does not run on that kernel at all — Go's ThreadSanitizer
