@@ -285,8 +285,8 @@ Every item states how it is measured before it is built, because the eval harnes
       the render says it into the log); they agree (the plain sentence, and the bytes
       untouched — the arm that stops an always-restyle rule from passing these tests).
       A file that claims nothing is "no evidence", not "the default".
-      Still open, now as a decision rather than a defect: a restyle needs a re-
-      transcription because the transcript payload is not stored (the words are in the
+      Open when B5d shipped it, closed by B5e below: at the time a restyle needed a re-
+      transcription because the transcript payload was not stored (the words are in the
       .ass, but re-wrapping them there means reading the format back, and a
       header-only rescale would keep a wrap computed for the old width). The second
       half was decided and shipped the same night: with no sidecar the tap now burns
