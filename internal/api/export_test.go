@@ -78,7 +78,7 @@ func TestExportPlanIsOnTheWireWithItsNames(t *testing.T) {
 	if stepOf(t, out, "render")["action"] != "create" {
 		t.Errorf("the render is the one stage that always happens: %v", out)
 	}
-	do(t, s, "POST", "/api/v1/jobs/"+out["job_id"].(string)+"/cancel", "")
+	awaitQuiet(t, s, pid)
 }
 
 func TestExportReusesWhatTheProjectAlreadyHas(t *testing.T) {
@@ -94,7 +94,7 @@ func TestExportReusesWhatTheProjectAlreadyHas(t *testing.T) {
 	if st["action"] != "skip" || st["reason"] != "not asked for" {
 		t.Errorf("subs=false must skip out loud, got %v / %v", st["action"], st["reason"])
 	}
-	do(t, s, "POST", "/api/v1/jobs/"+out["job_id"].(string)+"/cancel", "")
+	awaitQuiet(t, s, pid)
 }
 
 // TestExportNamesASidecarThatIsNotThere: nothing on PATH can transcribe, so the
@@ -115,7 +115,7 @@ func TestExportNamesASidecarThatIsNotThere(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(st["reason"]), "sidecar") {
 		t.Errorf("the skip reason does not name what to install: %v", st["reason"])
 	}
-	do(t, s, "POST", "/api/v1/jobs/"+out["job_id"].(string)+"/cancel", "")
+	awaitQuiet(t, s, pid)
 }
 
 // TestExportIsExclusive: a second tap while the first is mid-transcript is a
@@ -130,7 +130,7 @@ func TestExportIsExclusive(t *testing.T) {
 		t.Fatalf("first export: %d %v", rec.Code, out)
 	}
 	first := out["job_id"].(string)
-	t.Cleanup(func() { s.Pipe.Queue.Cancel(first) })
+	t.Cleanup(func() { s.Pipe.Queue.Cancel(first); awaitQuiet(t, s, pid) })
 	deadline := time.Now().Add(8 * time.Second)
 	var running bool
 	for time.Now().Before(deadline) {
@@ -228,6 +228,7 @@ func TestExportQueuesTheChildRenderAsTheNewestRow(t *testing.T) {
 	if oldIndex >= 0 && childIndex > oldIndex {
 		t.Fatal("the seeded old render row lists ahead of the tap's child — newest-first among renders is the client's load-bearing assumption")
 	}
+	awaitQuiet(t, s, pid)
 }
 
 // TestTheExportWatcherFollowsTheChildRender: the client's one tap must end at
@@ -268,7 +269,7 @@ func TestTheClientPostsTheTapWhereTheServerAnswers(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("the path the client posts to answers %d %v, want 202", rec.Code, out)
 	}
-	do(t, s, "POST", "/api/v1/jobs/"+out["job_id"].(string)+"/cancel", "")
+	awaitQuiet(t, s, pid)
 }
 
 // TestExportRefusesBeforeWorkWhenARenderIsActive: the tap's own render
@@ -295,5 +296,40 @@ func TestExportRefusesBeforeWorkWhenARenderIsActive(t *testing.T) {
 		if j.Type == "export" {
 			t.Fatal("an export row was queued despite the collision — the refusal must precede every stage")
 		}
+	}
+}
+
+// awaitQuiet leaves the project with no active job before the test returns:
+// the tap's own goroutine stops at its next checkpoint when cancelled, and
+// the child render it queued runs on the worker pool after the tap itself
+// has finished — both write into testServer's TempDir, and a test that ends
+// while either still holds a file races testing's RemoveAll cleanup
+// ("directory not empty", work-vm strike 2026-10-03: the plan test's child
+// render was mid-reel when the TempDir went away; green on Windows every
+// gate that night, first Linux scheduling made the window real). Cancel
+// whatever is still active, then wait for every row to go terminal.
+func awaitQuiet(t *testing.T, s *Server, pid string) {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		jobs, err := s.DB.ListJobs(ctx, pid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		active := false
+		for _, j := range jobs {
+			if j.Status == "queued" || j.Status == "running" {
+				_ = s.Pipe.Queue.Cancel(j.ID)
+				active = true
+			}
+		}
+		if !active {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("project jobs never went quiet — the test would race TempDir cleanup")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
