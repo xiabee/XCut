@@ -304,6 +304,15 @@ if [ "$test_exit" -ne 0 ]; then
         }
     ' "$test_json" | tail -120
     rm -f "$fail_names"
+    # go test -json prints its own tool-level words (an image lock it cannot
+    # clean up, a killed toolchain) as NON-JSON stdout lines; a red whose only
+    # words nobody printed is the exact silence this step exists to remove.
+    # Observed live 2026-10-03 02:00 on the Windows twin: exit 1, zero fail
+    # events, empty stderr, the reason on a non-JSON line.
+    if grep -qv '^{' "$test_json" 2>/dev/null; then
+        echo "--- tool lines (non-JSON):"
+        grep -v '^{' "$test_json" | head -20
+    fi
     echo "--- stderr tail:"
     tail -20 "$test_err"
     rm -f "$test_json" "$test_err"

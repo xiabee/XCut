@@ -293,8 +293,15 @@ $TestSkips = @()
 # zero lines).
 $Outputs = @{}
 $FailedKeys = @()
+# go test -json prints its own tool-level words (build-cache trouble, an image
+# lock it cannot clean up, a killed toolchain) as NON-JSON stdout lines; the
+# parser below would skip them silently, and a red whose only words nobody
+# printed is the exact silence this step exists to remove. Observed live
+# 2026-10-03 02:00: exit 1, zero fail events, zero build events, empty stderr —
+# the reason rode a non-JSON line and was never shown.
+$nonJsonLines = @()
 foreach ($line in $testLines) {
-    if (-not $line.StartsWith("{")) { continue }
+    if (-not $line.StartsWith("{")) { $nonJsonLines = $nonJsonLines + $line; continue }
     $ev = $null
     try { $ev = $line | ConvertFrom-Json } catch { continue }
     if (-not $ev -or -not $ev.Action) { continue }
@@ -322,6 +329,10 @@ if ($testExit -ne 0) {
         Write-Host "--- $((($parts[0]) -split '/')[-1])/$($parts[1])"
         foreach ($l in $Outputs[$k]) { Write-Host "    $($l.TrimEnd())" }
     }
+    if ($nonJsonLines.Count -gt 0) {
+        Write-Host "go test said (tool lines, non-JSON):"
+        $nonJsonLines | Select-Object -First 20 | ForEach-Object { Write-Host "    $_" }
+    }
     Write-Host "go test stderr tail:"
     Get-Content $testErrFile -Tail 20 -ErrorAction SilentlyContinue
 
@@ -336,6 +347,12 @@ if ($testExit -ne 0) {
     # that also fails is thrown as the real failure it looks like. One retry,
     # failed packages only — not a loop, and not a threshold relaxed.
     $failedPkgs = $FailedKeys | ForEach-Object { ($_ -split "\|")[0] } | Sort-Object -Unique
+    if ($failedPkgs.Count -eq 0) {
+        # No failing test and no build event to isolate: the tool itself failed.
+        # Retrying here would run the current directory ("0 failed package(s)",
+        # seen live 2026-10-03 02:00) and misreport the shape as a test failure.
+        throw "go test exited $testExit with no failing test to isolate — a tool-level failure; its own words are printed above"
+    }
     Write-Host "== go test: isolated retry of $($failedPkgs.Count) failed package(s) (known load-flake family)"
     $retryLines = @(go test -count=1 -json $failedPkgs 2>$testErrFile | ForEach-Object { "$_" })
     $retryExit = $LASTEXITCODE
