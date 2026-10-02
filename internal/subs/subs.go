@@ -64,12 +64,24 @@ func Parse(raw []byte) (*Transcript, error) {
 			return nil, xcerr.E(xcerr.CodeValidation,
 				fmt.Sprintf("transcript segment has invalid times (%g..%g)", s.Start, s.End), nil)
 		}
+		// Word text gets the same discipline as segment text: sidecar output is
+		// untrusted, and padding rides straight into the render — a " word"
+		// doubles the separator the renderer adds, a whitespace-only word sings
+		// a \kf span of nothing. Trimmed here, the layout width and both
+		// renderers see the words the sidecar meant.
+		words := s.Words[:0]
 		for _, w := range s.Words {
+			w.Word = strings.TrimSpace(w.Word)
+			if w.Word == "" {
+				continue
+			}
 			if !finite(w.Start) || !finite(w.End) || w.End < w.Start || w.Start < 0 {
 				return nil, xcerr.E(xcerr.CodeValidation,
 					"transcript word timing is invalid", nil)
 			}
+			words = append(words, w)
 		}
+		s.Words = words
 		sort.Slice(s.Words, func(i, j int) bool { return s.Words[i].Start < s.Words[j].Start })
 		out = append(out, s)
 	}

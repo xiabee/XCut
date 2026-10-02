@@ -6,6 +6,12 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Fixed
+- **A transcript's word text is held to the same discipline as its segment text.**
+  Sidecar output is untrusted, and word padding rode straight into the render:
+  a `" word"` doubled the separator the renderer adds, a whitespace-only word
+  sang a `\kf` span of nothing, and a segment whose every word was blank still
+  counted as word-timed. Parse now trims each word, drops the blank ones, and
+  the karaoke/plain split judges a segment only by the words that survived.
 - **A good render is no longer recorded as failed under load.** The clip probe that
   follows every clip encode runs ffprobe and reads its JSON — the pipe is the product,
   so a drain that missed its grace was a hard failure. Under real load the drain is

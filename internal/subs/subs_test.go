@@ -210,3 +210,48 @@ func TestParseNeutralizesInnerNewlines(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTrimsWordText(t *testing.T) {
+	raw := []byte(`{"segments":[
+		{"start":1.0,"end":3.0,"text":"hello world","words":[
+			{"start":1.0,"end":1.5,"word":" hello "},
+			{"start":1.5,"end":1.6,"word":"   "},
+			{"start":2.0,"end":3.0,"word":"world"}]}
+	]}`)
+	tr, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := tr.Segments[0].Words
+	if len(ws) != 2 {
+		t.Fatalf("words = %d, want 2 (the whitespace-only word is dropped)", len(ws))
+	}
+	if ws[0].Word != "hello" || ws[1].Word != "world" {
+		t.Fatalf("words = %q, %q — padding must be trimmed", ws[0].Word, ws[1].Word)
+	}
+	// The karaoke line is the contract the padding would have broken: the
+	// renderer adds the separator itself, so any surviving padding shows up
+	// as a doubled space, and the dropped word would have sung a \kf span
+	// of nothing.
+	var lines strings.Builder
+	for _, c := range layoutCues(tr.Segments[0], 40) {
+		lines.WriteString(karaokeCue(c))
+	}
+	if s := lines.String(); strings.Contains(s, "  ") {
+		t.Fatalf("karaoke output carries a doubled separator:\n%s", s)
+	}
+
+	// A segment whose every word is whitespace has no word timings — the
+	// karaoke/plain split must see it that way, not sing an invisible word.
+	mixed, err := Parse([]byte(`{"segments":[
+		{"start":1.0,"end":2.0,"text":"spoken","words":[
+			{"start":1.0,"end":2.0,"word":"  "}]},
+		{"start":3.0,"end":4.0,"text":"more"}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mixed.HasWordTimings() {
+		t.Fatal("a segment whose only word is whitespace is not word-timed")
+	}
+}
