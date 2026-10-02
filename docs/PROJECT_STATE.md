@@ -3,11 +3,56 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-02 02:XX +0800 (session #28's paragraph below is the state that holds now).
+Updated: 2026-10-03 07:XX +0800 (session #29's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Session #28 (night 2026-10-01) took the compat CI nodes from
-every-dispatch-red to green, three linked defects deep, and gave the eval harness
-the moving input it was missing`.
+last paragraph before `Session #29 (night 2026-10-02) made the gate survive the
+machine it actually runs on — five concurrent neighbor gates, a swallowed tool
+error, and a first-Linux strike on the export tests — and committed the flake
+campaign as a tool`.
+
+Session #29 (night 2026-10-02) made the gate survive the machine it actually
+runs on. The host runs other projects' gates at night, and the race subset had
+been riding go test's default 10-minute package timeout against a 458 s quiet
+baseline (76% spent): when five gates ran at once — QX, AetherScope and
+ashare-quant twice each beside this one, 01:03-01:41 — the subset and then its
+own isolated retry both timed out the same two packages while every package
+passed in isolation minutes before and after. The subset now carries
+`-timeout=30m` in both twins (1b1aee1) — a work budget, not an assertion; the
+retry policy and every test are unchanged. The same night exposed a quieter
+defect: a `go test -json` run that exits 1 without a failing test had its own
+words swallowed by the parser (non-JSON stdout lines skipped, stderr empty),
+and the gate answered with a retry of zero failed packages — the current
+directory — mislabeled "not the load flake". Now the tool's lines print on
+every failure and a red with nothing to isolate says so (b868446).
+
+The compat dispatch paid for itself the moment it ran: work-vm's first red
+after session #28's all-green was `TestExportPlanIsOnTheWireWithItsNames`
+dying in testing's TempDir RemoveAll — "directory not empty" — because the
+export tap's child render keeps writing the reel into the test workspace after
+the tap itself has answered; cancelling only the export job races the cleanup,
+and Linux scheduling made the window real where every Windows gate that night
+had been green. `awaitQuiet` (3b006eb) ends all six export tests that queue
+work: cancel whatever is active, wait for every row to go terminal — and the
+same node re-ran the fixed head green (5m5s), with win-devops (2m41s) and
+kylin-pc (2m11s) completing the first same-HEAD triple-green compat matrix.
+
+The cli load-flake campaign became a committed tool instead of a re-derived
+one: `scripts/camp-cli.sh` (25a8a42) pins the design that caught the family's
+oldest member — cli looping with `-shuffle=on` under worker+pipeline load,
+per-round logs kept in a timestamped evidence directory, the loader drained
+rather than killed (an orphaned test binary holds the next run's Windows image
+lock). Its second night ran 10 rounds with zero strikes; post-M10 the family
+replay stands at 20/20 clean, with the statistical caveat carried honestly.
+`Parse` now holds transcript word text to the same discipline as segment text
+(acb852f): a padded word doubled the renderer's own separator, a whitespace-
+only word sang a `\kf` span of nothing, and a segment whose every word was
+blank still counted as word-timed. Two Next-Priorities lines were repaired
+against the code (640d227): the coverage item's sentence had lost its second
+half in an earlier edit, and the arm64 item still said "no scheduler runs it"
+a night after the compat dispatches made it a gate. Soak ran 400 rounds over
+the night — errors=0, the last two batteries flat on every counter — and the
+security trio (govulncheck, gosec HIGH/HIGH, gitleaks on history and tree)
+scanned clean twice.
 
 Session #28 (night 2026-10-01) took the compat CI nodes from every-dispatch-red
 to green — three linked defects, each fix exposing the next — and closed the
