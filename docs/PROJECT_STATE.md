@@ -3430,7 +3430,10 @@ every leg (the fast gate included)
    leg that can compile them. Two further entries left the list at `237c051`/`d1bb82d`:
    `media.firstLine`, reached only when systemd refuses, and `errResponseTooLarge.Error()`,
    which could not run because the refusal dropped the cause that would print it. The sweep
-   now reads 24 entries, and what is left of this item is `setup.*`, which is
+   now reads 24 entries, and what is left of this item is `setup.*` — Windows-only by
+   construction (GOOS guards on the cases that touch the installer layout), and covered
+   by the setup package's own 23 tests on every Windows gate; nothing left here is
+   untested code on a leg that can run it.
 
 2. Real-footage evaluation — **one match is done, and that is the limit of what
    can be concluded.** 43 rallies were derived from the burned-in scoreboard and
@@ -3447,11 +3450,16 @@ every leg (the fast gate included)
 3. Two decisions that were the owner's, not mine — **both taken 2026-09-23**.
    **(a) arm64 in CI** — decided: pin a stock arm64 build the way the Windows one-click
    pins Gyan.dev. Implemented as `scripts/fetch-arm64-ffmpeg.sh` and measured green on
-   the Kylin box (Known Issues, ARM64: `ran=553 failed=0 skipped=17`). What is still
-   *not* done: the leg is a command, not a gate — `sh scripts/verify-arm64.sh` is the
-   durable form (reproducing those counts from a fresh snapshot), but no scheduler runs
-   it, and 4 of that box's 17 skips are the Rust worker cases (no cargo on the Kylin
-   host). Wiring it into the control plane is now one dispatch, not a decision.
+   the Kylin box (Known Issues, ARM64: `ran=553 failed=0 skipped=17`). **The gate half
+   closed 2026-10-02 (session #28): the leg is a dispatch now** —
+   `xnightops ci run --node kylin-pc` (and `--node work-vm`, its x64 sibling at
+   `/opt/ffmpeg-x64`) runs `scripts/ci-local.sh` → the whole suite on the box against
+   the pinned stock FFmpeg; kylin-pc's first fully-green dispatch was 1m57s at
+   788 passed / 21 skipped, with the TSan-ineligible kernel named in the verdict's
+   not-run list instead of dying red. `sh scripts/verify-arm64.sh` remains the durable
+   one-shot form (reproducing those counts from a fresh snapshot). The Rust worker
+   cases still have no cargo on the Kylin host, so they stay honest skips there; the
+   Windows and Linux x64 legs carry the worker's coverage.
    **(b) release cadence** — decided: cut v0.1.9-alpha now rather than bundling it with
    the next batch. Done: `v0.1.9-alpha` tagged at `48d0fe8`, seven assets published,
    both Linux artifacts executed on their target platforms, digests verified through the
