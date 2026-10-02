@@ -357,6 +357,13 @@ if [ "$mode" = "fast" ]; then
         echo "== go test -race (subset: cli job worker pipeline)"
         race_start=$(date +%s)
         RACE_FLAKE_NOTE=""
+        # -timeout=30m is a work budget, not an assertion: go's default 10 m per
+        # package sat on a 458 s quiet-machine baseline (76% spent), and the night
+        # this machine hosts several projects' gates at once — five were running
+        # 01:03-01:41 on 2026-10-03 beside this one — both the subset and its
+        # isolated retry blew the default twice on the same commit while every
+        # package passed in isolation. Same class as the in-gate limit QX raised
+        # 20m→30m on this shared host. The retry policy below is unchanged.
         # stderr joins the capture so a toolchain-level FATAL lands next to the
         # FAIL lines it explains: on the arm64 compat nodes the kernel's VMA
         # layout refuses TSan outright ("unsupported VMA range", the limit the
@@ -364,7 +371,7 @@ if [ "$mode" = "fast" ]; then
         # no test ever starting — a platform ineligibility, not a finding.
         # Named in the verdict rather than red: the same honesty rule the
         # no-C-toolchain branch below already follows.
-        if ! race_out=$(go test -race -count=1 $RACE_PKGS 2>&1); then
+        if ! race_out=$(go test -race -count=1 -timeout=30m $RACE_PKGS 2>&1); then
             if printf '%s\n' "$race_out" | grep -q 'ThreadSanitizer: unsupported VMA range' &&
                 ! printf '%s\n' "$race_out" | grep -q -- '--- FAIL'; then
                 echo "== go test -race: SKIPPED (this kernel refuses TSan: unsupported VMA range — no test ran)" >&2
@@ -385,7 +392,7 @@ if [ "$mode" = "fast" ]; then
                 exit 1
             fi
             echo "== go test -race: isolated retry of $(printf '%s\n' "$race_failed" | wc -l) failed package(s) (known load-flake family)"
-            if ! retry_out=$(go test -race -count=1 $race_failed); then
+            if ! retry_out=$(go test -race -count=1 -timeout=30m $race_failed); then
                 printf '%s\n' "$retry_out"
                 echo "go test -race (subset) failed twice (isolated retry included)" >&2
                 exit 1

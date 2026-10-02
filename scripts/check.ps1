@@ -384,7 +384,15 @@ if ($Mode -eq "fast") {
     if ((go env CGO_ENABLED).Trim() -eq "1" -and (Get-Command gcc -ErrorAction SilentlyContinue)) {
         Write-Host "== go test -race (subset: cli job worker pipeline)"
         $raceStart = Get-Date
-        $raceOut = @(go test -count=1 -race @racePkgs | ForEach-Object { "$_" })
+        # -timeout=30m is a work budget, not an assertion: go's default 10 m per
+        # package sat on a 458 s quiet-machine baseline (76% spent), and the night
+        # this machine hosts several projects' gates at once — five were running
+        # 01:03-01:41 on 2026-10-03 (QX, AetherScope ×2, ashare-quant ×2, game-
+        # scheduler beside this one) — both the subset and its isolated retry blew
+        # the default twice on the same commit while every package passed in
+        # isolation. Same class as the in-gate limit QX raised 20m→30m on this
+        # shared host. The retry policy below is unchanged.
+        $raceOut = @(go test -count=1 -race -timeout=30m @racePkgs | ForEach-Object { "$_" })
         $raceExit = $LASTEXITCODE
         $raceOut | ForEach-Object { Write-Host $_ }
         # The same documented load-flake family the plain go test step isolates
@@ -402,7 +410,7 @@ if ($Mode -eq "fast") {
                 throw "go test -race (subset) failed with exit $raceExit and no FAIL line to isolate (build or panic output above)"
             }
             Write-Host "== go test -race: isolated retry of $($raceFailed.Count) failed package(s) (known load-flake family)"
-            $raceRetry = @(go test -count=1 -race @raceFailed | ForEach-Object { "$_" })
+            $raceRetry = @(go test -count=1 -race -timeout=30m @raceFailed | ForEach-Object { "$_" })
             $raceRetryExit = $LASTEXITCODE
             $raceRetry | ForEach-Object { Write-Host $_ }
             if ($raceRetryExit -ne 0) {
