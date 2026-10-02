@@ -28,6 +28,14 @@ sections are tagged; anything above the newest one is unreleased.
   JSON output.
 
 ### Added
+- **The cli load-flake campaign is a committed tool, not a re-derived one.**
+  `scripts/camp-cli.sh` pins the design that caught the family's oldest member
+  (the cli package looping with `-shuffle=on` while worker and pipeline loop in
+  parallel as the synthetic load): rounds log per-round verdicts, a strike keeps
+  its full output in a timestamped evidence directory, and the loader is drained
+  — never killed mid-test — so an orphaned test binary cannot hold the next
+  run's Windows image lock. Evidence lives on disk; the script only prints
+  verdicts and the evidence path.
 - **Hand-picked motion survives regenerating the reel.** The pane used to warn that
   it did not; now the pick follows the clip it was drawn for — same asset, a source
   window the regenerated clip still describes (IoU ≥ 0.9, so a beat-snap nudge
