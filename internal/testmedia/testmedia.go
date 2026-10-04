@@ -336,6 +336,39 @@ func GenerateRally(dir, name string, width, height, fps int, duration float64, r
 	return out, nil
 }
 
+// GenerateMotionWithBursts builds the broadcast shape the two segmenters
+// disagree about: the camera never rests (continuous motion, so an activity
+// segmenter sees one span), while the hits come in bursts separated by
+// near-silence (so rally segmentation, which keys on transients, hears each
+// burst as its own rally). It is the synthetic form of the owner's fixed-
+// camera match — the content beat_shortform's own eval row was recorded
+// against — and the fixture the export tap's degeneracy fallback is measured
+// with. period is the burst cycle (burst + silence); burstFrac is the share
+// of each cycle the hits sound in.
+func GenerateMotionWithBursts(dir, name string, width, height, fps int, duration, period, burstFrac, hitEvery float64) (string, error) {
+	if duration <= 0 || period <= 0 || hitEvery <= 0 || burstFrac <= 0 || burstFrac >= 1 {
+		return "", errNoScenes
+	}
+	envelope := fmt.Sprintf(
+		"volume=volume='if(lt(mod(t\\,%s)\\,%s)*lt(mod(t\\,%s)\\,0.05)\\,1\\,0.003)':eval=frame",
+		formatFloat(period), formatFloat(period*burstFrac), formatFloat(hitEvery))
+	args := []string{
+		"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=s=%dx%d:r=%d:d=%s", width, height, fps, formatFloat(duration)),
+		"-f", "lavfi", "-i", "sine=frequency=1000:duration=" + formatFloat(duration) + "," + envelope,
+		"-map", "0:v", "-map", "1:a",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "96k",
+		"-y", filepath.Join(dir, name),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if outb, err := cmd.CombinedOutput(); err != nil {
+		return "", errFFmpeg(outb, err)
+	}
+	return filepath.Join(dir, name), nil
+}
+
 // GenerateVideoOnly writes an H.264 MP4 with NO audio stream (probe reports
 // has_audio=false) exercising scene changes via testsrc2. Deterministic.
 func GenerateVideoOnly(dir, name string, width, height, fps, seconds int) (string, error) {

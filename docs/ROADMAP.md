@@ -455,6 +455,10 @@ Every item states how it is measured before it is built, because the eval harnes
       and request literal are pinned by tests, its on-screen form is not. (The caption
       half of this note is stale as written: B6e below delivered `xcut auto --subs`,
       so the CLI's one shot stopped being the three-step one the same night.)
+      Session #30 (2026-10-04) closed the tap's own blind spot: the default style's
+      single-clip degenerate reel on broadcast footage now measures itself and
+      falls back to `sports_vertical` — policy disclosed in the plan, outcome in
+      the log, explicit styles never second-guessed.
 - [x] B7 — Resource occupancy: idle targets stay (serve ≈0 CPU, <100 MB RAM),
       and the new stages get measured ceilings — analysis fan-out memory, proxy
       cache bytes, the motion render's cost.

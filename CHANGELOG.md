@@ -34,6 +34,15 @@ sections are tagged; anything above the newest one is unreleased.
   JSON output.
 
 ### Added
+- **The one-tap export measures the reel its default style just built, and
+  falls back when that reel is degenerate.** The tap's default segments on
+  motion, and on fixed-camera footage — the flagship case — that measurement
+  is one clip and a couple of seconds. The tap now says the policy in the plan
+  ("a single-clip reel under this default falls back to sports_vertical"),
+  rebuilds once with the style the content's own transients support when the
+  measurement comes back single-clip, and logs both clip counts. A style the
+  caller asked for by name is never second-guessed; a fallback that cannot
+  build leaves yesterday's reel standing, with the reason in the log.
 - **An roi framing plan keeps its region in the frame when geometry allows, and
   says so when it does not.** The centered-on-the-region window could let the
   region hang out of the crop — the plan never knew the source's pixel shape

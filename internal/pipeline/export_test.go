@@ -72,8 +72,12 @@ func TestExportTapReachesAFile(t *testing.T) {
 		t.Skip("ffmpeg not available")
 	}
 	root := t.TempDir()
+	// Two rallies, not one: this test pins the tap's ordinary path — the caption
+	// geometry the default style lays out. A single-rally fixture is the
+	// degenerate broadcast shape the fallback exists for (one span, one clip),
+	// and the reel would come home in the fallback's canvas instead.
 	media, err := testmedia.GenerateRally(root, "hall.mp4", 320, 240, 25, 14,
-		[]testmedia.RallySpec{{Start: 0, End: 14, HitEvery: 1.2}})
+		[]testmedia.RallySpec{{Start: 0, End: 6, HitEvery: 1.2}, {Start: 8, End: 14, HitEvery: 1.2}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1289,5 +1293,154 @@ func breakTheBinding(t *testing.T, d Deps, projectID string) {
 	}
 	if err := os.WriteFile(tp, gone, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestExportFallsBackWhenTheDefaultReelIsDegenerate: the default style segments
+// on motion, and on the broadcast shape — continuous camera motion, hits in
+// bursts — that is one span and one clip. The tap measures the reel it just
+// built, names the policy in the plan, and rebuilds with the style the
+// content's own transients support; the document on disk is the fallback's.
+func TestExportFallsBackWhenTheDefaultReelIsDegenerate(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	media, err := testmedia.GenerateMotionWithBursts(root, "hall.mp4", 320, 240, 25, 26, 6.5, 3.5/6.5, 0.8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	tlPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	id, steps, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     false,
+		Out:      filepath.Join(root, "tap.mp4"),
+	})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	if got := stepNamed(steps, "timeline").Reason; !strings.Contains(got, ExportFallbackStyle) {
+		t.Errorf("the plan's timeline step %q does not disclose the fallback policy", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export job ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	tlBytes, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatalf("the tap left no reel: %v", err)
+	}
+	if !strings.Contains(string(tlBytes), `"style": "`+ExportFallbackStyle+`"`) {
+		t.Errorf("the reel on disk is not the fallback's:\n%.200s", tlBytes)
+	}
+}
+
+// TestExportKeepsTheDefaultWhenItWorks: the fallback is a measurement of THIS
+// project's reel, not a policy that always fires — content the beat preset can
+// cut (motion bursts) keeps the style the caller's tap asked for.
+func TestExportKeepsTheDefaultWhenItWorks(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	media, err := testmedia.GeneratePanBursts(root, "dance.mp4", 320, 240, 25, 1.2, 1.2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	tlPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     false,
+		Out:      filepath.Join(root, "tap.mp4"),
+	})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export job ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	tlBytes, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatalf("the tap left no reel: %v", err)
+	}
+	if !strings.Contains(string(tlBytes), `"style": "`+DefaultExportStyle+`"`) {
+		t.Errorf("working content lost its requested style:\n%.200s", tlBytes)
+	}
+}
+
+// TestExportRespectsAnExplicitStyle: the fallback revises the tap's own guess,
+// never the caller's named choice — a reel asked for by name stays that style
+// even when it comes out degenerate (the log names it; the tap carries on).
+func TestExportRespectsAnExplicitStyle(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	media, err := testmedia.GenerateMotionWithBursts(root, "hall.mp4", 320, 240, 25, 26, 6.5, 3.5/6.5, 0.8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	tlPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: "generic_highlight"},
+		Subs:     false,
+		Out:      filepath.Join(root, "tap.mp4"),
+	})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export job ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	tlBytes, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatalf("the tap left no reel: %v", err)
+	}
+	if !strings.Contains(string(tlBytes), `"style": "generic_highlight"`) {
+		t.Errorf("an explicitly named style was second-guessed:\n%.200s", tlBytes)
 	}
 }

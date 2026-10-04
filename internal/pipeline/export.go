@@ -34,6 +34,20 @@ type ExportRequest struct {
 // that the posting shape is the default, not an extra page of options.
 const DefaultExportStyle = "beat_shortform"
 
+// ExportFallbackStyle is what the tap rebuilds with when the default style's
+// own measurement came back degenerate: beat_shortform segments on motion, and
+// on the flagship fixed-camera footage — where the players move but the camera
+// never rests — that is one span, one clip, a couple of seconds of "reel"
+// (measured on the owner's match, eval row 0.000 / 1 clip). sports_vertical is
+// the same posting shape — 9:16 — but segments on audio transients, which is
+// the signal that content actually carries: 15 clips on the same match.
+const ExportFallbackStyle = "sports_vertical"
+
+// ExportFallbackPolicy is the sentence the plan hands back with the job id, so
+// the substitution is disclosed before any stage runs rather than discovered
+// from the reel's length afterwards.
+const ExportFallbackPolicy = "a single-clip reel under this default falls back to " + ExportFallbackStyle
+
 // ExportStep is one line of the readout handed back with the job id: what the tap
 // decided about a stage and why. It is a plan, computed from the state as the
 // request arrived; the body re-reads the state it actually finds. Its reason for
@@ -185,8 +199,12 @@ func (d Deps) ExportProjectAsync(project *storage.Project, req ExportRequest) (s
 			fmt.Sprintf("a render job for this project is already %s — the one-tap export queues a render of its own; wait for it to finish or cancel it first", active.Status), nil)
 	}
 	subsPath := d.existingSubtitlesPath(project.ID)
+	timelineReason := "the reel the render will cut"
+	if req.Timeline.Style == DefaultExportStyle {
+		timelineReason += " (" + ExportFallbackPolicy + ")"
+	}
 	steps := []ExportStep{
-		{Step: "timeline", Action: "create", Reason: "the reel the render will cut"},
+		{Step: "timeline", Action: "create", Reason: timelineReason},
 		{Step: "subtitles", Action: "create", Reason: "transcribed through the AI sidecar"},
 		{Step: "render", Action: "create", Reason: ExportRenderQueued},
 	}
@@ -257,8 +275,39 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 			return func(p float64) { progress(from + (to-from)*p) }
 		}
 		if !d.hasTimeline(project.ID) {
-			if err := d.timelineBody(project, req.Timeline, nil, &timeline.Timeline{})(jctx, stage(0, 0.5)); err != nil {
+			var built timeline.Timeline
+			if err := d.timelineBody(project, req.Timeline, nil, &built)(jctx, stage(0, 0.4)); err != nil {
 				return err
+			}
+			// The default style is the tap's guess about the content, and the
+			// reel it just built is the measurement of that guess: a single-clip
+			// reel is the shape the beat_shortform-on-broadcast failure takes
+			// (one span, one clip, ~3s from an hour). Rebuild once with the
+			// fallback and keep whichever reel is real; a fallback that fails
+			// for any reason leaves the first reel standing, which is exactly
+			// what yesterday's tap delivered — plus the log line naming why.
+			if reelClipCount(built) < 2 && req.Timeline.Style != DefaultExportStyle {
+				// A style the caller asked for by name is their call, not the
+				// tap's guess to second-guess — but a single-clip reel is
+				// still worth naming in the log. The tap carries on with the
+				// reel as asked: captions and render follow as they would have.
+				d.Log.Warn("the requested style cut a single-clip reel; kept because it was asked for by name",
+					"project", project.ID, "style", req.Timeline.Style, "clips", reelClipCount(built))
+			} else if reelClipCount(built) < 2 {
+				fb := req.Timeline
+				fb.Style = ExportFallbackStyle
+				var alt timeline.Timeline
+				if ferr := d.timelineBody(project, fb, nil, &alt)(jctx, stage(0.4, 0.5)); ferr != nil {
+					d.Log.Warn("export fallback did not build; keeping the first reel",
+						"project", project.ID,
+						"first_style", req.Timeline.Style, "clips", reelClipCount(built),
+						"fallback_style", ExportFallbackStyle, "err", ferr)
+				} else {
+					d.Log.Info("export fell back to a style the content supports",
+						"project", project.ID,
+						"first_style", req.Timeline.Style, "clips", reelClipCount(built),
+						"fallback_style", ExportFallbackStyle, "clips_now", reelClipCount(alt))
+				}
 			}
 		} else {
 			progress(0.5)
@@ -412,4 +461,16 @@ func (d Deps) existingSubtitlesPath(projectID string) string {
 		return ""
 	}
 	return p
+}
+
+// reelClipCount counts the reel's video clips — the degeneracy measure the fallback
+// judges and both log lines report. Every track's clips: a reel is what plays,
+// however many tracks carry it. (The test file's clipsOf returns the clips
+// themselves; this is the tap's count.)
+func reelClipCount(tl timeline.Timeline) int {
+	n := 0
+	for _, tr := range tl.Tracks {
+		n += len(tr.Clips)
+	}
+	return n
 }
