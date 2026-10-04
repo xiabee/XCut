@@ -3,12 +3,82 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-03 07:XX +0800 (session #29's paragraph below is the state that holds now).
+Updated: 2026-10-05 08:40 +0800 (session #30's paragraph below is the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Session #29 (night 2026-10-02) made the gate survive the
-machine it actually runs on — five concurrent neighbor gates, a swallowed tool
-error, and a first-Linux strike on the export tests — and committed the flake
-campaign as a tool`.
+last paragraph before `Session #30 (night 2026-10-04) made two promises honest by
+measuring what the code had been assuming — the roi framing plan now keeps its
+region in the frame when geometry allows and says so when it does not, and the
+one-tap export measures the reel its default style just built and falls back when
+that measurement is degenerate`.
+
+Session #30 (night 2026-10-04) made two promises honest by measuring what the
+code had been assuming. The roi framing plan had never known the source's pixel
+shape against the reel's canvas — "centered on your region" was the most it
+could promise, and the comment on the AssetInfo.ROI field still claimed the
+selector could not know the source's pixel aspect while the struct itself
+carried the source's size one call away. roiPlan now fits the region: the
+asked zoom rises (ceil to four decimals, so the stored zoom never rounds
+below the need), the window centers on the region's visible part, and the
+emitted numbers are re-checked against the renderer's own crop formula before
+the plan claims a fit; a region no zoom ≤ 1 window can hold — a whole-court
+draw on a 9:16 canvas — keeps the centered plan with the honest sentence on
+the clip (`framing_fit`) and on the motion/plan wire (`fit`, the canvas read
+from the project's saved document, a project without one answered "the fit is
+decided when the reel is built" rather than an invented claim). The first
+draft inverted the window's aspect ratio — `z*srcA/canvasA` where the crop is
+`z*canvasA/srcA` wide — and the pipeline's stored-region test refused to pass
+for it; the test-side checker reads the renderer's formula, not the function
+under test. Five mutations each died on a named case (width-need inverted,
+raise dropped, ceil weakened to round, visible-part clamp skipped, and the
+impossibility pair of early branch + coverage verify dropped together — the
+early branch alone survives because the verify subsumes it, recorded as proof
+of redundancy), and the cross-package seam is pinned by
+TestTheFittedPlanReachesTheCommandLine: the zoom roiPlan computes is the
+number the stand-in FFmpeg is told to crop with. The picker stores the same
+claim the builder writes and the inspector shows it beside the clip's stats;
+ROADMAP B3's recorded remainder is closed, B5 and B6 got the checkboxes their
+named deliverables had earned days earlier, and the USAGE camera_motion
+sentence stopped describing the pre-fit world.
+
+The export tap trusted its default style with the content. beat_shortform
+segments on motion, and on the flagship fixed-camera footage — players
+moving, camera never resting — that measurement is one span, one clip, ~3 s
+of reel from an hour (the owner's match: eval 0.000 / 1 clip, B4c), and no
+line anywhere connected the one-tap export to that number. The tap now reads
+the clip count off the document it just wrote: a single-clip reel under the
+default style rebuilds once with sports_vertical — the same 9:16 posting
+shape, but segmented on the audio transients the content actually carries
+(15 clips on the same match) — and logs both counts. The policy is disclosed
+in the plan's timeline step before anything runs; a style the caller named is
+never second-guessed (warned in the log, carried out as requested); and a
+fallback that cannot build leaves the first reel standing, which is exactly
+what yesterday's tap delivered plus the reason (mutation-pinned: turning the
+refusal into a job failure fails the test naming the exact refusal). The
+fixture the behavior is measured with is new synthetic truth —
+testmedia.GenerateMotionWithBursts, continuous testsrc2 motion over
+burst-gated hit audio, the broadcast shape where the two segmenters
+demonstrably disagree (beat_shortform 1 clip / 2.80 s against sports_vertical
+2 clips / 7.20 s) — and the tap's ordinary-path test moved to a two-rally
+fixture with the reason in a comment: its single-rally fixture WAS the
+degenerate shape. From this head the soak's static export fixture walks
+detect → attempt → refuse → keep every round.
+
+Verification for the night: local CI PASS at each milestone head
+(75a9d2c, 15b8f2b, 1708960, 2da50ab) plus win-devops PASS on clean trees
+(c66484a, 1708960, f208d2f) — with one dispatch disclosed as a mixed tree
+(the M2 UI edits landed after the snapshot was taken; re-dispatched clean at
+the next head the same night, and the mixed-tree PASS was not counted).
+Soak ran 600 rounds errors=0 across six batteries (r3 walked the fallback
+path live in every export round), the cli flake campaign replayed 10/10
+clean at the final head (30/30 across the phase-5 arcs, statistical caveat
+carried as always), the whole-repo coverage sweep returned the same
+13 exempt-class functions at 84.0%, and the security trio (govulncheck,
+gosec HIGH/HIGH, gitleaks over tree and history) scanned clean at the
+opening and again at 05:50 over all of the night's code. One operational
+lesson re-learned and recorded where the next agent will trip on it:
+stopping a soak leaves an orphaned bash that keeps erroring into the shared
+log file — kill by CommandLine, restart under a new log name, discard the
+polluted evidence.
 
 Session #29 (night 2026-10-02) made the gate survive the machine it actually
 runs on. The host runs other projects' gates at night, and the race subset had
