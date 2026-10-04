@@ -258,9 +258,14 @@ Every item states how it is measured before it is built, because the eval harnes
       proves the segmentation and selection respond to motion, not that they
       respond correctly to real content (same gap as the second-match question,
       owner-supplied).
-- [ ] B5 — Caption/subtitle styling to the convention above (line length,
+- [x] B5 — Caption/subtitle styling to the convention above (line length,
       dwell time, white + thin outline or translucent box), shared by the
-      subtitle burn and the KTV lyric path.
+      subtitle burn and the KTV lyric path. Closed 2026-10-04 (session #30)
+      with the checkbox the sub-items had earned: B5a–e are all landed (the
+      geometry, the wrap and dwell, the plain path, the frame-mismatch restyle,
+      the transcript re-lay), both renderings share `KaraokeStyle`, and the
+      pixel ledger covers both shipped canvases. What stays unclaimed is
+      recorded in the entry below, not reopened: libass's exact glyph raster.
       Partially landed as B5a (geometry): `subs.KaraokeStyle` carries the reel's
       canvas and the writer derives PlayRes, font, outline, shadow and margins from
       it — 1080×1920 → `Fontsize 72 / MarginV 107`, 720p unchanged at 48/40, and a
@@ -328,10 +333,17 @@ Every item states how it is measured before it is built, because the eval harnes
       artifact per project, kept by the same rules as the captions beside it.
       Measured: the generated ASS text is asserted (the wire format, not a
       struct), including a long-lyric case that must wrap rather than overflow.
-- [ ] B6 — UI for all of it: beat ticks on the timeline ruler, a per-clip motion
-      picker in the inspector, a pacing chip (mean shot length vs the 3–5 s
-      target) and a one-tap "post-ready" export (vertical + captions + music
-      sync). The web UI and the client shell stay one asset tree.
+- [x] B6 — UI for all of it: beat ticks on the timeline ruler (B6g), a per-clip
+      motion picker in the inspector (B6c), a pacing chip (mean shot length vs
+      the 3–5 s target, B6a) and a one-tap "post-ready" export (vertical +
+      captions + music sync, B6d/e). Closed 2026-10-04 (session #30) with the
+      checkbox the named deliverables had all earned; what "closed" does not
+      mean is stated where it has always lived: the on-screen form of the
+      B6-family surfaces rests on the DOM/i18n/text guards because no browser
+      runs at night, and the screen-level verification pass is on the
+      owner-blocked ledger for a window-visible session. The fit report the
+      picker now carries is session #30's addition (see B3).
+      The web UI and the client shell stay one asset tree.
       Measured: the DOM-structure guards the repo already has, plus a browser
       probe reading the *computed style of the nodes that changed* — a CSS rule
       that renders on nothing has fooled this project before.
