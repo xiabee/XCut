@@ -34,6 +34,19 @@ sections are tagged; anything above the newest one is unreleased.
   JSON output.
 
 ### Added
+- **An roi framing plan keeps its region in the frame when geometry allows, and
+  says so when it does not.** The centered-on-the-region window could let the
+  region hang out of the crop — the plan never knew the source's pixel shape
+  against the reel's canvas, so "centered" was the most it could promise. The
+  selector already carries the source's size, so the plan now does the fit:
+  the asked zoom rises within (0,1] when the region needs a bigger window, the
+  window centers on the region's visible part, and a region no window can hold
+  (a whole-court draw on a vertical canvas) keeps today's centered plan with a
+  sentence saying so — on the clip (`framing_fit`) and on the motion/plan wire
+  (`fit`), where the canvas comes from the project's saved document and a
+  project without one is answered honestly rather than with an invented fit.
+  Caught on the way in: the first draft inverted the window's aspect ratio, and
+  the pipeline's stored-region test refused to pass for it.
 - **The cli load-flake campaign is a committed tool, not a re-derived one.**
   `scripts/camp-cli.sh` pins the design that caught the family's oldest member
   (the cli package looping with `-shuffle=on` while worker and pipeline loop in

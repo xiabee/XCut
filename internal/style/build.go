@@ -21,10 +21,10 @@ type AssetInfo struct {
 	Height      int
 	FPS         float64
 	// ROI is the region the project's analysis was aimed at, when one is set.
-	// The framing plan can point a window at its center; it is a position, not a
-	// promise that the whole region fits in the frame — the selector does not
-	// know the source's pixel aspect, and saying otherwise would be a claim the
-	// renderer, not the plan, has to keep.
+	// The framing plan aims the window at it — and, because the fit arithmetic
+	// has the source's pixel size right here, an roi plan is built to keep the
+	// region's on-frame part inside the window whenever a zoom ≤ 1 window can
+	// hold it (MotionFit says what a plan managed).
 	ROI *MotionROI
 }
 
@@ -208,6 +208,10 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	if len(items) == 0 {
 		return nil, xcerr.E(xcerr.CodeValidation, "no assets to build timeline from", nil)
 	}
+	// Resolved once, before selection: the roi framing plans need the canvas's
+	// aspect while clips are being planned, and the same resolved value is what
+	// the document states below.
+	canvas := resolveCanvas(preset.CanvasSource, preset.Canvas, assetsOf(items))
 	durations := map[string]float64{}
 
 	type candidate struct {
@@ -332,7 +336,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			used[i] = true
 			n++
 			chosen = append(chosen, cand)
-			plan := framingPlan(preset, c.asset, len(clips))
+			plan, planFit := framingPlan(preset, c.asset, len(clips), canvas)
 			md := map[string]string{
 				"score":           strconv.FormatFloat(round4(c.score), 'f', -1, 64),
 				"score_breakdown": c.f.breakdown(preset),
@@ -343,6 +347,13 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 				// clip, so this is for a reader comparing a reel against the style
 				// that made it.
 				md["framing"] = preset.CameraMotion.Mode
+				// An roi plan that could not keep its region inside the window
+				// says so on the clip: the framing key names the rule, this
+				// names what the rule managed. Absent means fitted (or a mode
+				// with no region promise at all).
+				if planFit.Note != "" {
+					md["framing_fit"] = planFit.Note
+				}
 			}
 			if c.seg.HitCount > 0 {
 				md["hit_count"] = strconv.Itoa(c.seg.HitCount)
@@ -427,7 +438,7 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 	tl := &timeline.Timeline{
 		Version:   timeline.Version,
 		ProjectID: projectID,
-		Canvas:    resolveCanvas(preset.CanvasSource, preset.Canvas, assetsOf(items)),
+		Canvas:    canvas,
 		Tracks: []timeline.Track{
 			{ID: "v1", Kind: "video", Clips: clips},
 		},
@@ -765,53 +776,161 @@ func moveTopShotFirst(clips []timeline.Clip) {
 // without cropping a subject out of the shot.
 const DefaultMotionZoom = 0.85
 
+// FitFrame is the geometry an roi framing plan needs to promise anything beyond
+// "the window is centered on your region": the reel's canvas and the source's
+// pixel size. The window the renderer crops is sized to the canvas's aspect, so
+// whether a region fits inside it depends on both shapes — the plan is where
+// that promise can be kept, because the renderer only executes what a document
+// states and must not re-decide it. The zero value is "shapes unknown": the
+// plan degrades to the centered window it has always been, and the fit report
+// says so instead of claiming a coverage it never checked.
+type FitFrame struct {
+	CanvasW, CanvasH int
+	SrcW, SrcH       int
+}
+
+// known reports whether both shapes are usable for the fit arithmetic.
+func (f FitFrame) known() bool {
+	return f.CanvasW > 0 && f.CanvasH > 0 && f.SrcW > 0 && f.SrcH > 0
+}
+
+// MotionFit says what an roi plan managed against the region. Fitted means the
+// plan's window covers the region's on-frame part at every moment of the clip;
+// the note carries the honest sentence when it does not (shapes unknown, region
+// off the picture, or a region no zoom ≤ 1 window can hold).
+type MotionFit struct {
+	Fitted bool   `json:"fitted"`
+	Note   string `json:"note,omitempty"`
+}
+
 // MotionFor is the one rule that turns a camera-motion name into one clip's plan
 // (运镜). framingPlan applies it across a reel and the per-clip endpoint applies it to
 // a single clip, so the geometry a user chooses cannot disagree with the geometry a
 // style would have produced. ordinal only decides which way a drift runs, so a reel
 // alternates its pans instead of repeating one metronome.
-func MotionFor(mode string, zoom float64, roi *MotionROI, ordinal int) (*timeline.Motion, error) {
+//
+// In roi mode the plan keeps its promise: when the frame's shapes are known, the
+// window is sized so the region's on-frame part stays inside it — the asked zoom
+// rises within (0,1] when the fit needs a bigger window, and the window centers
+// on the region's visible part. A region no window can hold (a whole-court draw
+// on a 9:16 canvas) stays on today's centered best-effort plan with a fit report
+// that says so.
+func MotionFor(mode string, zoom float64, roi *MotionROI, ordinal int, frame FitFrame) (*timeline.Motion, MotionFit, error) {
 	if mode == "" || mode == FramingNone {
-		return nil, nil // no window: the clip shows the whole frame
+		return nil, MotionFit{}, nil // no window: the clip shows the whole frame
 	}
 	if zoom <= 0 || zoom > 1 {
-		return nil, xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
+		return nil, MotionFit{}, xcerr.E(xcerr.CodeValidation, fmt.Sprintf(
 			"camera motion zoom %g out of (0,1] — a mode without a window is not a plan", zoom), nil)
 	}
 	switch mode {
 	case FramingPunchIn:
-		return &timeline.Motion{Zoom: zoom}, nil
+		return &timeline.Motion{Zoom: zoom}, MotionFit{}, nil
 	case FramingDrift:
 		from, to := 0.35, 0.65
 		if ordinal%2 == 1 {
 			from, to = to, from
 		}
-		return &timeline.Motion{Zoom: zoom, From: []float64{from, 0.5}, To: []float64{to, 0.5}}, nil
+		return &timeline.Motion{Zoom: zoom, From: []float64{from, 0.5}, To: []float64{to, 0.5}}, MotionFit{}, nil
 	case FramingROI:
 		if roi == nil {
-			return nil, xcerr.E(xcerr.CodeValidation,
+			return nil, MotionFit{}, xcerr.E(xcerr.CodeValidation,
 				"this asset has no region to aim at — draw one in the Regions panel first", nil)
 		}
-		cx, cy := clamp(roi.X+roi.W/2, 0, 1), clamp(roi.Y+roi.H/2, 0, 1)
-		return &timeline.Motion{Zoom: zoom, From: []float64{cx, cy}, To: []float64{cx, cy}}, nil
+		plan, fit := roiPlan(zoom, roi, frame)
+		return plan, fit, nil
 	}
-	return nil, xcerr.E(xcerr.CodeValidation,
+	return nil, MotionFit{}, xcerr.E(xcerr.CodeValidation,
 		fmt.Sprintf("camera motion %q is not one of none/punch_in/drift/roi", mode), nil)
+}
+
+// roiPlan is the roi branch of MotionFor. Fractions below are of the source's
+// own pixels: the window's height fraction is the zoom itself (the renderer
+// crops ih*zoom tall), and its width fraction is zoom*canvasAspect/srcAspect,
+// capped at the full width exactly as the crop filter caps it.
+//
+// A plan fits when the window covers the region's on-frame part at the plan's
+// zoom: one size condition per axis, then the center is placed inside the
+// interval where coverage holds (that interval is never empty once the size
+// condition holds and the window is at most the frame, so no second refusal
+// hides behind the size check). The asked zoom wins whenever it already fits.
+func roiPlan(zoom float64, roi *MotionROI, frame FitFrame) (*timeline.Motion, MotionFit) {
+	// The part of the region the picture can actually show: coverage of
+	// anything outside the frame is not drawable, so the fit judges the
+	// intersection.
+	vX0, vX1 := max(roi.X, 0), min(roi.X+roi.W, 1)
+	vY0, vY1 := max(roi.Y, 0), min(roi.Y+roi.H, 1)
+	vw, vh := vX1-vX0, vY1-vY0
+	if vw <= 0 || vh <= 0 {
+		return centeredPlan(zoom, roi), MotionFit{Note: "the region lies outside the frame — the window centers on its drawn middle"}
+	}
+	if !frame.known() {
+		return centeredPlan(zoom, roi), MotionFit{Note: "canvas size unknown — the window centers on the region; the fit is decided when the reel is built"}
+	}
+	srcA := float64(frame.SrcW) / float64(frame.SrcH)
+	canvasA := float64(frame.CanvasW) / float64(frame.CanvasH)
+	// Smallest zoom whose window can hold the region on both axes: height
+	// compares directly, width through the two aspect ratios (a 9:16 canvas
+	// on a 16:9 source makes the window a third of the picture wide, which is
+	// where "centered" and "inside" part ways). The ceiling is what keeps the
+	// promise true in the plan's own numbers: a zoom rounded down past the
+	// need would emit a window a ten-thousandth too small.
+	need := max(vh, vw*srcA/canvasA)
+	if need > 1+1e-9 {
+		return centeredPlan(zoom, roi), MotionFit{Note: "the region is larger than this canvas can hold at any zoom — the window centers on it and shows part of it"}
+	}
+	z := min(1, max(zoom, math.Ceil(need*10000)/10000))
+	wWin := min(z*canvasA/srcA, 1)
+	hWin := z
+	// Centers: aim at the visible middle, slid into the interval where the
+	// window covers the region. No frame term on purpose — the renderer clamps
+	// an overhanging center back to the picture, and that clamp never uncovers
+	// the region (it only pulls the window's edges toward the frame), so a
+	// plan that already fit stays exactly the window the picker always drew.
+	cx := clamp((vX0+vX1)/2, vX1-wWin/2, vX0+wWin/2)
+	cy := clamp((vY0+vY1)/2, vY1-hWin/2, vY0+hWin/2)
+	// The claim is checked on the numbers it will be read from: the plan is
+	// stored and the renderer formats it, so if the emitted geometry fails
+	// coverage by even a float's hair, the plan says so instead of claiming a
+	// fit it cannot show.
+	if !windowCovers(cx, wWin, vX0, vX1) || !windowCovers(cy, hWin, vY0, vY1) {
+		return centeredPlan(zoom, roi), MotionFit{Note: "the region is larger than this canvas can hold at any zoom — the window centers on it and shows part of it"}
+	}
+	return &timeline.Motion{Zoom: z, From: []float64{cx, cy}, To: []float64{cx, cy}}, MotionFit{Fitted: true}
+}
+
+// windowCovers asks the renderer's own question of one axis: the window is
+// centered at c, sized w (fraction of the frame), and clamped into the frame —
+// does what survives the clamp still span [lo, hi]?
+func windowCovers(c, w, lo, hi float64) bool {
+	e0, e1 := max(0, c-w/2), min(1, c+w/2)
+	return e0 <= lo+1e-9 && e1 >= hi-1e-9
+}
+
+// centeredPlan is the roi window as it shipped before the fit guarantee: the
+// drawn middle, clamped into the picture, at the zoom as asked. It is the
+// unfitted path — shapes unknown, a region off the picture, or a region no
+// window can hold.
+func centeredPlan(zoom float64, roi *MotionROI) *timeline.Motion {
+	cx, cy := clamp(roi.X+roi.W/2, 0, 1), clamp(roi.Y+roi.H/2, 0, 1)
+	return &timeline.Motion{Zoom: zoom, From: []float64{cx, cy}, To: []float64{cx, cy}}
 }
 
 // framingPlan turns the style's camera-motion policy into one clip's plan (运镜).
 // The ordinal only decides which way a drift runs, so a reel alternates its pans
-// instead of repeating one metronome, while the same inputs still produce the
-// same document.
-func framingPlan(p *Preset, a AssetInfo, ordinal int) *timeline.Motion {
-	plan, err := MotionFor(p.CameraMotion.Mode, p.CameraMotion.Zoom, a.ROI, ordinal)
+// while the same inputs still produce the same document. The canvas travels with
+// the plan on purpose: it is resolved once per reel (below), so the roi fit a
+// user previews through the endpoint is the fit the reel is built with.
+func framingPlan(p *Preset, a AssetInfo, ordinal int, canvas timeline.Canvas) (*timeline.Motion, MotionFit) {
+	plan, fit, err := MotionFor(p.CameraMotion.Mode, p.CameraMotion.Zoom, a.ROI, ordinal,
+		FitFrame{CanvasW: canvas.Width, CanvasH: canvas.Height, SrcW: a.Width, SrcH: a.Height})
 	if err != nil {
 		// A preset's mode and zoom are both validated in Resolve, so in practice
 		// this is "roi on an asset with no region": the clip frames the whole
 		// picture, which is what it did before this function had a second caller.
-		return nil
+		return nil, MotionFit{}
 	}
-	return plan
+	return plan, fit
 }
 
 // snapEnd moves an otherwise-unfixed clip end onto the nearest beat of the

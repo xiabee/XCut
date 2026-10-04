@@ -5,6 +5,7 @@ import (
 
 	"github.com/xiabee/XCut/internal/pipeline"
 	"github.com/xiabee/XCut/internal/style"
+	"github.com/xiabee/XCut/internal/timeline"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
@@ -16,6 +17,10 @@ import (
 // "drift" means (docs/ROADMAP.md, B6c). The asset's region is read from its row and
 // not handed up by the client, for the same reason: it is the region the builder
 // would have aimed at, so a hand pick and a generated reel agree by construction.
+// The canvas comes from the project's saved document for the same reason — it is
+// the shape the render will crop to. Without a document there is no honest answer
+// yet: the plan comes back as the centered window it has always been, and the fit
+// report says the fit is decided when the reel is built.
 //
 // Nothing is stored. The client puts what comes back onto the clip and saves it
 // through the ordinary timeline write, so the revision check and the
@@ -47,7 +52,16 @@ func (s *Server) handleMotionPlan(w http.ResponseWriter, r *http.Request) {
 	if zoom == 0 {
 		zoom = style.DefaultMotionZoom // absent means the picker's default window
 	}
-	motion, err := style.MotionFor(body.Mode, zoom, pipeline.AssetMotionROI(asset), body.Ordinal)
+	var frame style.FitFrame
+	if path, perr := s.Pipe.TimelinePath(p.ID); perr == nil {
+		if tl, lerr := timeline.LoadFile(path); lerr == nil {
+			frame = style.FitFrame{
+				CanvasW: tl.Canvas.Width, CanvasH: tl.Canvas.Height,
+				SrcW: asset.Width, SrcH: asset.Height,
+			}
+		}
+	}
+	motion, fit, err := style.MotionFor(body.Mode, zoom, pipeline.AssetMotionROI(asset), body.Ordinal, frame)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
@@ -60,5 +74,6 @@ func (s *Server) handleMotionPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"mode": body.Mode, "framing": framing, "motion": motion,
+		"fit": fit,
 	})
 }

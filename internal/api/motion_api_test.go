@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/xiabee/XCut/internal/storage"
+	"github.com/xiabee/XCut/internal/timeline"
 )
 
 // The picker asks the server what a motion name means, and the server answers with
@@ -165,5 +166,71 @@ func TestThePickerWritesGeometryAndItsClaimTogether(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Errorf("app.js no longer contains %q — the picker's geometry and its claim are written apart", want)
 		}
+	}
+}
+
+// TestMotionPlanReportsTheFit: the fit rides the wire beside the geometry. The
+// canvas comes from the project's saved document and the source's shape from the
+// asset row — the same inputs the reel builder will use — so the plan the picker
+// previews is the plan the reel builds, and the fit claim on the wire is the
+// claim the document carries.
+func TestMotionPlanReportsTheFit(t *testing.T) {
+	s, pid, aid := planAsset(t, "plan-fit", &storage.MotionROI{X: 0.35, Y: 0.25, W: 0.3, H: 0.5})
+	p, err := s.DB.GetProjectByName(context.Background(), "plan-fit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen := &timeline.Timeline{
+		Version:   timeline.Version,
+		ProjectID: p.ID,
+		Canvas:    timeline.Canvas{Width: 720, Height: 1280, FPS: 30},
+		Tracks: []timeline.Track{{
+			ID:   "v1",
+			Kind: "video",
+			Clips: []timeline.Clip{{
+				ID: "gen", AssetID: aid, SourceStart: 0, SourceEnd: 2,
+				TimelineStart: 0, Speed: 1, Volume: 1,
+			}},
+		}},
+	}
+	if err := s.Pipe.WriteRegeneratedTimeline(p, gen); err != nil {
+		t.Fatal(err)
+	}
+	code, out := plan(t, s, pid, `{"mode":"roi","asset":"`+aid+`"}`)
+	if code != http.StatusOK {
+		t.Fatalf("roi plan: %d %v", code, out)
+	}
+	// A 9:16 document over a 16:9 source: the region fits only with the window
+	// the fit arithmetic raises the zoom to (style's own tests pin the number).
+	if m := motionOf(t, out); m["zoom"].(float64) != 0.9482 {
+		t.Errorf("zoom = %v, want the fit's 0.9482 over this canvas and source", m["zoom"])
+	}
+	fit, ok := out["fit"].(map[string]any)
+	if !ok {
+		t.Fatalf("no fit object in the reply: %v", out)
+	}
+	if fit["fitted"] != true {
+		t.Errorf("a region that fits came back unfitted: %v", fit)
+	}
+}
+
+// TestMotionPlanWithoutADocumentSaysSo: before the reel exists there is no canvas
+// to fit to, and the endpoint must not pretend otherwise — the plan comes back
+// centered and the fit report names the honest answer.
+func TestMotionPlanWithoutADocumentSaysSo(t *testing.T) {
+	s, pid, aid := planAsset(t, "plan-nodoc", &storage.MotionROI{X: 0.2, Y: 0.1, W: 0.4, H: 0.3})
+	code, out := plan(t, s, pid, `{"mode":"roi","asset":"`+aid+`"}`)
+	if code != http.StatusOK {
+		t.Fatalf("roi plan: %d %v", code, out)
+	}
+	fit, ok := out["fit"].(map[string]any)
+	if !ok {
+		t.Fatalf("no fit object in the reply: %v", out)
+	}
+	if fit["fitted"] != false {
+		t.Errorf("a plan with no canvas claims fitted: %v", fit)
+	}
+	if note, _ := fit["note"].(string); !strings.Contains(note, "unknown") {
+		t.Errorf("fit note %q does not say the canvas is unknown", note)
 	}
 }

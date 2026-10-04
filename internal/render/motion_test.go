@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/style"
 	"github.com/xiabee/XCut/internal/testmedia"
 	"github.com/xiabee/XCut/internal/timeline"
 )
@@ -235,4 +236,46 @@ func quarter(vals []float64, which int) float64 {
 		sum += v
 	}
 	return sum / float64(to-from)
+}
+
+// TestTheFittedPlanReachesTheCommandLine is the seam the fit guarantee adds: the
+// number roiPlan computes from the canvas and source shapes is the number FFmpeg
+// is told to crop with. style's tests pin why the zoom rises; this one pins that
+// the rise travels — a document whose plan says 0.99560 must not render a window
+// sized by anything else. The first line is what makes it bite: if the fit ever
+// stops raising the zoom, the plan equals the asked window and this test has
+// nothing left to defend.
+func TestTheFittedPlanReachesTheCommandLine(t *testing.T) {
+	requireTools(t)
+	src := fixture(t)
+	frame := style.FitFrame{CanvasW: 270, CanvasH: 480, SrcW: 320, SrcH: 240}
+	plan, fit, err := style.MotionFor(style.FramingROI, 0.85,
+		&style.MotionROI{X: 0.29, Y: 0.35, W: 0.42, H: 0.3}, 0, frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fit.Fitted || plan.Zoom <= 0.85 {
+		t.Fatalf("the fit did not raise this zoom: plan %v fit %+v", plan, fit)
+	}
+	want := strconv.FormatFloat(plan.Zoom, 'f', 5, 64)
+
+	argvPath := filepath.Join(t.TempDir(), "argv.log")
+	t.Setenv("XCUT_FAKE_FFMPEG", "1")
+	t.Setenv("XCUT_FAKE_FFMPEG_ARGV", argvPath)
+	tools := media.Tools{FFmpeg: os.Args[0], FFprobe: "ffprobe", Threads: 2}
+	out := filepath.Join(t.TempDir(), "out.mp4")
+	tl := twoClipTimeline(src)
+	tl.Canvas = timeline.Canvas{Width: 270, Height: 480, FPS: 15}
+	tl.Tracks[0].Clips[0].Motion = plan
+	renderErr := Render(context.Background(), tl, Options{Tools: tools, TempDir: t.TempDir(), ClipWorkers: 1}, out)
+	if renderErr == nil {
+		t.Fatal("the stand-in FFmpeg must fail the render")
+	}
+	raw, rerr := os.ReadFile(argvPath)
+	if rerr != nil {
+		t.Fatalf("the child never reported its arguments: %v", rerr)
+	}
+	if !strings.Contains(string(raw), "trunc(ih*"+want+"/2)*2") {
+		t.Fatalf("the fitted zoom %s never reached the crop height:\n%s", want, raw)
+	}
 }

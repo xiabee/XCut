@@ -172,10 +172,20 @@ Every item states how it is measured before it is built, because the eval harnes
       with no plan). Cost is in `docs/PERFORMANCE.md`: +0.5 s per minute of output
       (8.6 s against 8.1 s) and +11.5% bytes at fixed CRF, so the render budget
       needs no new ceiling — the size is the number to watch.
-      Not claimed: a plan *centered* on the ROI is not a plan that keeps the whole
-      region inside the frame — the selector does not know the source's pixel
-      aspect, and only the renderer does. A fit guarantee is either the renderer's
-      or the UI's, and it is recorded as the remainder rather than asserted.
+      The centered-on-the-ROI remainder closed 2026-10-04 (session #30): the
+      framing plan is where the fit promise could actually be kept — the selector
+      already carries the source's pixel size in `AssetInfo`, and the plan is the
+      document the renderer executes, so re-deciding geometry at render time was
+      never on the table. An roi plan now keeps the region's on-frame part inside
+      the window whenever a zoom ≤ 1 window can hold it (raising the asked zoom,
+      centering on the region's visible part), and reports what it managed
+      (`fit` on the motion/plan wire, `framing_fit` on the clip when it could
+      not). Measured: the geometry table against the renderer's own crop
+      formula, the two-caller agreement extended over the new inputs, the wire
+      (document canvas → fitted; no document → "fit is decided when the reel is
+      built"), and five mutations each killed by a named case — including the
+      inverted window-aspect ratio the first draft shipped and the pipeline's
+      stored-region test caught the same night.
       Per-clip picker stays B6; no shipped preset enables motion, because cropping
       a broadcast can cut the score bug out of the shot and no aesthetic claim has
       been measured here to trade against that.
