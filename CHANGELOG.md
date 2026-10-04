@@ -47,6 +47,11 @@ sections are tagged; anything above the newest one is unreleased.
   project without one is answered honestly rather than with an invented fit.
   Caught on the way in: the first draft inverted the window's aspect ratio, and
   the pipeline's stored-region test refused to pass for it.
+- **The motion picker carries the fit claim with the pick.** A hand pick now stores
+  the same `framing_fit` sentence the builder stores, and the inspector shows it
+  beside the clip's stats — so a window that could not hold the region says so on
+  the clip, from either path, and the sentence disappears the moment a pick
+  manages it or the window is gone.
 - **The cli load-flake campaign is a committed tool, not a re-derived one.**
   `scripts/camp-cli.sh` pins the design that caught the family's oldest member
   (the cli package looping with `-shuffle=on` while worker and pipeline loop in

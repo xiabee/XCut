@@ -162,10 +162,22 @@ func TestMotionPlanStaysInsideItsProject(t *testing.T) {
 // with a window it does not describe or a description of a window it does not have.
 func TestThePickerWritesGeometryAndItsClaimTogether(t *testing.T) {
 	_, js, _ := i18nAssets(t)
-	for _, want := range []string{"c.motion = res.motion", "{ framing: res.framing }", "delete c.motion"} {
+	for _, want := range []string{
+		"c.motion = res.motion", "{ framing: res.framing }", "delete c.motion",
+		"res.fit.fitted === false", "rest.framing_fit = res.fit.note", "delete rest.framing_fit",
+	} {
 		if !strings.Contains(js, want) {
-			t.Errorf("app.js no longer contains %q — the picker's geometry and its claim are written apart", want)
+			t.Errorf("app.js no longer contains %q — the picker's geometry and its claims are written apart", want)
 		}
+	}
+	// The inspector shows what the framing managed; the label is translated,
+	// the note passes through as the server wrote it.
+	if !strings.Contains(js, `stat(t("framing fit"), String(c.metadata.framing_fit))`) {
+		t.Errorf("app.js no longer displays the framing fit note beside the clip's stats")
+	}
+	_, _, dictJS := i18nAssets(t)
+	if !strings.Contains(dictJS, `"framing fit"`) {
+		t.Errorf("the i18n dictionary lost the framing fit label the inspector shows")
 	}
 }
 

@@ -195,6 +195,7 @@ window.XCUT_I18N = {
     "Scoreboard region saved — the point boundaries are measured on the next analyze run": "记分牌区域已保存 — 得分边界将在下一次分析时测得",
     "drag a rectangle over the court area — saved for this asset; it overrides the style's region.": "在球场区域拖出一个矩形——保存到该素材，并覆盖风格设置的区域。",
     "★ Post-ready: reel, captions, render": "★ 一键成片：时间线 + 字幕 + 渲染",    "camera motion": "运镜",
+    "framing fit": "框定贴合",
     "still (whole frame)": "静止（完整画面）",
     "punch in": "推近",
     "drift across the frame": "横移扫过画面",

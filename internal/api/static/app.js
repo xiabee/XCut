@@ -1266,6 +1266,12 @@ function renderInspector() {
     // absence is as informative as the presence.
     if (c.metadata.point_end) box.appendChild(stat(t("ends at point"), String(c.metadata.point_end)));
   }
+  // Only present when an roi window could not hold the region (builder or hand
+  // pick alike — both store the same claim); the absence says the framing
+  // fitted or never promised to.
+  if (c.metadata && c.metadata.framing_fit) {
+    box.appendChild(stat(t("framing fit"), String(c.metadata.framing_fit)));
+  }
 
   const grid = document.createElement("div");
   grid.className = "insp-grid";
@@ -1365,11 +1371,24 @@ function renderInspector() {
         if (res.motion) {
           c.motion = res.motion;
           c.metadata = Object.assign({}, c.metadata, { framing: res.framing });
+          // The fit claim travels with the pick, exactly as the builder's
+          // framing_fit does: present only when the window could not hold the
+          // region, gone the moment a pick manages it or the window is gone.
+          // The note is the server's sentence, passed through like every other
+          // server-written reason on this page.
+          const rest = Object.assign({}, c.metadata);
+          if (res.fit && res.fit.fitted === false && res.fit.note) {
+            rest.framing_fit = res.fit.note;
+          } else {
+            delete rest.framing_fit;
+          }
+          c.metadata = rest;
         } else {
           delete c.motion;
           if (c.metadata) {
             const rest = Object.assign({}, c.metadata);
             delete rest.framing;
+            delete rest.framing_fit;
             c.metadata = rest;
           }
         }
