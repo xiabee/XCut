@@ -396,7 +396,11 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-busy-$round'][0])" 2>/
     # 9. export tap (the one-tap family, 6498b14): the door precheck refuses
     #    while a render is provably active, a second export refuses while the
     #    first's child render runs (exclusive set), and a solo export queues
-    #    and lands a reel. Throwaway project per round, deleted when idle.
+    #    and lands a reel. Since the degeneracy fallback (session #30), the
+    #    bare-default tap on this static fixture walks the whole new path
+    #    every round: one-clip measurement, sports_vertical attempted, rally
+    #    refused for the missing audio stream, first reel kept. Throwaway
+    #    project per round, deleted when idle.
     #    Assert the invariant, not the timing — the tiny fixture can finish a
     #    render between the 202 and the probe, and both answers are then
     #    correct; a regression still shows in the counters (expDoor/expDup
