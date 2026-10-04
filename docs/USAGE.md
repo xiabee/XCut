@@ -231,8 +231,11 @@ the beat).
 `camera_motion` is the preset's own knob for 运镜: `{"mode":
 "punch_in"|"drift"|"roi", "zoom": 0.8}` frames every clip in the window it
 describes, which the renderer crops to and magnifies into the canvas (`drift`
-alternates the pan direction per clip; `roi` centers the window on the project's
-analysis region). It is set in a style file rather than per run — a workspace copy
+alternates the pan direction per clip; `roi` aims the window at the project's
+analysis region — and keeps that region inside the window whenever a zoom
+within (0,1] can hold it, raising the zoom if it must; a region no window
+can hold, a whole-court draw on a vertical canvas, keeps the centered window
+and says so on the clip). It is set in a style file rather than per run — a workspace copy
 under `<workspace>/styles/` is what the style editor writes. One preset asks for it
 today: `sports_vertical`, at `roi`, because a 9:16 canvas over a 16:9 source has to
 choose a horizontal window and the analyzed region is the one place the project
