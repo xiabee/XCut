@@ -1444,3 +1444,55 @@ func TestExportRespectsAnExplicitStyle(t *testing.T) {
 		t.Errorf("an explicitly named style was second-guessed:\n%.200s", tlBytes)
 	}
 }
+
+// TestExportKeepsTheReelWhenTheFallbackIsRefused: the fallback is best-effort —
+// the first reel standing is yesterday's behavior, and the path that proves it
+// needs a fallback that CANNOT build. sports_vertical segments on audio
+// transients, so a reel whose source has no audio stream is refused out of
+// hand; the tap keeps the degenerate beat_shortform reel and finishes anyway.
+func TestExportKeepsTheReelWhenTheFallbackIsRefused(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	// Continuous motion, no audio: one activity span for the default style, and
+	// a rally fallback with no stream to hear.
+	media, err := testmedia.GenerateVideoOnly(root, "silent.mp4", 320, 240, 25, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, p := bareDeps(t)
+	tlPath, err := d.TimelinePath(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, media); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := d.ExportProjectAsync(p, ExportRequest{
+		Timeline: TimelineRequest{Style: DefaultExportStyle},
+		Subs:     false,
+		Out:      filepath.Join(root, "tap.mp4"),
+	})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+	if err := d.Queue.WaitContext(ctx); err != nil {
+		t.Fatalf("the tap never finished: %v", err)
+	}
+	if j := awaitTerminal(t, d, id); j.Status != storage.StatusSucceeded {
+		t.Fatalf("export job ended %s: %s (%s)", j.Status, j.ErrorMessage, j.ErrorCode)
+	}
+	tlBytes, err := os.ReadFile(tlPath)
+	if err != nil {
+		t.Fatalf("the tap left no reel: %v", err)
+	}
+	if !strings.Contains(string(tlBytes), `"style": "`+DefaultExportStyle+`"`) {
+		t.Errorf("a refused fallback did not keep the first reel:\n%.200s", tlBytes)
+	}
+}
