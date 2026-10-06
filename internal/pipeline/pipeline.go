@@ -488,6 +488,14 @@ type TimelineRequest struct {
 	// to, and the render mixes it in. Empty = no bed, which is every run before
 	// this knob existed.
 	Music string
+
+	// fallbackFrom is the style whose reel was measured and rejected before
+	// this request was built — set only by the export tap's degeneracy
+	// fallback, so the saved document can name the substitution
+	// (timeline.MetaStyleFallback). Unexported on purpose: callers outside
+	// this package name styles, and only the tap's own measurement may
+	// replace one.
+	fallbackFrom string
 }
 
 // BeatSnapOff is the TimelineRequest.BeatSnap sentinel that turns cutting on the
@@ -722,6 +730,17 @@ func (d Deps) timelineBody(project *storage.Project, req TimelineRequest, onlyID
 		}
 		stampBed(tl, bed)
 		stampBeatGrid(tl, bed, gridsServedBy(tl, grids))
+		// The build's own provenance beyond what style.Build stamps: when this
+		// request is a fallback rebuild, the document names the style whose
+		// reel was measured and rejected. Every other path leaves the key
+		// unset — "no substitution happened" is the ordinary case and the
+		// document says so by silence, not by an invented claim.
+		if req.fallbackFrom != "" {
+			if tl.Metadata == nil {
+				tl.Metadata = map[string]string{}
+			}
+			tl.Metadata[timeline.MetaStyleFallback] = req.fallbackFrom
+		}
 		if err := d.WriteRegeneratedTimeline(project, tl); err != nil {
 			return err
 		}

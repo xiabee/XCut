@@ -66,6 +66,19 @@ const (
 	// consumer; it never derives a phase this document does not state.
 	MetaBeatBPM   = "beat_bpm"
 	MetaBeatPhase = "beat_phase"
+	// MetaStyle and MetaStyleVersion name the preset that built this document
+	// (its name and its version at build time). Every document style.Build
+	// writes carries them, so any reader of a saved document — the UI panel
+	// today, anything tomorrow — can say what shaped the reel without asking
+	// the builder.
+	MetaStyle        = "style"
+	MetaStyleVersion = "style_v"
+	// MetaStyleFallback is set only when a build replaced another style's
+	// work: the export tap's degeneracy fallback records here the style whose
+	// reel it measured and rejected. Its absence means no substitution
+	// happened — the document was built by the style MetaStyle names, and no
+	// reader may invent a fallback from silence.
+	MetaStyleFallback = "style_fallback"
 )
 
 // Motion describes the framed window as a zoom factor and the normalized center

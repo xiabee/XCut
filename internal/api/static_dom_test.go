@@ -343,3 +343,53 @@ func dedupe(in []string) []string {
 	}
 	return out
 }
+
+// TestTheStyleNoteReadsTheDocumentProvenance: the timeline panel's style line
+// has one source of truth — the saved document's metadata — and two facts it
+// may state: the preset that built the reel, and (only when the key exists)
+// the style the export tap's fallback replaced. The reading must not drift to
+// some other field the page happens to hold (a picker selection is a wish,
+// the document is what happened), and the fallback branch must die if the
+// metadata key is renamed on the Go side.
+func TestTheStyleNoteReadsTheDocumentProvenance(t *testing.T) {
+	html := staticFile(t, "static/index.html")
+	js := staticFile(t, "static/app.js")
+
+	if !strings.Contains(html, `id="tl-style"`) {
+		t.Fatal("index.html has no tl-style element for the provenance line")
+	}
+	if !strings.Contains(js, `$("tl-style")`) {
+		t.Fatal("app.js never renders the tl-style element")
+	}
+	// The element the script reaches for must exist (TestEveryIDTheScriptReachesForExists
+	// would also catch a rename; this pins the pair directly so a failure here
+	// names the provenance line, not "some id"). The reads are checked inside
+	// renderStyleNote's own body: the values come from the document's metadata
+	// map via the same `md` local every note here uses, and a future edit that
+	// moves the read outside the function should fail loudly, not silently.
+	start := strings.Index(js, "function renderStyleNote(")
+	if start < 0 {
+		t.Fatal("app.js has no renderStyleNote function")
+	}
+	body := js[start:]
+	if end := strings.Index(body[1:], "\nfunction "); end >= 0 {
+		body = body[:end+1]
+	}
+	for _, key := range []string{"md.style", "md.style_fallback"} {
+		if !strings.Contains(body, key) {
+			t.Errorf("renderStyleNote never reads %s — the line would render from something else or nothing", key)
+		}
+	}
+	// Both sentences come from the dictionary: the fallback sentence is the
+	// product of the substitution being visible, and its key literal is what
+	// ties this panel to the Go-side MetaStyleFallback stamp. The i18n gates
+	// (TestI18nKeysCovered / TestI18nPlaceholdersMatch) hold the zh halves.
+	for _, key := range []string{
+		"reel built by the {style} style",
+		"the default style ({from}) cut a degenerate reel — rebuilt with {style}",
+	} {
+		if !strings.Contains(js, `tf("`+key+`"`) {
+			t.Errorf("app.js does not render the provenance sentence %q through tf()", key)
+		}
+	}
+}

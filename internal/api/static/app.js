@@ -807,6 +807,7 @@ async function refreshTimeline() {
   renderTimeline();
   renderFootageNote();
   renderBedNote();
+  renderStyleNote();
   renderPacing(null);
   if (!currentProject) return;
   const pid = currentProject.id;
@@ -823,6 +824,7 @@ async function refreshTimeline() {
   renderTimeline();
   renderFootageNote();
   renderBedNote();
+  renderStyleNote();
   renderPacing(pacing);
 }
 
@@ -937,6 +939,32 @@ function renderPacing(p) {
     // place — reporting one at 0.0s would be an invention. The sentence says so
     // rather than quietly going short, which would read as the same claim.
     el.textContent = tf("{shots} shots · mean {mean}s · median {median}s · longest {longest}s · no shot is scored in this document", args);
+  }
+  el.hidden = false;
+}
+
+// renderStyleNote names the preset that shaped the saved reel — and, when the
+// one-tap export's degeneracy fallback fired, which style's work it replaced.
+// Both facts come from the saved document (metadata.style / metadata.style_fallback),
+// not from anything this page asked for: a reel built by the CLI, or rebuilt
+// under another preset, says so here because the document is what says it.
+// No style key means nothing can be claimed — the note stays hidden rather
+// than guessing from the picker's current selection.
+function renderStyleNote() {
+  const el = $("tl-style");
+  if (!el) return;
+  const md = (timelineDoc && timelineDoc.metadata) || {};
+  const style = md.style;
+  if (!style) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  const from = md.style_fallback;
+  if (from) {
+    el.textContent = tf("the default style ({from}) cut a degenerate reel — rebuilt with {style}", { from, style });
+  } else {
+    el.textContent = tf("reel built by the {style} style", { style });
   }
   el.hidden = false;
 }

@@ -296,6 +296,9 @@ func (d Deps) exportBody(project *storage.Project, req ExportRequest) job.Runner
 			} else if reelClipCount(built) < 2 {
 				fb := req.Timeline
 				fb.Style = ExportFallbackStyle
+				// The document the rebuild writes names what it replaced, so
+				// the substitution outlives the log line that made it.
+				fb.fallbackFrom = req.Timeline.Style
 				var alt timeline.Timeline
 				if ferr := d.timelineBody(project, fb, nil, &alt)(jctx, stage(0.4, 0.5)); ferr != nil {
 					d.Log.Warn("export fallback did not build; keeping the first reel",

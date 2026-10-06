@@ -443,8 +443,8 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			{ID: "v1", Kind: "video", Clips: clips},
 		},
 		Metadata: map[string]string{
-			"style":   preset.Name,
-			"style_v": strconv.Itoa(preset.Version),
+			timeline.MetaStyle:        preset.Name,
+			timeline.MetaStyleVersion: strconv.Itoa(preset.Version),
 			// What ran out first — the footage or the budget. Without these the
 			// caller cannot tell "18 clips because you asked for 18" from "18
 			// because this match only offered 18 candidate rallies", and the

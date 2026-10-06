@@ -121,6 +121,8 @@ window.XCUT_I18N = {
     "this footage offered one candidate rally and the cut took it — {got}s of the {asked}s asked for. Filling the rest needs more sources: the selector found nothing else to cut.": "这段素材只提供 1 个候选回合，成片用的就是它——要 {asked} 秒只做到 {got} 秒。要再长就得加素材：分析没找到别的可剪内容。",
     "{shots} shots · mean {mean}s · median {median}s · longest {longest}s · best shot starts at {hook}s": "{shots} 个镜头 · 平均 {mean} 秒 · 中位 {median} 秒 · 最长 {longest} 秒 · 评分最高的镜头从第 {hook} 秒开始",
     "{shots} shots · mean {mean}s · median {median}s · longest {longest}s · no shot is scored in this document": "{shots} 个镜头 · 平均 {mean} 秒 · 中位 {median} 秒 · 最长 {longest} 秒 · 这份文档里没有镜头打分",
+    "reel built by the {style} style": "成片由 {style} 样式构建",
+    "the default style ({from}) cut a degenerate reel — rebuilt with {style}": "默认样式（{from}）剪出的成片退化——已改用 {style} 重建",
     "music bed (path)": "背景音乐（路径）",
     "optional — its beat grid is what the cuts snap to": "选填——卡点以它的节拍网格为准",
     "cut on the beat": "按节拍切",

@@ -1347,6 +1347,12 @@ func TestExportFallsBackWhenTheDefaultReelIsDegenerate(t *testing.T) {
 	if !strings.Contains(string(tlBytes), `"style": "`+ExportFallbackStyle+`"`) {
 		t.Errorf("the reel on disk is not the fallback's:\n%.200s", tlBytes)
 	}
+	// The substitution outlives the log: the document names the style whose
+	// reel was measured and rejected, so any reader of the file — not just
+	// whoever tails serve.log — can tell the reel was rebuilt.
+	if !strings.Contains(string(tlBytes), `"style_fallback": "`+DefaultExportStyle+`"`) {
+		t.Errorf("the fallback reel does not name the style it replaced:\n%.200s", tlBytes)
+	}
 }
 
 // TestExportKeepsTheDefaultWhenItWorks: the fallback is a measurement of THIS
@@ -1395,6 +1401,11 @@ func TestExportKeepsTheDefaultWhenItWorks(t *testing.T) {
 	if !strings.Contains(string(tlBytes), `"style": "`+DefaultExportStyle+`"`) {
 		t.Errorf("working content lost its requested style:\n%.200s", tlBytes)
 	}
+	// No substitution happened, so the document carries no fallback claim —
+	// an invented one would make every ordinary reel read as rescued.
+	if strings.Contains(string(tlBytes), `"style_fallback"`) {
+		t.Errorf("a reel the default cut fine claims a fallback:\n%.200s", tlBytes)
+	}
 }
 
 // TestExportRespectsAnExplicitStyle: the fallback revises the tap's own guess,
@@ -1442,6 +1453,11 @@ func TestExportRespectsAnExplicitStyle(t *testing.T) {
 	}
 	if !strings.Contains(string(tlBytes), `"style": "generic_highlight"`) {
 		t.Errorf("an explicitly named style was second-guessed:\n%.200s", tlBytes)
+	}
+	// Kept as asked means kept, not rescued-and-labelled: the refusal is the
+	// log's sentence, never a fallback claim in the caller's document.
+	if strings.Contains(string(tlBytes), `"style_fallback"`) {
+		t.Errorf("a reel kept by its caller's named style claims a fallback:\n%.200s", tlBytes)
 	}
 }
 
