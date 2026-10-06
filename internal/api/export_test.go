@@ -179,6 +179,12 @@ func slowSidecar(t *testing.T, seconds int) string {
 // an older reel's job row must never be mistaken for the row this tap queued.
 func TestExportQueuesTheChildRenderAsTheNewestRow(t *testing.T) {
 	s, pid := stagedReel(t, "export-follow")
+	// The tap's subs:auto plans a transcription whenever a sidecar resolves —
+	// including a host-installed one whose speech model is absent, which would
+	// fail this job for reasons the test does not care about. Pinned to the
+	// stub, the caption stage succeeds the same way on every machine and the
+	// assertions stay about what they name: the order of the render rows.
+	fakeSidecar(t, s, false)
 	ctx := context.Background()
 	// Yesterday's terminal render row: a reel the tap did not queue. It is
 	// terminal on purpose — an active one would 409 the tap's own child.

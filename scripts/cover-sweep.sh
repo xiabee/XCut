@@ -22,7 +22,20 @@ set -e
 cd "$(dirname "$0")/.."
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+kept=""
+cleanup() {
+    # A failed package's verbose log IS the evidence — a strike whose only
+    # witness was written into a trap-deleted tmp dir cannot be triaged at
+    # all (the 2026-10-07 api strike: two sweeps, zero surviving bytes).
+    # On failure the whole evidence directory is kept and its path printed;
+    # a green sweep's scratch is still scratch.
+    if [ -n "$kept" ]; then
+        echo "  evidence kept: $kept"
+    else
+        rm -rf "$tmp"
+    fi
+}
+trap cleanup EXIT
 
 echo "== coverage sweep environment"
 echo "  ffmpeg:  $(command -v ffmpeg || echo MISSING)"
@@ -56,6 +69,7 @@ if [ -n "$failed" ]; then
         slug=$(printf '%s' "$p" | tr '/.' '__')
         tail -5 "$tmp/$slug.log"
     done
+    kept="$tmp"
     exit 1
 fi
 
