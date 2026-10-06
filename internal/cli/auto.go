@@ -181,7 +181,11 @@ func cmdAuto(a *App, args []string) error {
 		// The one-shot is where an ambitious --duration is most likely to be
 		// answered by a shorter reel, so it has to carry the same explanation
 		// `xcut timeline` gives — silence here reads as "it chose not to fill".
-		if note := footageLimitNote(tl, duration); note != "" {
+		// And with no explicit --duration the shortfall note never fires at all,
+		// so a single-clip reel would otherwise print nothing past the count.
+		if note := degenerateReelNote(tl, duration); note != "" {
+			fmt.Fprintln(a.Stdout, note)
+		} else if note := footageLimitNote(tl, duration); note != "" {
 			fmt.Fprintln(a.Stdout, note)
 		}
 	}

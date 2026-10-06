@@ -102,6 +102,24 @@ sections are tagged; anything above the newest one is unreleased.
   statistics, spot-rect validation, signature contract, frame reassembly from a chatty
   child — after a coverage sweep showed the shipped filter at 0% while its unwired
   successor had the tests.
+- **The saved document names the style that built it — and any substitution.**
+  Every timeline document carries `style` (+ its version) in metadata, and when
+  the export tap's degeneracy fallback rebuilds the reel, the document also
+  carries `style_fallback` naming the style it measured and rejected — so the
+  substitution outlives the serve.log line that made it. The timeline panel
+  reads the document and says which style shaped the reel (and which lost),
+  from the saved file rather than the page's own wish; a document with no style
+  key stays silent instead of guessing.
+- **A single-clip reel says why instead of reading as success.** On
+  fixed-camera footage the default style's selector can legitimately find one
+  event and stop — and `xcut auto` / `xcut timeline` without an explicit
+  `--duration` printed nothing past "timeline: 1 clips". A degenerate-reel
+  note (judged by the same <2-clip shape the export tap measures) now names
+  the style, the candidates it found, the reel's span, and the one lever that
+  exists today — a different `--style` reads the same footage for different
+  events — without claiming which style fits. Where the shortfall note already
+  explains the reel, that note gained the lever sentence and no second note
+  prints.
 
 ### Added
 - **GPU-accelerated rendering with automatic detection (`render.encoder`).** The knob is

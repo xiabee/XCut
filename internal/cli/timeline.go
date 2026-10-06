@@ -101,7 +101,9 @@ func cmdTimeline(a *App, args []string) error {
 	if snapped := snappedClipCount(tl); snapped > 0 {
 		fmt.Fprintf(a.Stdout, "cuts on the beat: %d of %d clips\n", snapped, countTimelineClips(tl))
 	}
-	if note := footageLimitNote(tl, req.Duration); note != "" {
+	if note := degenerateReelNote(tl, req.Duration); note != "" {
+		fmt.Fprintln(a.Stdout, note)
+	} else if note := footageLimitNote(tl, req.Duration); note != "" {
 		fmt.Fprintln(a.Stdout, note)
 	}
 	outPath, err := d.TimelinePath(p.ID)
@@ -215,8 +217,52 @@ func footageLimitNote(tl *timeline.Timeline, asked float64) string {
 	note := fmt.Sprintf("this footage offered %s candidate rallies and the cut took %d of them — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector has worked through every candidate it found.",
 		tl.Metadata["candidate_events"], clips, tl.Duration(), asked)
 	if tl.Metadata["candidate_events"] == "1" {
-		note = fmt.Sprintf("this footage offered one candidate rally and the cut took it — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector found nothing else to cut.",
+		note = fmt.Sprintf("this footage offered one candidate rally and the cut took it — %.1fs of the %.0fs asked for. Filling the rest needs more sources: the selector found nothing else to cut. A different --style reads the same footage for different events.",
 			tl.Duration(), asked)
 	}
+	return "  note: " + note
+}
+
+// degenerateReelNote explains a reel that came out as a single clip in the one
+// case nothing else on the screen does: no explicit --duration was passed, so
+// the shortfall note stays silent and the run prints nothing past the clip
+// count — which reads as success. The shape is the export tap's own degeneracy
+// definition (<2 clips), so the CLI judges a reel the way the tap does. The
+// lever it names is the one that exists today — a different style reads the
+// same footage for different events — without claiming which style fits: that
+// call belongs to the operator, not to a note.
+func degenerateReelNote(tl *timeline.Timeline, asked float64) string {
+	if tl == nil || countTimelineClips(tl) >= 2 {
+		return ""
+	}
+	if footageLimitNote(tl, asked) != "" {
+		// That note is already on the screen for this reel and already carries
+		// the shortfall and the lever; a second note about the same span is
+		// noise that trains people to skip the true ones.
+		return ""
+	}
+	style := tl.Metadata[timeline.MetaStyle]
+	if style == "" {
+		// Documents from before the provenance stamp have no style key; the
+		// sentence must still read as English rather than "the  style cut".
+		style = "selected"
+	}
+	// The candidate count is a document fact when it is there at all; singular
+	// and plural read differently for the same reason the shortfall note's do,
+	// and a document without the count still gets a grammatical head clause.
+	var head string
+	if n := tl.Metadata["candidate_events"]; n == "1" {
+		head = fmt.Sprintf("the %s style found one candidate region in this footage and the reel is a single span", style)
+	} else if n != "" {
+		head = fmt.Sprintf("the %s style found %s candidate regions in this footage and the reel is a single span", style, n)
+	} else {
+		head = fmt.Sprintf("the %s style built a single-span reel", style)
+	}
+	if asked > 0 && asked > tl.Duration()+0.5 {
+		head += fmt.Sprintf(" (%.1fs of the %.0fs asked for)", tl.Duration(), asked)
+	} else {
+		head += fmt.Sprintf(" (%.1fs)", tl.Duration())
+	}
+	note := head + " — the shape an activity-based style takes on footage without distinct events (fixed camera, ambient scenes). A different --style reads the same footage for different events; which one fits is a call for you, not for this note."
 	return "  note: " + note
 }
