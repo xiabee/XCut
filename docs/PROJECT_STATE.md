@@ -3,13 +3,73 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-05 08:40 +0800 (session #30's paragraph below is the state that holds now).
+Updated: 2026-10-07 06:20 +0800 (session #32's paragraphs below are the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Session #30 (night 2026-10-04) made two promises honest by
-measuring what the code had been assuming — the roi framing plan now keeps its
-region in the frame when geometry allows and says so when it does not, and the
-one-tap export measures the reel its default style just built and falls back when
-that measurement is degenerate`.
+last paragraph before `Verification for the night: local CI PASS at each head
+… one operational incident recorded where the next agent will trip on it` in
+session #32 (night 2026-10-06).
+
+Session #32 (night 2026-10-06) started by finishing what the night before
+had left mid-sentence, and spent the rest of it making the reel tell the
+truth about itself in four more places. Session #31 died inside its own
+mutation check: the export fallback's `fb.fallbackFrom` assignment existed
+only as a `// MUTATION-A:` placeholder with the real line removed, so
+TestExportFallsBackWhenTheDefaultReelIsDegenerate failed on arrival — the
+kill it was verifying, pre-restoration. Restoring the line closed the
+provenance arc: a saved timeline now names the style that built it
+(`style`, `style_v` — keys are constants in internal/timeline now, so
+builder and panel cannot drift) and, when the tap's degeneracy fallback
+rebuilt the reel, `style_fallback` names the style it measured and
+rejected; the timeline panel reads the document and says which style
+shaped the reel (and which lost), staying silent for documents without a
+style key rather than guessing (21d2cba). The same honesty reached the
+CLI: a single-clip reel — the fixed-camera collapse the export tap judges,
+which the one-shot path answered with nothing past "timeline: 1 clips"
+when no explicit --duration was given — now carries a note naming the
+style, the candidates it found and the one lever that exists (a different
+--style reads the same footage for different events), and the shortfall
+note's single-candidate branch gained the same sentence so one reel never
+gets two notes (2f66241). The count lines learned the singular the note
+family already spoke: "1 clips" and "1 shots" became "1 clip" and "1
+shot" (65bd2b0).
+
+The scoreboard's open half got its first measured attempt and an honest
+no. A `point` scoring factor — 1 when a measured boundary can end the
+segment, 0 when not, weight-gated like `player`, neutral-uniform so a set
+without marks shifts every score equally and ranks identically — is in the
+engine with the mixed-set overturn unit-proven; no shipped preset carries
+a weight, because on the only labeled match the ladder is byte-identical
+to the unweighted run at weights 0.2 and 1.0 alike: marks land every ~14 s
+against ~8 s segments, nearly every candidate is already confirmed, and a
+uniform factor is exactly weightless. What would move ranking is the
+score's digits, which the marks do not carry — they are times, not values
+(bd9195f; the measurement lives in docs/EVAL.md and the roadmap's open
+line now points at it). The resolver learned the checkout: `.tools/ffmpeg`
+— the layout the gate prefers and fetch-stock-ffmpeg.sh fills — is now the
+last fallback for a bare run, anchored to an absolute path at discovery,
+behind explicit config and PATH (6429227; a bare `xcut doctor` in this
+repo finds FFmpeg 9.0.1 with nothing exported). PERFORMANCE.md gained
+three drift rows: the audio benches and the caption re-lay hold their
+bands, and the ruler's beat object now reads 4-7x faster with beat.go and
+its bench byte-identical to the row that recorded the old numbers —
+attributed to the go1.26 toolchain, recorded as the new reference point
+(594e897).
+
+Verification for the night: local CI PASS at each head (21d2cba, 2f66241,
+bd9195f, 6429227, 65bd2b0, 594e897, a94b9d7) and win-devops PASS on every
+push; the security trio clean at the open (govulncheck 0, gosec HIGH/HIGH
+0, gitleaks over tree and history clean). The cli flake campaign replayed
+5/5 clean under load. Soak ran 60 rounds across two batteries — 59 green
+plus one round-23 good-PUT 000: a transport stall with no server-side
+signature (no panic, no 5xx, the process alive and instant for the next 27
+rounds), not reproduced by a full clean rerun; both workspaces kept. One
+operational incident recorded where the next agent will trip on it:
+sibling projects run their own go tests on this host, and two gates died
+"go test exited 1 with no failing test" (empty stderr) inside xaihub's
+test windows — the same code passed cleanly in a quiet window; a blind
+kill of `go.exe`/`*.test.exe` by name during the first triage likely
+murdered xaihub's in-flight run. Check the process Path before any kill
+list.
 
 Session #30 (night 2026-10-04) made two promises honest by measuring what the
 code had been assuming. The roi framing plan had never known the source's pixel
