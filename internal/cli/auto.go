@@ -173,8 +173,8 @@ func cmdAuto(a *App, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
-			countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+		fmt.Fprintf(a.Stdout, "timeline: %s, %.1fs total, canvas %dx%d@%.0f\n",
+			countNoun(countTimelineClips(tl), "clip", "clips"), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
 		if line := pacingLine(tl); line != "" {
 			fmt.Fprintln(a.Stdout, line)
 		}

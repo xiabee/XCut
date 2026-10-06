@@ -170,3 +170,35 @@ func TestDegenerateReelNoteReadsOnlyTheDocument(t *testing.T) {
 		t.Errorf("a document with no facts at all still needs a grammatical sentence:\n%s", got)
 	}
 }
+
+// TestPacingLineSingularOnACollapseReel: the note family already learned that
+// "1 candidate rallies" reads as a different claim than the truth; the pacing
+// line sat one line above it saying "1 shots". A singular reel gets singular
+// nouns everywhere it is described.
+func TestPacingLineSingularOnACollapseReel(t *testing.T) {
+	tl := &timeline.Timeline{Tracks: []timeline.Track{{Clips: []timeline.Clip{
+		{SourceStart: 0, SourceEnd: 2.8, TimelineStart: 0, Speed: 1},
+	}}}}
+	got := pacingLine(tl)
+	if !strings.Contains(got, "1 shot,") {
+		t.Errorf("the pacing line for a single shot reads %q", got)
+	}
+	if strings.Contains(got, "1 shots") {
+		t.Errorf("the pacing line still pluralizes a single shot: %q", got)
+	}
+}
+
+// TestCountNoun: the shared helper behind every count line — zero, one and
+// many are the three cases, and English has only two forms for them.
+func TestCountNoun(t *testing.T) {
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{
+		{0, "0 clips"}, {1, "1 clip"}, {2, "2 clips"}, {16, "16 clips"},
+	} {
+		if got := countNoun(tc.n, "clip", "clips"); got != tc.want {
+			t.Errorf("countNoun(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
+}

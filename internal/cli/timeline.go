@@ -93,13 +93,13 @@ func cmdTimeline(a *App, args []string) error {
 		// snap it implies are reported by the lines above and the clip metadata.
 		fmt.Fprintf(a.Stdout, "music bed: %s\n", musicFlag)
 	}
-	fmt.Fprintf(a.Stdout, "timeline: %d clips, %.1fs total, canvas %dx%d@%.0f\n",
-		countTimelineClips(tl), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
+	fmt.Fprintf(a.Stdout, "timeline: %s, %.1fs total, canvas %dx%d@%.0f\n",
+		countNoun(countTimelineClips(tl), "clip", "clips"), tl.Duration(), tl.Canvas.Width, tl.Canvas.Height, tl.Canvas.FPS)
 	if line := pacingLine(tl); line != "" {
 		fmt.Fprintln(a.Stdout, line)
 	}
 	if snapped := snappedClipCount(tl); snapped > 0 {
-		fmt.Fprintf(a.Stdout, "cuts on the beat: %d of %d clips\n", snapped, countTimelineClips(tl))
+		fmt.Fprintf(a.Stdout, "cuts on the beat: %d of %s\n", snapped, countNoun(countTimelineClips(tl), "clip", "clips"))
 	}
 	if note := degenerateReelNote(tl, req.Duration); note != "" {
 		fmt.Fprintln(a.Stdout, note)
@@ -174,6 +174,17 @@ func snappedClipCount(tl *timeline.Timeline) int {
 	return n
 }
 
+// countNoun renders "1 clip" against "3 clips": the collapse reel prints its
+// count right beside the degenerate note, and a singular reel reading "1
+// clips" is the kind of small wrongness that makes every line around it
+// look less trustworthy.
+func countNoun(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
 // pacingLine renders the shape of the reel the style actually produced: selection
 // metrics score a 15 s stretch and five 3 s cuts identically, so without this line
 // "the new style has the same F1" would read as "the new style is the same edit".
@@ -184,8 +195,8 @@ func pacingLine(tl *timeline.Timeline) string {
 	if p.Shots == 0 {
 		return ""
 	}
-	line := fmt.Sprintf("pacing: %d shots, mean %.1fs, median %.1fs, longest %.1fs",
-		p.Shots, p.MeanSeconds, p.MedianSeconds, p.LongestSeconds)
+	line := fmt.Sprintf("pacing: %s, mean %.1fs, median %.1fs, longest %.1fs",
+		countNoun(p.Shots, "shot", "shots"), p.MeanSeconds, p.MedianSeconds, p.LongestSeconds)
 	if p.ScoredShots > 0 {
 		// Where the style's own best moment lands in the reel. Short-form practice
 		// puts the decision point inside the first seconds; this says what this cut

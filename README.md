@@ -38,7 +38,7 @@
 
 ## 🚀 快速开始
 
-> 前置条件：**FFmpeg + ffprobe**（PATH 上有，或设置 `XCUT_FFMPEG` / `XCUT_FFPROBE`；或放在 exe 旁边）。
+> 前置条件：**FFmpeg + ffprobe**（PATH 上有，或设置 `XCUT_FFMPEG` / `XCUT_FFPROBE`；或放在 exe 旁边；仓库 checkout 里 gate 同款的 `.tools/ffmpeg` 也会被兜底找到）。
 
 ### 方式一：下载预编译版本（推荐）
 
