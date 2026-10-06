@@ -40,3 +40,4 @@ soak-results.json
 /docs/NIGHTLY_LOG.md
 /docs/ACCEPTANCE.md
 .badminton-ws/
+/.night-*/
