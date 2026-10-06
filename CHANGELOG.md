@@ -119,6 +119,14 @@ sections are tagged; anything above the newest one is unreleased.
   this dense confirm nearly every candidate, so the lever has nothing to
   discriminate and no preset ships a weight. The measurement and the signal
   that would actually move ranking live in docs/EVAL.md.
+- **A checkout's own pinned FFmpeg resolves for bare runs.** The quality gate
+  prefers `.tools/ffmpeg` (check.ps1 PATH-prepends it, fetch-stock-ffmpeg.sh
+  fills it), but the product's resolver only knew config, PATH and the exe's
+  own directory — so `xcut doctor` / `eval` / `auto` in a bare checkout said
+  "ffmpeg not found" until env vars were exported. The resolver now falls
+  back, last, to the working directory's `.tools/ffmpeg` layout, anchored to
+  an absolute path at discovery; an explicit config still wins and PATH still
+  outranks it, so the gate's own precedence is unchanged.
 - **A single-clip reel says why instead of reading as success.** On
   fixed-camera footage the default style's selector can legitimately find one
   event and stop — and `xcut auto` / `xcut timeline` without an explicit

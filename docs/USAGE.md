@@ -7,7 +7,9 @@ Global flags: `--config`, `--workspace`, `-v`, `-q`, `--help`.
 **No subcommand (Windows)**: double-clicking the exe opens the desktop
 client (equivalent to `xcut client`); if another instance is already
 running, its UI is opened in the browser instead. FFmpeg/ffprobe placed
-next to the executable are picked up automatically (before PATH).
+next to the executable are picked up automatically (before PATH); a
+checkout's own `.tools/ffmpeg` — the layout the quality gate uses — is
+picked up too, as the last fallback, relative to the working directory.
 
 `--music` lays a track under the reel and cuts to **it**: the file's own beat grid
 is estimated the same way (same analyzer, same cache), its pulses outrank whatever

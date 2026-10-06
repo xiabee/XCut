@@ -32,7 +32,11 @@ type Tools struct {
 // binaries run; use ProbeVersion for that. When nothing is configured and
 // PATH has nothing either, the exe-neighbor locations are re-probed live —
 // tools can appear mid-session (the component installer lands them in
-// <exe>/bin), and resolution must not stay frozen at process start.
+// <exe>/bin), and resolution must not stay frozen at process start. The last
+// fallback is the repository's own pinned layout, <cwd>/.tools/ffmpeg — the
+// same directory the quality gate prefers (check.ps1/check.sh) and
+// fetch-stock-ffmpeg.sh fills, so a bare run in a checkout sees the tool the
+// gate sees instead of "ffmpeg not found" until env vars are exported.
 func ResolveTools(cfg *config.Config) Tools {
 	t := Tools{
 		FFmpeg:  cfg.FFmpeg.Bin,
@@ -45,17 +49,43 @@ func ResolveTools(cfg *config.Config) Tools {
 	if t.FFprobe == "" {
 		t.FFprobe = "ffprobe"
 	}
+	if _, err := exec.LookPath(t.FFmpeg); err == nil {
+		return t
+	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
-		if _, err := exec.LookPath(t.FFmpeg); err != nil {
-			if p, ok := config.NeighborBin(dir, "ffmpeg"); ok {
-				t.FFmpeg = p
-			}
+		if p, ok := config.NeighborBin(dir, "ffmpeg"); ok {
+			t.FFmpeg = p
 		}
-		if _, err := exec.LookPath(t.FFprobe); err != nil {
-			if p, ok := config.NeighborBin(dir, "ffprobe"); ok {
-				t.FFprobe = p
+	}
+	// Both probes only fill a bare name; an explicitly configured path or a
+	// PATH hit has already returned, so the repo layout can never override
+	// what the user or the environment chose. The result is anchored to an
+	// absolute path at discovery: a long run must not depend on the working
+	// directory outliving the moment the tool was found.
+	if !filepath.IsAbs(t.FFmpeg) && filepath.Base(t.FFmpeg) == t.FFmpeg {
+		if p, ok := config.NeighborBin(filepath.Join(".tools", "ffmpeg"), "ffmpeg"); ok {
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
 			}
+			t.FFmpeg = p
+		}
+	}
+
+	if _, err := exec.LookPath(t.FFprobe); err == nil {
+		return t
+	}
+	if exe, err := os.Executable(); err == nil {
+		if p, ok := config.NeighborBin(filepath.Dir(exe), "ffprobe"); ok {
+			t.FFprobe = p
+		}
+	}
+	if !filepath.IsAbs(t.FFprobe) && filepath.Base(t.FFprobe) == t.FFprobe {
+		if p, ok := config.NeighborBin(filepath.Join(".tools", "ffmpeg"), "ffprobe"); ok {
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			}
+			t.FFprobe = p
 		}
 	}
 	return t
