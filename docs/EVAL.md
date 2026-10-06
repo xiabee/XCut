@@ -142,6 +142,21 @@ worth cutting. The crop itself no longer needs a terminal: the web UI's region
 picker has a "scoreboard region" target, which writes `assets.score_crop`, and
 the next `analyze` run measures it (see `docs/USAGE.md`, `xcut boundaries`).
 
+**The first ranking attempt was measured and withheld (2026-10-06).** The
+obvious mechanism — a `point` scoring factor that prefers segments a measured
+boundary can end — exists in the engine now (`scoring.point`, weight-gated like
+`player`, unit-tested to overturn a louder rival on a mixed candidate set and
+to shift nothing on a uniform one). No shipped preset carries a weight,
+because on the only labeled match available it moves nothing: the 60/120/240 s
+ladder is byte-identical to the unweighted run at weights 0.2 **and** 1.0. The
+plausible mechanism is uniformity — marks land every ~14 s of this match
+against rally segments of ~8 s, so nearly every candidate already contains a
+point end, and a uniform factor is exactly weightless by the neutrality rule.
+What would discriminate is not confirmation but *content of the change* — how
+much the score moved, which the marks do not carry (they are times, not
+digits). Until a manifest with sparser marks or stored score values exists,
+this half stays open on evidence, not for lack of a lever.
+
 ## Cutting on the beat (`卡点`)
 
 `beat_snap_tolerance` lets a clip end that nothing else fixed move to the nearest

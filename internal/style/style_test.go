@@ -624,3 +624,110 @@ func TestBuildWindowCapSpreadsPicks(t *testing.T) {
 		t.Errorf("window 4 not represented (windows %v) — a capped reel should reach the closing phase", perWindow)
 	}
 }
+
+// TestPointFactorPrefersTheSegmentAPointCanEnd: the scoreboard's open half —
+// boundaries fix where a clip ends but say nothing about which rally is worth
+// cutting. With a weight on the factor, the segment a measured point can end
+// outranks a louder rival it cannot; with the weight off, the louder rival
+// wins exactly as before. Same inputs, one knob, two orders.
+func TestPointFactorPrefersTheSegmentAPointCanEnd(t *testing.T) {
+	// Two same-shape segments: the first is the louder one by hits-free
+	// factors (motion), the second is the one a boundary ends. Motion alone
+	// must rank the first; point must overturn that.
+	items := []AssetEvents{{Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 60}, Segments: []event.Segment{
+		seg(2, 10, 0.40, -10),
+		seg(20, 28, 0.30, -10),
+	}, Boundaries: []float64{27.5}}}
+
+	loud := testPreset()
+	// The budget holds ONE clip, so the final reel is the ranking itself:
+	// whichever segment the scorer prefers is the reel.
+	loud.TargetDuration = 5
+	tlLoud, err := Build(loud, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tlLoud.Tracks[0].Clips[0].SourceStart; got != 2 {
+		t.Fatalf("control run must pick the louder segment first, got start %v", got)
+	}
+
+	weighted := testPreset()
+	weighted.TargetDuration = 5
+	weighted.Scoring.Point = 0.6
+	tlWeighted, err := Build(weighted, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := tlWeighted.Tracks[0].Clips[0]
+	if first.SourceStart < 20 {
+		t.Fatalf("the point-weighted run kept the unconfirmable segment first (start %v)", first.SourceStart)
+	}
+	bd := first.Metadata["score_breakdown"]
+	if !strings.Contains(bd, "point") {
+		t.Errorf("the confirmed clip's breakdown never names the factor: %q", bd)
+	}
+}
+
+// TestPointFactorNeutralWithoutMarks: with no scoreboard on any asset every
+// candidate maps to the same neutral value, so a weighted style must cut the
+// same reel as an unweighted one — byte for byte. The weight is a promise
+// about marked footage, not a tax on unmarked runs.
+func TestPointFactorNeutralWithoutMarks(t *testing.T) {
+	items := []AssetEvents{{Asset: AssetInfo{ID: "a1", Path: "a.mp4", DurationSec: 60}, Segments: []event.Segment{
+		seg(2, 10, 0.25, -18),
+		seg(14, 18, 0.10, -30),
+		seg(22, 40, 0.28, -12),
+		seg(50, 58, 0.20, -16),
+	}}}
+	plain := testPreset()
+	tlPlain, err := Build(plain, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	weighted := testPreset()
+	weighted.Scoring.Point = 0.5
+	tlWeighted, err := Build(weighted, "prj", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The selection must not move. The documents still differ by design — a
+	// weighted factor honestly names itself in every clip's breakdown and
+	// shifts the uniform score — so the comparison is the windows, not bytes.
+	sameWindows := func(a, b *timeline.Timeline) bool {
+		if len(a.Tracks[0].Clips) != len(b.Tracks[0].Clips) {
+			return false
+		}
+		for i, c := range a.Tracks[0].Clips {
+			if c.SourceStart != b.Tracks[0].Clips[i].SourceStart || c.SourceEnd != b.Tracks[0].Clips[i].SourceEnd {
+				return false
+			}
+		}
+		return true
+	}
+	if !sameWindows(tlPlain, tlWeighted) {
+		t.Error("a point weight changed the selection on unmarked footage")
+	}
+}
+
+// TestPointConfirmedReadsTheTrimRule: the factor is a fact about the segment
+// AND its marks, computed by the same rule the trim uses — a boundary must sit
+// one minimum clip inside the segment and not past its end to count.
+func TestPointConfirmedReadsTheTrimRule(t *testing.T) {
+	s := seg(10, 20, 0.3, -6)
+	cases := []struct {
+		name       string
+		boundaries []float64
+		minClip    float64
+		want       float64
+	}{
+		{"boundary inside", []float64{17}, 1, 1},
+		{"boundary before reach", []float64{10.2}, 1, 0},
+		{"boundary past the end", []float64{21}, 1, 0},
+		{"no marks", nil, 1, 0},
+	}
+	for _, tc := range cases {
+		if got := pointConfirmed(tc.boundaries, s, tc.minClip); got != tc.want {
+			t.Errorf("%s: pointConfirmed = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

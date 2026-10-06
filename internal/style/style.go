@@ -49,6 +49,13 @@ type Scoring struct {
 	// Player scores the measured presence of the user's color signature in
 	// the segment (0 when no signature exists — the factor is then neutral).
 	Player float64 `json:"player,omitempty"`
+	// Point prefers segments a measured scoreboard boundary can end — the
+	// selector already ends such a clip where the point actually ended, so a
+	// boundary inside the segment is evidence the segment holds a complete
+	// rally rather than a fragment or glued dead time. The raw factor is 1/0;
+	// with no marks at all every candidate maps to the same neutral value, so
+	// a weighted style still ranks exactly as it did on unmarked footage.
+	Point float64 `json:"point,omitempty"`
 }
 
 // AudioGain linear loudness multiplier applied to clip volume.

@@ -110,6 +110,15 @@ sections are tagged; anything above the newest one is unreleased.
   reads the document and says which style shaped the reel (and which lost),
   from the saved file rather than the page's own wish; a document with no style
   key stays silent instead of guessing.
+- **A `point` scoring factor exists for scoreboard-marked footage — and no
+  shipped preset uses it, on measurement.** The factor prefers segments a
+  measured boundary can end, weight-gated like `player`: a uniform candidate
+  set (no marks, or all confirmed) shifts every score equally and ranks
+  identically. On the only labeled match available the 60/120/240 s ladder was
+  byte-identical to the unweighted run at weights 0.2 and 1.0 alike — marks
+  this dense confirm nearly every candidate, so the lever has nothing to
+  discriminate and no preset ships a weight. The measurement and the signal
+  that would actually move ranking live in docs/EVAL.md.
 - **A single-clip reel says why instead of reading as success.** On
   fixed-camera footage the default style's selector can legitimately find one
   event and stop — and `xcut auto` / `xcut timeline` without an explicit

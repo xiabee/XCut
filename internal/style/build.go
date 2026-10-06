@@ -117,16 +117,21 @@ type factors struct {
 	motion, audio, duration float64
 	hits, density           float64
 	player                  float64
+	point                   float64
 }
 
 // weighted returns the preset-weighted total. The player factor contributes
 // only where presence was measured (segments of signature-bearing assets);
 // everywhere else the weight is a no-op, so styles without a signature behave
-// byte-for-byte like before.
+// byte-for-byte like before. The point factor behaves the same way on
+// unmarked footage: with no scoreboard boundaries every candidate maps to the
+// same neutral value and the weight shifts every score equally — only a mixed
+// set (some segments a measured point can end, some not) spreads.
 func (f factors) weighted(p *Preset) float64 {
 	return p.Scoring.Motion*f.motion + p.Scoring.Audio*f.audio +
 		p.Scoring.Duration*f.duration + p.Scoring.Hits*f.hits +
-		p.Scoring.Density*f.density + p.Scoring.Player*f.player
+		p.Scoring.Density*f.density + p.Scoring.Player*f.player +
+		p.Scoring.Point*f.point
 }
 
 // reason names the dominant weighted factors (share of the total), e.g.
@@ -147,6 +152,7 @@ func (f factors) reason(p *Preset) string {
 		{"hits", p.Scoring.Hits * f.hits},
 		{"density", p.Scoring.Density * f.density},
 		{"player", p.Scoring.Player * f.player},
+		{"point", p.Scoring.Point * f.point},
 	}
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].value > parts[j].value })
 
@@ -184,6 +190,7 @@ func (f factors) breakdown(p *Preset) string {
 		line("hits", f.hits, p.Scoring.Hits),
 		line("density", f.density, p.Scoring.Density),
 		line("player", f.player, p.Scoring.Player),
+		line("point", f.point, p.Scoring.Point),
 	}
 	var kept []string
 	for _, s := range parts {
@@ -230,7 +237,9 @@ func Build(preset *Preset, projectID string, items []AssetEvents) (*timeline.Tim
 			if s.Duration() < preset.MinClipDuration {
 				continue
 			}
-			raws = append(raws, rawSegmentFactors(s))
+			r := rawSegmentFactors(s)
+			r.point = pointConfirmed(it.Boundaries, s, preset.MinClipDuration)
+			raws = append(raws, r)
 			cands = append(cands, candidate{
 				asset:      it.Asset,
 				seg:        s,
@@ -565,6 +574,11 @@ func diverse(p *Preset, chosen []selInterval, cand selInterval, assetDur float64
 // live on incomparable scales: motion ratios, dB, seconds, counts).
 type rawFactors struct {
 	motion, audio, duration, hits, density, player float64
+	// point is 1/0, not a measured magnitude: either a scoreboard boundary
+	// can end this segment or it cannot. It skips rawSegmentFactors because
+	// it is a fact about the segment AND its asset's marks, not the segment
+	// alone.
+	point float64
 }
 
 func rawSegmentFactors(s event.Segment) rawFactors {
@@ -576,6 +590,18 @@ func rawSegmentFactors(s event.Segment) rawFactors {
 		density:  s.HitDensity,
 		player:   s.PlayerPresence,
 	}
+}
+
+// pointConfirmed is 1 when a measured scoreboard boundary can serve as this
+// segment's clip end — the trim rule will be able to stop the clip where the
+// point actually ended, which makes the segment a complete rally rather than
+// a mid-play fragment or a glued stretch of dead time. 0 says nothing about
+// watchability; it only says the scoreboard has no verdict here.
+func pointConfirmed(boundaries []float64, seg event.Segment, minClip float64) float64 {
+	if _, found := reachableBoundary(boundaries, seg, minClip); found {
+		return 1
+	}
+	return 0
 }
 
 // component is one accessor of rawFactors plus its observed min and span
@@ -600,6 +626,10 @@ func components() []component {
 		{func(r rawFactors) float64 { return r.hits }, func(f *factors, v float64) { f.hits = v }, 0, 0, 1},
 		{func(r rawFactors) float64 { return r.density }, func(f *factors, v float64) { f.density = v }, 0, 0, 1},
 		{func(r rawFactors) float64 { return r.player }, func(f *factors, v float64) { f.player = v }, 0, 0, 0},
+		// A uniform set (no marks at all, or every segment confirmed) maps to
+		// the neutral 1 everywhere: the weight shifts every score equally and
+		// ranking is untouched. Only a mixed set spreads 0..1.
+		{func(r rawFactors) float64 { return r.point }, func(f *factors, v float64) { f.point = v }, 0, 0, 1},
 	}
 }
 
