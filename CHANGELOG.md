@@ -127,6 +127,17 @@ sections are tagged; anything above the newest one is unreleased.
   back, last, to the working directory's `.tools/ffmpeg` layout, anchored to
   an absolute path at discovery; an explicit config still wins and PATH still
   outranks it, so the gate's own precedence is unchanged.
+- **A coverage-sweep strike keeps its evidence.** The sweep wrote each
+  package's verbose log into a trap-deleted temp dir, so a failed package
+  surfaced five tail lines and zero witnesses — a strike could not be
+  triaged at all (found the hard way: an api package failed three sweep
+  runs while every solo replay passed). On failure the whole evidence
+  directory now survives with its path printed; a green sweep's scratch is
+  still scratch. The same strike became the first triage the fix enabled:
+  the api export test had been relying on the host NOT having a sidecar on
+  PATH — a host-installed reference sidecar legitimately flipped the tap's
+  `subs:auto` into a real transcription that no model could answer. The
+  test pins the repo's own stub sidecar and reads the same on any machine.
 - **A single-clip reel says why instead of reading as success.** On
   fixed-camera footage the default style's selector can legitimately find one
   event and stop — and `xcut auto` / `xcut timeline` without an explicit
