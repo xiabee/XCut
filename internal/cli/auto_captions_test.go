@@ -227,3 +227,68 @@ func TestAutoSubsOffIsNotAFilename(t *testing.T) {
 		t.Errorf("--subs=off produced caption files: %v", files)
 	}
 }
+
+// TestAutoSubsAutoRefusesForeignTranscript: the transcript is bound to the
+// asset it was heard from, and this run's reel is scoped to this run's inputs
+// — so a second `auto` sharing the default project name must not burn the
+// first run's captions over footage whose audio they never heard. The refusal
+// names the way out (--subs on, or a file). The positive control proves the
+// same flag still burns when the run does include the bound asset.
+func TestAutoSubsAutoRefusesForeignTranscript(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false))
+
+	ab, err := testmedia.Generate(root, "ab.mp4", testmedia.DefaultFixture(), 320, 240, 8)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	c, err := testmedia.Generate(root, "c.mp4", testmedia.DefaultFixture(), 320, 240, 8)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	run := func(wantExit int, args ...string) string {
+		t.Helper()
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != wantExit {
+			t.Fatalf("xcut %v exited %d, want %d\nstdout:\n%s\nstderr:\n%s",
+				args, code, wantExit, stdout.String(), stderr.String())
+		}
+		return stdout.String()
+	}
+
+	run(0, "init")
+	// Run one: two inputs, captions transcribed from the first. The binding
+	// is to ab.mp4's asset.
+	run(0, "auto", ab, c, "--project", "shared", "--style", "generic_highlight",
+		"--duration", "4", "--subs=on", "--out", filepath.Join(root, "r1.mp4"))
+
+	// Run two: c alone with --subs auto — the transcript's asset (ab) is not
+	// in this run's inputs, and the run must say so instead of burning. The
+	// refusal is a returned error, which lands on stderr.
+	run(1, "auto", c, "--project", "shared", "--style", "generic_highlight",
+		"--duration", "4", "--subs=auto", "--out", filepath.Join(root, "r2.mp4"))
+	refusal := stdout.String() + stderr.String()
+	for _, want := range []string{"outside this run's inputs", "--subs on"} {
+		if !strings.Contains(refusal, want) {
+			t.Errorf("the refusal does not say %q:\n%s\n--stderr--\n%s", want, stdout.String(), stderr.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "r2.mp4")); err == nil {
+		t.Errorf("the refused run rendered anyway")
+	}
+
+	// Positive control: the same flag, and this run does include the bound
+	// asset (ab first) — the captions burn and the reel lands.
+	run(0, "auto", ab, "--project", "shared", "--style", "generic_highlight",
+		"--duration", "4", "--subs=auto", "--out", filepath.Join(root, "r3.mp4"))
+	if fi, err := os.Stat(filepath.Join(root, "r3.mp4")); err != nil || fi.Size() == 0 {
+		t.Errorf("the in-scope --subs auto run rendered nothing: %v", err)
+	}
+}

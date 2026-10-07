@@ -21,6 +21,15 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **`--subs auto` stops a re-run from wearing another run's captions.** The
+  stored transcript names the asset it was heard from, and the one-shot's
+  reel is scoped to this run's inputs — but the staleness check the resolution
+  consults compares against the project's media, which still resolves fine
+  when the bound asset simply isn't among this run's files. A second `auto`
+  sharing the default project name (the exact reuse the scoping was built to
+  refuse at cut time) could burn words over footage whose audio they never
+  heard. The run now refuses and names the way out: `--subs on` for this
+  run's first input, or an explicit `--subs <file>`.
 - **The one-shot says which file its captions come from.** Transcription
   answers about one media file, but `xcut auto` accepts several inputs and
   `--subs on` transcribes the first of them — over a two-input reel the old

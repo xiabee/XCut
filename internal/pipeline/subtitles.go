@@ -57,6 +57,19 @@ func (d Deps) storedTranscript(projectID string) (*subs.Transcript, error) {
 	return t, err
 }
 
+// TranscriptAssetID names the asset the stored transcript was heard from,
+// "" when there is no transcript or the file predates bindings. The one
+// shot's --subs auto asks it so a reel cannot wear another run's audio
+// silently — the project-level staleness check cannot see this, because the
+// bound asset still resolves fine inside the project.
+func (d Deps) TranscriptAssetID(projectID string) string {
+	_, boundID, err := d.storedTranscriptRecord(projectID)
+	if err != nil {
+		return ""
+	}
+	return boundID
+}
+
 // storedTranscriptRecord returns the payload and the asset it was heard from.
 func (d Deps) storedTranscriptRecord(projectID string) (*subs.Transcript, string, error) {
 	p, err := d.transcriptPath(projectID)

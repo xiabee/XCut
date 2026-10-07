@@ -256,7 +256,6 @@ func cmdAuto(a *App, args []string) error {
 		// anything that can be fixed from disk is fixed. It does not transcribe —
 		// that is `--subs on` just below, and a flag named for using what is already
 		// there would be a lie if it spent minutes of Whisper instead.
-		fmt.Fprintf(a.Stdout, "==> subtitles (resolved from this project)\n")
 		db, err := a.OpenDB()
 		if err != nil {
 			return err
@@ -267,6 +266,16 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		d := a.Pipeline(db)
+		// The stored transcript names the asset it was heard from, and this
+		// run's reel is scoped to THIS run's inputs. A project-name reuse the
+		// scoping above already refuses to cut across must not burn captions
+		// across either: words from a file this run never imported are
+		// garbage on the video, however well they fit the frame.
+		if bound := d.TranscriptAssetID(p.ID); bound != "" && !runIncludesAsset(assetIDs, bound) {
+			db.Close()
+			return xcerr.E(xcerr.CodeValidation,
+				"this project's transcript was heard from an asset outside this run's inputs — re-run with --subs on to transcribe this run's first input, or pass --subs <file> to burn a file you choose", nil)
+		}
 		note := ""
 		subsPath, note, err = d.ReelSubtitles(p.ID)
 		db.Close()
@@ -277,6 +286,7 @@ func cmdAuto(a *App, args []string) error {
 			}
 			return err
 		}
+		fmt.Fprintf(a.Stdout, "==> subtitles (resolved from this project)\n")
 		if note != "" {
 			fmt.Fprintf(a.Stdout, "subtitles: %s\n", note)
 		}
@@ -323,4 +333,14 @@ func matchAssetIDs(assets []storage.Asset, inputs []string) ([]string, error) {
 			"not every input resolved to an imported asset — re-import the files into this project, or run auto with the exact paths that were imported", nil)
 	}
 	return ids, nil
+}
+
+// runIncludesAsset reports whether id is among this run's scoped assets.
+func runIncludesAsset(ids []string, id string) bool {
+	for _, have := range ids {
+		if have == id {
+			return true
+		}
+	}
+	return false
 }
