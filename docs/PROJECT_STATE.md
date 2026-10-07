@@ -3,11 +3,48 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-07 06:20 +0800 (session #32's paragraphs below are the state that holds now).
+Updated: 2026-10-08 04:5x +0800 (session #33's paragraphs below are the state that holds now).
 This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Verification for the night: local CI PASS at each head
-… one operational incident recorded where the next agent will trip on it` in
-session #32 (night 2026-10-06).
+last paragraph before `Verification for the night: …` in session #33 (night
+2026-10-07).
+
+Session #33 (night 2026-10-07) put contracts where only luck had been, and
+made two caption decisions honest. The panel's route surface is now held by a
+test instead of nobody: every path app.js can fetch — static literals, the
+trigger() tails, each with the HTTP method its call site uses (fetch/api
+defaults, `method:` options, the upload's `xhr.open`) — is probed against the
+real mux with a GET that must be answered in JSON and a PATCH whose Allow
+header must name the method, so three Go-side mutations (remove a GET route,
+remove a POST route, remove only the GET half of a family) each fail naming
+path and method; the probe never runs a mutating handler, and the one
+dynamic template it cannot resolve is pinned by guard strings plus an
+explicit table (de47883). staticcheck joined every gate run right after go
+vet, and its eleven standing findings went to zero first — including the
+job-object alloc child whose dead append chain held its memory only by GC
+laziness, now pinned by reading the slice before exit (0d452ff). The one
+shot's captions learned two truths: the header names the file the words were
+heard from, and the file is the user's FIRST INPUT, not whatever the asset
+hash order puts first — the new multi-input test caught that deeper defect on
+its first gate run, and the fix resolves inputs[0] explicitly (fbdedcc,
+5979ac6). `--subs auto` gained the cross-input guard: a transcript bound to
+an asset outside this run's inputs is refused with the way out named, because
+the project-level staleness check cannot see a binding that still resolves
+inside the project (26f0085). The idle story grew its unmeasured half: a
+loaded workspace (8 projects, 16 assets, tracks and timelines on disk) idles
+at 15.8 MB / 0 ms CPU, flat against a fresh workspace — serve holds no
+per-project state (18e14c0, PERFORMANCE.md). Verification for the night so
+far: fast gate PASS at each content tree, win-devops remote PASS on de47883,
+0d452ff, 5979ac6 and 26f0085; the full leg green at 5979ac6 (-race over all
+21 packages, cross-compile, cargo fmt/clippy/test, in-gate govulncheck and
+gosec clean); soak 30 rounds × 2 green (5979ac6 and final 18e14c0); one
+shuffle full suite green; README's commands and flags audited against the
+registry — no drift. Two process records for the next agent: gates now run
+through `xnightops ci run XCut` (local mode) so the control plane's evidence
+ledger sees them — direct powershell runs verify the tree but record nothing,
+which is what a premature `stagnation` flag at 01:51 was made of; and a
+long command that can fail must redirect its FULL output to a file — one
+`| tail -12` on a gate wrapper destroyed a strike's FAIL block and left it
+unattributable (the destructor was the agent, not the tooling).
 
 Session #32 (night 2026-10-06) started by finishing what the night before
 had left mid-sentence, and spent the rest of it making the reel tell the
