@@ -30,13 +30,15 @@ sections are tagged; anything above the newest one is unreleased.
   refuse at cut time) could burn words over footage whose audio they never
   heard. The run now refuses and names the way out: `--subs on` for this
   run's first input, or an explicit `--subs <file>`.
-- **The one-shot says which file its captions come from.** Transcription
-  answers about one media file, but `xcut auto` accepts several inputs and
-  `--subs on` transcribes the first of them — over a two-input reel the old
-  header ("transcribed from this run's input") was a lie about the second
-  file's audio, discoverable only by watching the reel. The header now names
-  the file and says, when the run had more than one input, that the others'
-  audio is not captioned.
+- **The one-shot says which file its captions come from, and follows the
+  user's input order.** Transcription answers about one media file, but
+  `xcut auto` accepts several inputs and `--subs on` transcribes the user's
+  first input — over a two-input reel the old header ("transcribed from this
+  run's input") was a lie about the second file's audio, discoverable only by
+  watching the reel, and the id the scope match returned were sorted by asset
+  hash, so the transcribed file could be the second one the user typed. The
+  header now names the file and says, when the run had more than one input,
+  that the others' audio is not captioned.
 - **The gate reads the tree the way staticcheck does, not just the way vet
   does.** staticcheck joins every gate run right after go vet (unconditional —
   the full leg's security scanners stay where they were), and its eleven
