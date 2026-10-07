@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -209,12 +208,39 @@ func cmdAuto(a *App, args []string) error {
 			return err
 		}
 		d := a.Pipeline(db)
-		// Transcription answers about ONE media file, and this run may have
-		// cut several inputs into one reel — the captions come from the
-		// first of them, so the header names that file. "This run's input"
-		// plural would be a lie about the others' audio.
-		fmt.Fprintf(a.Stdout, "==> subtitles (transcribed from %s)\n", transcribedFrom(db, a.Ctx, assetIDs))
-		if err := d.TranscribeProject(p, assetIDs[0]); err != nil {
+		// Transcription answers about ONE media file, and the ids the match
+		// returned are in storage order, not the order the inputs were
+		// typed — resolve the first input explicitly so the captions come
+		// from the file the user listed first, and the header names that
+		// file. A multi-input run's header also says the other inputs'
+		// audio is not captioned: silence there would read as a promise
+		// the sidecar never made.
+		firstID := ""
+		if abs, aerr := filepath.Abs(inputs[0]); aerr == nil {
+			assets, lerr := db.ListAssets(a.Ctx, p.ID)
+			if lerr != nil {
+				db.Close()
+				return lerr
+			}
+			for i := range assets {
+				if assets[i].Path == abs {
+					firstID = assets[i].ID
+					break
+				}
+			}
+		}
+		if firstID == "" {
+			db.Close()
+			return xcerr.E(xcerr.CodeNotFound,
+				"this run's first input no longer resolves to an imported asset — re-run the command", nil)
+		}
+		if len(inputs) > 1 {
+			fmt.Fprintf(a.Stdout, "==> subtitles (transcribed from %s — the first of this run's %d inputs; the others' audio is not captioned)\n",
+				filepath.Base(inputs[0]), len(inputs))
+		} else {
+			fmt.Fprintf(a.Stdout, "==> subtitles (transcribed from %s)\n", filepath.Base(inputs[0]))
+		}
+		if err := d.TranscribeProject(p, firstID); err != nil {
 			db.Close()
 			return err
 		}
@@ -297,22 +323,4 @@ func matchAssetIDs(assets []storage.Asset, inputs []string) ([]string, error) {
 			"not every input resolved to an imported asset — re-import the files into this project, or run auto with the exact paths that were imported", nil)
 	}
 	return ids, nil
-}
-
-// transcribedFrom names the audio the captions come from: the input's file
-// name, or the first of several with the count said out loud. A lookup that
-// cannot answer (the asset row gone between the match and this print) falls
-// back to the count alone rather than inventing a name — transcription
-// itself reports a vanished asset in its own words.
-func transcribedFrom(db *storage.DB, ctx context.Context, assetIDs []string) string {
-	name := "this run's input"
-	if len(assetIDs) > 0 {
-		if a, err := db.GetAsset(ctx, assetIDs[0]); err == nil && a != nil {
-			name = filepath.Base(a.Path)
-		}
-		if len(assetIDs) > 1 {
-			name += fmt.Sprintf(" — the first of this run's %d inputs; the others' audio is not captioned", len(assetIDs))
-		}
-	}
-	return name
 }
