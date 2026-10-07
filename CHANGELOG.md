@@ -5,6 +5,21 @@ sections are tagged; anything above the newest one is unreleased.
 
 ## [Unreleased] — after v0.1.9-alpha
 
+### Added
+- **The route contract between the panel and the API is now held by a test,
+  not by nobody.** Every route app.js can name — 24 static literals plus the
+  five trigger() tails, each with the HTTP method its call site actually
+  uses (fetch/api defaults, `method:` options, `post()`, and the upload's
+  `xhr.open`) — is probed against the real mux: a GET must be answered by a
+  handler (JSON, not the static file server's plain 404), everything else by
+  a PATCH whose Allow header names the method. The probe never runs a
+  mutating handler, so the contract is checked nightly without creating
+  projects, starting jobs, or reaching the FFmpeg installer. Three mutations
+  (remove a GET route, remove a POST route, remove only the GET half of a
+  route family) each fail the test naming the exact path and method — the
+  third shape is the one the first draft's method-blind probe let through,
+  and the one a browser check would have had to catch by eye.
+
 ### Fixed
 - **A transcript's word text is held to the same discipline as its segment text.**
   Sidecar output is untrusted, and word padding rode straight into the render:
