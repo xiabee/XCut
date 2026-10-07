@@ -21,6 +21,13 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **The one-shot says which file its captions come from.** Transcription
+  answers about one media file, but `xcut auto` accepts several inputs and
+  `--subs on` transcribes the first of them — over a two-input reel the old
+  header ("transcribed from this run's input") was a lie about the second
+  file's audio, discoverable only by watching the reel. The header now names
+  the file and says, when the run had more than one input, that the others'
+  audio is not captioned.
 - **The gate reads the tree the way staticcheck does, not just the way vet
   does.** staticcheck joins every gate run right after go vet (unconditional —
   the full leg's security scanners stay where they were), and its eleven

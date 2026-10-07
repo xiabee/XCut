@@ -89,6 +89,47 @@ func TestAutoCaptionsInTheOneShot(t *testing.T) {
 	}
 }
 
+// TestAutoCaptionsNameTheirSource: transcription answers about one media
+// file, but `xcut auto` accepts several inputs — with two, the captions come
+// from the first and the header has to say so. A line that said "this run's
+// input" over a two-input reel would be a lie about the second file's audio,
+// and the user would find out from watching the reel.
+func TestAutoCaptionsNameTheirSource(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	t.Setenv("XCUT_WORKSPACE", root)
+	t.Setenv("XCUT_AI_BIN", fakeTranscriptSidecar(t, false))
+
+	first, err := testmedia.Generate(root, "scenes.mp4", testmedia.DefaultFixture(), 320, 240, 8)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	second, err := testmedia.Generate(root, "other.mp4", testmedia.DefaultFixture(), 320, 240, 8)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"init"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init: %s", stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"auto", first, second, "--project", "twoinputs", "--style", "generic_highlight",
+		"--duration", "4", "--subs=on", "--out", filepath.Join(root, "two.mp4")}, &stdout, &stderr); code != 0 {
+		t.Fatalf("auto with two inputs exited %d\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "transcribed from scenes.mp4") {
+		t.Errorf("the header does not name the file the captions come from:\n%s", out)
+	}
+	if !strings.Contains(out, "the first of this run's 2 inputs; the others' audio is not captioned") {
+		t.Errorf("the header does not say the second input's audio was left out:\n%s", out)
+	}
+}
+
 // TestAutoSubsRefusesWithoutASidecar: --subs=on is a request for a measurement the
 // machine may not be able to take. The command must stop with the reason rather than
 // render an uncaptioned reel and call it done.
