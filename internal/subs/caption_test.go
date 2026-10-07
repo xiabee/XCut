@@ -129,10 +129,3 @@ func parseASSTime(s string) float64 {
 	}
 	return float64(h*3600+m*60+sec) + float64(cs)/100
 }
-
-func clip(s string) string {
-	if len(s) > 200 {
-		return s[:200] + "…"
-	}
-	return s
-}

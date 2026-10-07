@@ -19,8 +19,10 @@ import (
 // unregistered "-version" dies in the flag package and the dispatch below never
 // gets a turn. Registering it here (a bool, ignored) is what lets a test hold a
 // real executable that answers on command — no shell, no compiler, no committed
-// fixture, which is the constraint AGENTS.md rule 2 leaves standing.
-var stubVersionFlag = flag.Bool("version", false, "ignored: present so the stub child can start")
+// fixture, which is the constraint AGENTS.md rule 2 leaves standing. The
+// registration is the point, so the variable itself is dropped on the floor:
+// `var _ =` keeps the flag-package call alive without a name nothing reads.
+var _ = flag.Bool("version", false, "ignored: present so the stub child can start")
 
 // stubMode is the identity the stub child answers with. Empty in a normal run.
 const stubEnvVar = "XCUT_TEST_FFPROBE_STUB"

@@ -97,8 +97,9 @@ func TestAssetUploadRefusesJunk(t *testing.T) {
 	pid := seedUploadProject(t, s, "upload-junk")
 
 	// Traversal attempt: the name is reduced; the landed file (had the
-	// content been media) could only live inside imports/.
-	rec, out := uploadReq(t, s, pid, `..\..\evil.mp4`, "x")
+	// content been media) could only live inside imports/. The body of the
+	// refusal is the next case's business; this one watches the disk.
+	rec, _ := uploadReq(t, s, pid, `..\..\evil.mp4`, "x")
 	if rec.Code == http.StatusCreated {
 		t.Fatalf("junk content must not import, got %d", rec.Code)
 	}
@@ -112,8 +113,10 @@ func TestAssetUploadRefusesJunk(t *testing.T) {
 		}
 	}
 
-	// Empty body.
-	rec, out = uploadReq(t, s, pid, "empty.mp4", "")
+	// Empty body. The response body here is boilerplate ("empty upload");
+	// from this line on the assertions read rec only, so out drops again
+	// after this case.
+	rec, out := uploadReq(t, s, pid, "empty.mp4", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("empty upload: %d %v", rec.Code, out)
 	}
@@ -125,7 +128,7 @@ func TestAssetUploadRefusesJunk(t *testing.T) {
 	}
 
 	// Non-media content: the copy is probed, refused, and cleaned up.
-	rec, out = uploadReq(t, s, pid, "notes.txt", "definitely not video")
+	rec, _ = uploadReq(t, s, pid, "notes.txt", "definitely not video")
 	if rec.Code == http.StatusCreated {
 		t.Fatalf("text content must not import, got %d", rec.Code)
 	}

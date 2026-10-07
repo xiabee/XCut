@@ -98,7 +98,7 @@ func cmdAuto(a *App, args []string) error {
 	// used to compose one cut from BOTH files. This happens before analyze
 	// because a --score-crop belongs to exactly these assets, and the analyze
 	// stage is what measures the region into point boundaries.
-	assetIDs := []string{}
+	var assetIDs []string
 	{
 		db, err := a.OpenDB()
 		if err != nil {

@@ -21,6 +21,18 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **The gate reads the tree the way staticcheck does, not just the way vet
+  does.** staticcheck joins every gate run right after go vet (unconditional —
+  the full leg's security scanners stay where they were), and its eleven
+  standing findings went to zero first: a dead initialization, two dead test
+  helpers, a flag registration rewritten to `var _ =` so the registration
+  side effect survives without a name nothing reads, three response
+  recorders no assertion ever read, and — the two that were not cosmetic —
+  a timeline refusal test that now asserts the 400 it was quietly receiving,
+  and the job-object alloc child whose append chain was dead: the held
+  memory it exists to pin survived only by GC laziness, and reading the
+  slice after the loop is what makes every block reachable to the exit on
+  purpose.
 - **A transcript's word text is held to the same discipline as its segment text.**
   Sidecar output is untrusted, and word padding rode straight into the render:
   a `" word"` doubled the separator the renderer adds, a whitespace-only word

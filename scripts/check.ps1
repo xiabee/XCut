@@ -225,6 +225,19 @@ if (-not $node) {
 }
 
 Invoke-Step "go vet" { go vet ./... }
+# Static analysis beyond vet, in every mode: the dead-store and unused-helper
+# classes live in test files too (one of each has already been a real
+# finding), so -tests=false scanners are not the whole story. A finding fails
+# the gate; suppressions are staticcheck's own `//lint:ignore check reason`
+# with both halves named. The full leg repeats the security scanners next to
+# it; this one is cheap enough (warm build cache) to hold every run.
+if (Get-Command staticcheck -ErrorAction SilentlyContinue) {
+    Invoke-Step "staticcheck" { staticcheck ./... }
+}
+else {
+    Write-Host "== staticcheck: not installed (GOBIN=.tools/bin go install honnef.co/go/tools/cmd/staticcheck@2026.2.1), skipped"
+    $NotRun += "staticcheck"
+}
 Invoke-Step "go build" { go build ./... }
 # The Rust toolchain decision, asked once and reused: a healthy MSVC setup links
 # fine (`cargo check` exits 0), so decide on the exit code alone — capturing output

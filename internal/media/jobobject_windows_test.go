@@ -250,6 +250,12 @@ func TestHelperAllocChild(t *testing.T) {
 		writeMark(markFile, "alloc", "step")
 		time.Sleep(20 * time.Millisecond)
 	}
+	// The held blocks are the test's whole premise — every previous block
+	// must still be committed when the next one lands, or the child never
+	// reaches the cap for the right reason. Reading the slice after the loop
+	// is what pins all 24 blocks to the exit (and keeps the append chain
+	// honest: a dead append would have let the GC release earlier blocks).
+	_ = len(live)
 	os.Exit(0)
 }
 

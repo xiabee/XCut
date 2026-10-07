@@ -684,9 +684,13 @@ func TestTimelinePUTSaysWhatItRejected(t *testing.T) {
 	}
 
 	// Four problems, three named, the fourth counted — the message stays readable on
-	// a document that is wrong in many places at once.
-	rec, out = do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline",
-		marshalTimeline(t, docWithClips(t, aid, 4, 3)))
+	// a document that is wrong in many places at once. The status is part of the
+	// contract here too: the aggregate must still be the same refusal the
+	// single-problem document got, not a quieter verdict.
+	if rec, out = do(t, s, "PUT", "/api/v1/projects/"+p.ID+"/timeline",
+		marshalTimeline(t, docWithClips(t, aid, 4, 3))); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a four-problem document was answered %d, want the same 400 refusal", rec.Code)
+	}
 	msg = fmt.Sprint(out["message"])
 	if !strings.Contains(msg, "and 1 more") {
 		t.Errorf("the fourth problem is neither named nor counted: %s", msg)

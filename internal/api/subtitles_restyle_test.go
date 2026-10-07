@@ -68,7 +68,7 @@ func TestSubtitlesStatusNamesBothFramesAndRestyleFixesThem(t *testing.T) {
 	if err := os.WriteFile(assPath, []byte(wrong.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rec, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
+	_, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
 	if out["mismatch"] != true || out["styled_frame"] != "1920x1080" {
 		t.Fatalf("a .ass sized for another frame read %v / %v, want mismatch true and 1920x1080",
 			out["styled_frame"], out["mismatch"])
@@ -80,7 +80,7 @@ func TestSubtitlesStatusNamesBothFramesAndRestyleFixesThem(t *testing.T) {
 		t.Fatalf("restyle with no sidecar: %d %v", rec.Code, out)
 	}
 	awaitJob(t, s, out["job_id"].(string))
-	rec, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
+	_, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
 	if out["styled_frame"] != "1080x1920" || out["mismatch"] != false {
 		t.Fatalf("after the queued restyle the panel reads %v / %v, want the reel's own frame and no mismatch",
 			out["styled_frame"], out["mismatch"])
@@ -252,7 +252,7 @@ func TestSubtitlesStatusNamesStaleMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
+	_, out = do(t, s, "GET", "/api/v1/projects/"+pid+"/subtitles", "")
 	if out["media_stale"] != true {
 		t.Errorf("captions from another clip read media_stale %v, want true", out["media_stale"])
 	}

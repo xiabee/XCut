@@ -31,8 +31,6 @@ const (
 	msBursts = 3
 )
 
-func msDuration() float64 { return float64(msBursts) * (msPan + msStill) }
-
 func msInPanBurst(t float64) bool {
 	period := msPan + msStill
 	pos := math.Mod(t, period)
