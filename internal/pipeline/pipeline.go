@@ -165,9 +165,15 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 	}
 	sig := player.Signature{}
 	var mr *player.MultiRegionSignature
-	if len(asset.PlayerSpot.Bins) > 0 {
-		sig = player.Signature{Bins: asset.PlayerSpot.Bins}
-	} else {
+	// Measure runs for a fresh spot — and once for a pre-band-model legacy
+	// spot (Bins measured before the multi-region wiring existed, Bands
+	// never written): the rect is stored, the fresh pass rebuilds both
+	// models from it and the row carries the band model from then on. A
+	// spot whose shape starved the bands writes the present-but-empty
+	// marker instead, so the backfill attempt happens exactly once — a
+	// re-drawn spot resets the whole row and measures fresh.
+	legacy := len(asset.PlayerSpot.Bins) > 0 && asset.PlayerSpot.Bands == nil
+	if len(asset.PlayerSpot.Bins) == 0 || legacy {
 		measured, mrMeasured, frames, err := player.MeasureSignature(
 			ctx, d.tools(), path, asset.PlayerSpot.Rect, asset.PlayerSpot.At, asset.DurationSec)
 		if err != nil {
@@ -178,6 +184,8 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 		asset.PlayerSpot.Bins = measured.Bins
 		if mrMeasured != nil {
 			asset.PlayerSpot.Bands = mrMeasured.Bands[:]
+		} else {
+			asset.PlayerSpot.Bands = make([][]float64, player.RegionCount)
 		}
 		asset.PlayerSpot.SampledAt = time.Now().Unix()
 		if b, err := json.Marshal(asset.PlayerSpot); err == nil {
@@ -190,12 +198,19 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 		if mrMeasured != nil {
 			model = "single-histogram + multi-region"
 		}
-		d.Log.Info("player signature measured",
-			"asset", asset.ID, "frames", frames, "bins", len(measured.Bins), "model", model)
+		if legacy {
+			d.Log.Info("player signature upgraded with the band model",
+				"asset", asset.ID, "frames", frames, "model", model)
+		} else {
+			d.Log.Info("player signature measured",
+				"asset", asset.ID, "frames", frames, "bins", len(measured.Bins), "model", model)
+		}
 		sig = measured
 		mr = mrMeasured
+	} else {
+		sig = player.Signature{Bins: asset.PlayerSpot.Bins}
 	}
-	if mr == nil && len(asset.PlayerSpot.Bands) == player.RegionCount {
+	if mr == nil && player.ValidBands(asset.PlayerSpot.Bands) {
 		mb := player.MultiRegionSignature{}
 		copy(mb.Bands[:], asset.PlayerSpot.Bands)
 		mr = &mb

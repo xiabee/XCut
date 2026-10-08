@@ -6,6 +6,14 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **Spots measured before the multi-region wiring upgrade themselves on the
+  next analyze.** A row carrying the single histogram and no band model runs
+  the measure pass once — the stored rect rebuilds both models and the band
+  model persists from then on, so existing users reach the multi-region
+  filter without re-drawing their spot. A spot whose shape cannot yield
+  three bands writes a present-but-empty marker instead: the backfill
+  attempt happens exactly once, never per-analyze, and a re-drawn spot
+  resets the whole row as before.
 - **The person filter's multi-region body model is wired into the presence
   scan — Phase 2's component becomes a product path.** Measuring a spot now
   builds both models from the one decode pass (the per-band head/torso/legs

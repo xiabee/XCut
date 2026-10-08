@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -15,11 +16,123 @@ import (
 	"time"
 
 	"github.com/xiabee/XCut/internal/config"
+	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/player"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/testmedia"
 	"github.com/xiabee/XCut/internal/workspace"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
+
+// TestLegacyPlayerSpotUpgradesWithTheBandModel: a spot measured before the
+// multi-region wiring (Bins on the row, Bands never written) gains the band
+// model on the next analyze — one backfill pass, and the second analyze does
+// not re-measure (SampledAt stands). A spot whose shape starves the bands
+// writes the present-but-empty marker instead: attempted once, never again.
+func TestLegacyPlayerSpotUpgradesWithTheBandModel(t *testing.T) {
+	d, p := analyzeSetup(t, 1)
+	assets, err := d.DB.ListAssets(context.Background(), p.ID)
+	if err != nil || len(assets) != 1 {
+		t.Fatalf("ListAssets: %d assets (%v)", len(assets), err)
+	}
+	asset := assets[0]
+	probe, err := media.ProbeFile(context.Background(), d.tools(), asset.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rect := []float64{0.3, 0.3, 0.2, 0.2}
+	sig, _, _, err := player.MeasureSignature(context.Background(), d.tools(), asset.Path,
+		rect, 2, probe.DurationSec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the row exactly as the pre-band-model measure left it.
+	legacy, _ := json.Marshal(&storage.PlayerSpot{Rect: rect, At: 2, Bins: sig.Bins})
+	if _, err := d.DB.ExecContext(context.Background(),
+		`UPDATE assets SET player_spot = ? WHERE id = ?`, string(legacy), asset.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := d.DB.GetAsset(context.Background(), asset.ID)
+	if err != nil || upgraded == nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if upgraded.PlayerSpot == nil || !player.ValidBands(upgraded.PlayerSpot.Bands) {
+		t.Fatal("the legacy spot ran a second analyze without gaining a band model")
+	}
+	first := upgraded.PlayerSpot.SampledAt
+	if first == 0 {
+		t.Fatal("the upgraded signature lost its sampled-at moment")
+	}
+
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	again, err := d.DB.GetAsset(context.Background(), asset.ID)
+	if err != nil || again == nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if again.PlayerSpot.SampledAt != first {
+		t.Fatal("the second analyze re-measured an upgraded spot — the backfill is not once-only")
+	}
+}
+
+// TestStarvedPlayerSpotMarksItselfOnce: a spot whose sampled shape cannot
+// yield three bands writes the present-but-empty marker on the first analyze
+// and never re-measures — the second analyze leaves SampledAt standing.
+func TestStarvedPlayerSpotMarksItselfOnce(t *testing.T) {
+	d, p := analyzeSetup(t, 1)
+	assets, err := d.DB.ListAssets(context.Background(), p.ID)
+	if err != nil || len(assets) != 1 {
+		t.Fatalf("ListAssets: %d assets (%v)", len(assets), err)
+	}
+	asset := assets[0]
+
+	// A wide-short rect: the sampled crop is 4 rows tall, the head band
+	// cannot fill, and the band model is unmeasurable by shape.
+	rect := []float64{0.05, 0.49, 0.9, 0.02}
+	if _, err := d.ImportAsset(p, asset.Path); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := d.DB.GetAsset(context.Background(), asset.ID)
+	if err != nil || fresh == nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	spot := &storage.PlayerSpot{Rect: rect, At: 2}
+	if err := d.DB.SetAssetPlayerSpot(context.Background(), fresh.ID, spot); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	marked, err := d.DB.GetAsset(context.Background(), fresh.ID)
+	if err != nil || marked == nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if marked.PlayerSpot == nil || marked.PlayerSpot.Bands == nil {
+		t.Fatal("the starved spot carries no marker — every analyze would re-measure it")
+	}
+	if player.ValidBands(marked.PlayerSpot.Bands) {
+		t.Fatal("a band-starved shape produced a valid band model")
+	}
+	first := marked.PlayerSpot.SampledAt
+
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	again, err := d.DB.GetAsset(context.Background(), fresh.ID)
+	if err != nil || again == nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if again.PlayerSpot.SampledAt != first {
+		t.Fatal("the second analyze re-measured a starved spot — the marker did not hold")
+	}
+}
 
 // analyzeSetup builds a Deps with a real workspace/DB and imports n fixtures.
 func analyzeSetup(t *testing.T, n int) (Deps, *storage.Project) {

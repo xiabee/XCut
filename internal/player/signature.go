@@ -212,3 +212,20 @@ func SigHashMR(bands [][]float64) string {
 	}
 	return h
 }
+
+// ValidBands reports whether bands is a usable multi-region model: three
+// histograms, each the full bin geometry. A present-but-empty 3-slice is the
+// starved-shape marker the measure pass writes — present so a legacy spot's
+// backfill runs exactly once, invalid so it never re-runs (a re-drawn spot
+// resets the whole row and measures fresh).
+func ValidBands(bands [][]float64) bool {
+	if len(bands) != RegionCount {
+		return false
+	}
+	for _, b := range bands {
+		if len(b) != HueBins*SatBins*ValBins {
+			return false
+		}
+	}
+	return true
+}
