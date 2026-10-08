@@ -74,10 +74,23 @@ func rectPixels(rect []float64, width, height int) (x, y, w, h int, err error) {
 // f3 formats a timestamp for an ffmpeg argument.
 func f3(v float64) string { return strconv.FormatFloat(v, 'f', 3, 64) }
 
-// frameGeom scales a source geometry to SampleWidth and derives the height.
+// frameGeom scales a source geometry to the sampling resolution: the LONGER
+// side lands on SampleWidth. Landscape keeps the width rule it always had;
+// portrait media and tall spot crops cap their height instead — the width
+// rule sent their byte volume (frame × fps × duration) past the streaming
+// budget on shapes that are perfectly scannable once the longer side is the
+// capped one.
 func frameGeom(srcW, srcH int) (outW, outH int) {
-	outW = SampleWidth
-	outH = srcH * SampleWidth / srcW
+	if srcH > srcW {
+		outH = SampleWidth
+		outW = srcW * SampleWidth / srcH
+	} else {
+		outW = SampleWidth
+		outH = srcH * SampleWidth / srcW
+	}
+	if outW < 2 {
+		outW = 2
+	}
 	if outH < 2 {
 		outH = 2
 	}

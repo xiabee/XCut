@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/testmedia"
 )
 
 // The presence path talks to ffmpeg twice — MeasureSignature probes first,
@@ -242,6 +243,79 @@ func TestPatchMaxMRKeepsScanningWhenTheSpotIsTallerThanTheFrame(t *testing.T) {
 	v := s_patchMaxMR(mr, 3.0, w, h, frame)
 	if v < 0.999 || v > 1.001 {
 		t.Fatalf("all-green frame with a too-tall spot scored %.3f, want ~1 — the clamp broke the scan", v)
+	}
+}
+
+// TestFrameGeomCapsTheLongerSide pins the sampling geometry: landscape keeps
+// the width rule it always had, portrait media and tall crops cap their
+// HEIGHT instead — and the capped shape must keep a full-asset scan under the
+// streaming budget, which the width rule broke for portrait sources.
+func TestFrameGeomCapsTheLongerSide(t *testing.T) {
+	cases := []struct {
+		w, h, ew, eh int
+	}{
+		{1280, 720, 320, 180}, // landscape: unchanged
+		{1920, 1080, 320, 180},
+		{720, 1280, 180, 320}, // portrait: height capped
+		{1080, 1920, 180, 320},
+		{1000, 1000, 320, 320}, // square
+		{100, 4000, 8, 320},    // extreme: the short side shrinks with it
+		{4000, 100, 320, 8},
+	}
+	for _, c := range cases {
+		w, h := frameGeom(c.w, c.h)
+		if w != c.ew || h != c.eh {
+			t.Fatalf("frameGeom(%d,%d) = %dx%d, want %dx%d", c.w, c.h, w, h, c.ew, c.eh)
+		}
+	}
+	// The property the cap exists for: the per-frame sample cost stops
+	// depending on the source's shape. (Budget fit is then a duration
+	// property — ~25 minutes of 2fps scan per 512 MB — identical for every
+	// aspect, not a portrait penalty.)
+	lw, lh := frameGeom(1280, 720)
+	pw, ph := frameGeom(720, 1280)
+	if lw*lh != pw*ph {
+		t.Fatalf("portrait sample %dx%d costs a different per-frame area than landscape %dx%d",
+			pw, ph, lw, lh)
+	}
+}
+
+// TestScanPresenceOnPortraitMedia drives a portrait fixture end to end: the
+// shape the width rule used to starve scans, measures and scores like any
+// other source.
+func TestScanPresenceOnPortraitMedia(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	dir := t.TempDir()
+	path, err := testmedia.GenerateRally(dir, "vertical.mp4", 240, 426, 25, 6.0,
+		[]testmedia.RallySpec{{Start: 0, End: 5, HitEvery: 0.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := media.Tools{FFmpeg: "ffmpeg", FFprobe: "ffprobe"}
+
+	sig, mr, _, err := MeasureSignature(context.Background(), tools, path,
+		[]float64{0.3, 0.3, 0.3, 0.3}, 2, 6.0)
+	if err != nil {
+		t.Fatalf("portrait measure failed: %v", err)
+	}
+	if mr == nil {
+		t.Fatal("portrait spot measured no band model")
+	}
+	samples, err := ScanPresence(context.Background(), tools, path, 240, 426, sig, 0, 6)
+	if err != nil {
+		t.Fatalf("portrait scan failed: %v", err)
+	}
+	if len(samples) == 0 {
+		t.Fatal("portrait scan produced no samples")
+	}
+	mrSamples, err := ScanPresenceMR(context.Background(), tools, path, 240, 426, *mr, 1.0, 0, 6)
+	if err != nil {
+		t.Fatalf("portrait band scan failed: %v", err)
+	}
+	if len(mrSamples) == 0 {
+		t.Fatal("portrait band scan produced no samples")
 	}
 }
 

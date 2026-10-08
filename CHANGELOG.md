@@ -37,6 +37,18 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **Portrait media and tall spot crops can presence-scan again.** The sampling
+  geometry scaled the WIDTH to 320 and derived the height, so a 9:16 phone
+  clip sampled at 320×570 and a tall spot crop sampled taller still — their
+  byte volume (frame × 2 fps × duration) crossed the 512 MB streaming intake
+  partway through any real recording, killing the scan with a resource-limit
+  error that named no shape. `frameGeom` now caps the LONGER side at 320:
+  landscape keeps the rule it always had (byte-identical keys and results),
+  portrait and tall crops sample at their capped height, and the per-frame
+  sample cost becomes shape-independent — budget fit is a duration property
+  (~25 minutes of 2 fps scan per 512 MB) that every aspect shares. Found
+  while aiming the multi-region measurement at a realistically-proportioned
+  player: the spot that measures him could not measure at all.
 - **The render-time temp-budget refusal tells the truth about who ate the budget.**
   The headroom a render enforces is `resource.max_temp_gb` minus what workspace
   `temp/` already held when it started — so when earlier failed runs' debris is
