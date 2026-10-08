@@ -123,7 +123,8 @@ func decodeRange(ctx context.Context, tools media.Tools, path string,
 }
 
 // s_patchMax scores one frame: the densest window's signature-match fraction.
-func s_patchMax(sig Signature, w, h int, frame []byte) float64 {	win := int(float64(w) * PatchFrac)
+func s_patchMax(sig Signature, w, h int, frame []byte) float64 {
+	win := int(float64(w) * PatchFrac)
 	if win%2 != 0 {
 		win++
 	}
