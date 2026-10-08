@@ -158,10 +158,19 @@ point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
 ## xcut player
 ```
-usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]]
+usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]
 
 person filter: mark where you are in a source
 ```
+
+`--photo <image>` seeds the spot from a still photo instead of the video:
+`--set` names the rect **on the photo** (normalized, so the photo's
+resolution never matters), both signature models are measured from that one
+frame immediately, and `--at` does not apply — a photo has no source second.
+A photo-seeded spot is complete on the row: `xcut analyze` uses it as-is and
+never re-measures it from the video. Seeding `--set` again without
+`--photo` goes back to video coordinates and re-measures on the next
+analyze.
 
 ## xcut render
 ```

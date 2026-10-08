@@ -320,3 +320,64 @@ func MeasureSignature(ctx context.Context, tools media.Tools, path string, rect 
 	}
 	return sig, mr, frames, nil
 }
+
+// MeasureSignatureFromImage builds both models from a still image — the
+// photo-reference seeding (PERSON_FILTER_ROADMAP Phase 3's CLI half): the
+// rect is normalized to the PHOTO, resolution-independent like every spot
+// rect, and one decoded frame feeds the same builders the video measure
+// uses. A spot whose sampled shape cannot yield three bands comes back with
+// a nil band model, exactly like the video measure.
+func MeasureSignatureFromImage(ctx context.Context, tools media.Tools, path string, rect []float64) (Signature, *MultiRegionSignature, error) {
+	probe, err := media.ProbeFile(ctx, tools, path)
+	if err != nil {
+		return Signature{}, nil, err
+	}
+	sx, sy, sw, sh, err := rectPixels(rect, probe.Width, probe.Height)
+	if err != nil {
+		return Signature{}, nil, err
+	}
+	outW, outH := frameGeom(sw, sh)
+	crop := fmt.Sprintf("crop=%d:%d:%d:%d", sw, sh, sx, sy)
+
+	vf := "scale=" + strconv.Itoa(outW) + ":" + strconv.Itoa(outH) + ",format=rgb24"
+	cmd := []string{
+		"-hide_banner", "-nostdin", "-v", "error",
+		"-i", path,
+		"-vf", crop + "," + vf,
+		"-frames:v", "1",
+		"-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+	}
+	frameBytes := outW * outH * 3
+	var frame []byte
+	err = media.StreamStdout(ctx, tools.FFmpeg, func(chunk []byte) error {
+		frame = append(frame, chunk...)
+		if len(frame) > frameBytes {
+			return xcerr.E(xcerr.CodeUnsupportedMedia, "the image decoded to more than one frame", nil)
+		}
+		return nil
+	}, cmd...)
+	if err != nil {
+		return Signature{}, nil, err
+	}
+	if len(frame) != frameBytes {
+		return Signature{}, nil, xcerr.E(xcerr.CodeUnsupportedMedia,
+			fmt.Sprintf("the image decoded to %d bytes, want %d (%dx%d RGB)", len(frame), frameBytes, outW, outH), nil)
+	}
+	builder := NewBuilder()
+	if err := builder.Add(outW, outH, frame); err != nil {
+		return Signature{}, nil, err
+	}
+	sig, err := builder.Build()
+	if err != nil {
+		return Signature{}, nil, err
+	}
+	mrBuilder := NewMultiRegionBuilder()
+	if err := mrBuilder.AddFeed(outW, outH, frame); err != nil {
+		return Signature{}, nil, err
+	}
+	var mr *MultiRegionSignature
+	if m, merr := mrBuilder.Build(); merr == nil {
+		mr = &m
+	}
+	return sig, mr, nil
+}

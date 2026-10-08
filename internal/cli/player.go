@@ -4,34 +4,47 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/xiabee/XCut/internal/media"
+	"github.com/xiabee/XCut/internal/player"
 	"github.com/xiabee/XCut/internal/storage"
 	"github.com/xiabee/XCut/internal/xcerr"
 )
 
 func init() {
-	register("player", "person filter: mark where you are in a source", usageSyntax("xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]]"), cmdPlayer)
+	register("player", "person filter: mark where you are in a source", usageSyntax("xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]"), cmdPlayer)
 }
 
 func cmdPlayer(a *App, args []string) error {
 	if len(args) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]]", nil)
+			"usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]", nil)
 	}
 	projectName := args[0]
 
 	assetID := ""
 	set := ""
 	atStr := ""
+	photo := ""
 	if _, err := parseCommandArgs(args[1:], map[string]*string{
 		"asset": &assetID,
 		"set":   &set,
 		"at":    &atStr,
+		"photo": &photo,
 	}); err != nil {
 		return err
 	}
 	if assetID == "" {
 		return xcerr.E(xcerr.CodeValidation, "--asset <id> is required", nil)
+	}
+	if photo != "" && set == "" {
+		return xcerr.E(xcerr.CodeValidation,
+			"--photo measures the rect --set names on the image — pass both", nil)
+	}
+	if photo != "" && atStr != "" {
+		return xcerr.E(xcerr.CodeValidation,
+			"--at names a source second, but a photo-seeded spot has none — drop --at", nil)
 	}
 
 	db, err := a.OpenDB()
@@ -82,6 +95,33 @@ func cmdPlayer(a *App, args []string) error {
 		return err
 	}
 	at := 0.0
+	if photo != "" {
+		// Photo-reference seeding (Phase 3's CLI half): the rect is on the
+		// image, the models are built here from that one frame, and the row
+		// lands complete — the analyze pass finds Bins and Bands already on
+		// it and never re-measures from the video (a photo rect describes
+		// the photo, not the source).
+		sig, mr, err := player.MeasureSignatureFromImage(ctx, media.ResolveTools(a.Cfg), photo, rect)
+		if err != nil {
+			return err
+		}
+		spot := &storage.PlayerSpot{Rect: rect, At: 0, Bins: sig.Bins}
+		if mr != nil {
+			spot.Bands = mr.Bands[:]
+		} else {
+			spot.Bands = make([][]float64, player.RegionCount)
+		}
+		spot.SampledAt = time.Now().Unix()
+		if err := db.SetAssetPlayerSpot(ctx, asset.ID, spot); err != nil {
+			return err
+		}
+		model := "single-histogram"
+		if mr != nil {
+			model = "single-histogram + multi-region"
+		}
+		fmt.Fprintf(a.Stdout, "player spot seeded from the photo on %s: %s (%s)\n", asset.ID, set, model)
+		return nil
+	}
 	if atStr != "" {
 		at, err = strconv.ParseFloat(atStr, 64)
 		if err != nil {

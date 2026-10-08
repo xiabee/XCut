@@ -71,8 +71,11 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
 系统用与 Phase 2 相同的 multi-region 模型从照片中采样。去掉了"必须在视频上画框"
 的限制，使得冷启动更友好。
 
-- [ ] `xcut player <project> --photo <image> --rect x,y,w,h`
-- [ ] 照片与视频分辨率无关（归一化坐标即可）
+- [x] `xcut player <project> --photo <image> --set x,y,w,h`（CLI 半，2026-10-08 夜：
+      rect 归一化在照片上、与分辨率无关；一次解码同时建单直方图与 band 双模型，
+      种子即完整落行——analyze 直接用、绝不从视频重测；饥饿形状写标记与视频路径
+      同规则）
+- [x] 照片与视频分辨率无关（归一化坐标即可；采样几何沿用长边封顶 320）
 - [ ] Web UI：上传照片 → 点选人物 → 自动生成 spot
 
 ## Phase 4 — ONNX Person Detector (sidecar)

@@ -6,6 +6,16 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **Photo-reference seeding: `xcut player --photo <image> --set x,y,w,h`
+  measures the person filter from a still image** (the person-filter
+  roadmap's Phase 3, CLI half). The rect is normalized to the photo — its
+  resolution never matters — one decoded frame feeds the same
+  single-histogram and band builders the video measure uses, and the spot
+  lands complete on the row: `xcut analyze` uses it as-is and never
+  re-measures it from the video, because a photo rect describes the photo.
+  A rect too small for three usable bands degrades to the single histogram
+  under the same marker rules as the video path; `--at` is refused (a photo
+  has no source second) and the web UI half of Phase 3 stays open.
 - **Spots measured before the multi-region wiring upgrade themselves on the
   next analyze.** A row carrying the single histogram and no band model runs
   the measure pass once — the stored rect rebuilds both models and the band
