@@ -41,6 +41,11 @@ type Options struct {
 	// Checked after every clip; 0 disables the check. The caller derives it
 	// from resource.max_temp_gb minus current temp/ usage.
 	TempBudgetBytes int64
+	// TempBudgetTotal is the configured resource.max_temp_gb budget the
+	// headroom above was cut from; 0 (not provided) keeps the budget
+	// refusal's wording about this render's scratch alone. It is message
+	// context only — the number the check enforces is TempBudgetBytes.
+	TempBudgetTotal int64
 	// ClipWorkers is how many clips normalize concurrently. Each worker
 	// drives one ffmpeg child, so the global process limiter
 	// (resource.max_ffmpeg_processes) stays the true ceiling; this only
@@ -445,6 +450,26 @@ func humanBytes(n int64) string {
 	default:
 		return fmt.Sprintf("%d B", n)
 	}
+}
+
+// tempBudgetError builds the scratch-budget refusal both normalization paths
+// return. The headroom the check enforces is the configured budget minus what
+// workspace temp/ already held when this render started — so when that
+// headroom is crossed, the truth about who ate the budget decides which
+// recourse is named: scratch alone too big says raise the budget; earlier
+// failed runs' debris holding most of the budget says reclaim it with
+// 'xcut cleanup' first (the same recourse the workspace's own pre-render
+// refusal names). Both shapes stay one function so the paths cannot drift.
+func tempBudgetError(used, headroom, total int64) error {
+	prior := total - headroom
+	if total <= 0 || prior <= 0 {
+		return xcerr.E(xcerr.CodeResourceLimit,
+			fmt.Sprintf("render scratch exceeded its budget (%s in use, budget %s) — raise resource.max_temp_gb or use a shorter timeline",
+				humanBytes(used), humanBytes(headroom)), nil)
+	}
+	return xcerr.E(xcerr.CodeResourceLimit,
+		fmt.Sprintf("render scratch exceeded the temp budget (%s this render; %s was already in workspace temp from earlier failed runs, budget %s) — run 'xcut cleanup' to reclaim it (stop 'xcut serve' first if it is running), or raise resource.max_temp_gb",
+			humanBytes(used), humanBytes(prior), humanBytes(total)), nil)
 }
 
 func absF(f float64) float64 {

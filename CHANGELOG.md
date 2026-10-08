@@ -21,6 +21,20 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **The render-time temp-budget refusal tells the truth about who ate the budget.**
+  The headroom a render enforces is `resource.max_temp_gb` minus what workspace
+  `temp/` already held when it started — so when earlier failed runs' debris is
+  what shrank it, crossing that headroom was reported as "raise
+  resource.max_temp_gb or use a shorter timeline", the two recourses that help
+  least, while the one that helps first (`xcut cleanup`, stop `xcut serve` before
+  it) went unnamed — the same refusal surfaced at the workspace's pre-render gate
+  already names it, so the two faces of one budget disagreed. The renderer now
+  receives the configured total and both normalization paths build the refusal
+  through one function: debris in the room says reclaim it, with the split (this
+  render's scratch vs earlier temp vs the budget) on the wire; a scratch that is
+  genuinely too big for an empty budget says raise it or shorten the timeline,
+  as before. Enforcement is unchanged — the same headroom number, checked at the
+  same points.
 - **`--subs auto` stops a re-run from wearing another run's captions.** The
   stored transcript names the asset it was heard from, and the one-shot's
   reel is scoped to this run's inputs — but the staleness check the resolution

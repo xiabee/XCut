@@ -2,7 +2,6 @@ package render
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -75,9 +74,7 @@ func normalizeClips(ctx context.Context, tl *timeline.Timeline, clips []timeline
 					used := dirBytes(opts.TempDir)
 					mu.Unlock()
 					if used > opts.TempBudgetBytes {
-						fail(xcerr.E(xcerr.CodeResourceLimit,
-							fmt.Sprintf("render scratch exceeded its budget (%s in use, budget %s) — raise resource.max_temp_gb or use a shorter timeline",
-								humanBytes(used), humanBytes(opts.TempBudgetBytes)), nil))
+						fail(tempBudgetError(used, opts.TempBudgetBytes, opts.TempBudgetTotal))
 						return
 					}
 				}
@@ -131,9 +128,7 @@ func normalizeClipsSerial(ctx context.Context, tl *timeline.Timeline, clips []ti
 		parts[i] = part
 		if opts.TempBudgetBytes > 0 {
 			if used := dirBytes(opts.TempDir); used > opts.TempBudgetBytes {
-				return xcerr.E(xcerr.CodeResourceLimit,
-					fmt.Sprintf("render scratch exceeded its budget (%s in use, budget %s) — raise resource.max_temp_gb or use a shorter timeline",
-						humanBytes(used), humanBytes(opts.TempBudgetBytes)), nil)
+				return tempBudgetError(used, opts.TempBudgetBytes, opts.TempBudgetTotal)
 			}
 		}
 		opts.OnProgress(i+1, len(clips))

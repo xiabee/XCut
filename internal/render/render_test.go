@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -168,6 +169,11 @@ func TestRenderTempBudgetAborts(t *testing.T) {
 	if !xcerr.IsCode(err, xcerr.CodeResourceLimit) {
 		t.Fatalf("err = %v, want resource_limit", err)
 	}
+	// No total passed: the refusal is about this scratch alone, and the
+	// debris recourse must not be invented for a budget nothing else spent.
+	if !strings.Contains(err.Error(), "raise resource.max_temp_gb") || strings.Contains(err.Error(), "cleanup") {
+		t.Fatalf("budget refusal = %v, want the raise-budget recourse only", err)
+	}
 	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
 		t.Fatal("final file must not exist after budget abort")
 	}
@@ -178,6 +184,36 @@ func TestRenderTempBudgetAborts(t *testing.T) {
 	}, out)
 	if ok != nil {
 		t.Fatalf("render over-budget-free scratch failed: %v", ok)
+	}
+}
+
+func TestTempBudgetErrorNamesTheRightRecourse(t *testing.T) {
+	// Scratch alone too big for the whole budget: the recourses are about
+	// making the scratch smaller — no cleanup line, because there is no
+	// debris to clean.
+	msg := tempBudgetError(6<<30, 8<<30, 8<<30).Error()
+	if !strings.Contains(msg, "raise resource.max_temp_gb") || strings.Contains(msg, "cleanup") {
+		t.Fatalf("no-debris refusal = %q, want the raise-budget recourse only", msg)
+	}
+	// Most of the budget already spent by earlier failed runs: the first
+	// move is reclaiming it, with the serve caveat the workspace's own
+	// pre-render refusal carries, and the split stated on the wire.
+	msg = tempBudgetError(512<<20, 1<<30, 20<<30).Error()
+	for _, want := range []string{"xcut cleanup", "stop 'xcut serve'", "512.0 MB this render", "19.0 GB was already in workspace temp", "budget 20.0 GB"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("debris refusal = %q, want it to name %q", msg, want)
+		}
+	}
+	// No total provided: the caller opted out of the debris story — the
+	// wording stays the plain scratch one, never an invented prior.
+	msg = tempBudgetError(1<<20, 1, 0).Error()
+	if !strings.Contains(msg, "raise resource.max_temp_gb") || strings.Contains(msg, "cleanup") {
+		t.Fatalf("unset-total refusal = %q, want the plain scratch wording", msg)
+	}
+	// An inconsistent pair (total below the headroom) reads as no debris.
+	msg = tempBudgetError(1<<20, 2<<30, 1<<30).Error()
+	if strings.Contains(msg, "cleanup") {
+		t.Fatalf("inconsistent-total refusal = %q, want the plain scratch wording", msg)
 	}
 }
 

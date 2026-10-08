@@ -1081,9 +1081,13 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 
 		// This render may add scratch up to the whole temp budget minus what
 		// temp/ already holds (older failure debris). 0 (budget off) leaves
-		// the renderer's check disabled too.
-		var scratchBudget int64
+		// the renderer's check disabled too. The total rides along as
+		// message context: when debris is what shrank the headroom, the
+		// refusal can name 'xcut cleanup' instead of only "make the scratch
+		// smaller".
+		var scratchBudget, scratchTotal int64
 		if max := d.WS.MaxTempBytes; max > 0 {
+			scratchTotal = max
 			scratchBudget = max - d.WS.TempUsage()
 			if scratchBudget <= 0 {
 				scratchBudget = 1 // just over the floor: fail at the first check
@@ -1096,6 +1100,7 @@ func (d Deps) renderBody(project *storage.Project, outPath, subsPath string, onP
 			Tools:           d.tools(),
 			TempDir:         tempDir,
 			TempBudgetBytes: scratchBudget,
+			TempBudgetTotal: scratchTotal,
 			Encoder:         enc.Name,
 			// Clip-level parallelism rides the global process limiter: the
 			// knob that already caps concurrent ffmpeg children decides how
