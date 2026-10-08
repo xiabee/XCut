@@ -31,10 +31,39 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
       （2026-09-29 修正——此前打分按三等分切帧，量到的"躯干"不是训练躯干带
       的像素：头/躯干互换帧实测 0.55，正确值 0.30。带级测试钉死训练几何与
       加权值）
-- [ ] 接入 presence 扫描：`ScanPresence` / patch-max 滑窗改用 multi-region
-      分数（需先设计滑窗与三带的几何对应：带切分作用于人形 patch 还是整帧，
-      决定模型语义）
-- [ ] `min_player_presence` 门槛切换到 multi-region 分数（跟随上一条）
+- [x] 接入 presence 扫描（2026-10-08 夜）：`ScanPresenceMR` / `s_patchMaxMR`
+      把候选窗口当"假设的人形框"评分——**设计决策：带切分作用于
+      spot 宽高比的滑窗**（不是整帧、也不是帧宽高比的窗口），窗口的三带
+      才对齐训练解剖；spot 竖比过极端时窗口高度钳到帧内（仍全部评分、
+      不静默丢窗）。测量在 `MeasureSignature` 的一次解码里同时建两个模型，
+      spot 行新增 `bands`（additive；旧 spot 只有 `bins`，Phase 1 路径
+      原样）。分析缓存以 `mr:` 前缀哈希分命名空间（`ConfigKey.PlayerSigMR`），
+      两种模型互不命中对方条目，analyzer 版本不动。双轨并行：单直方图
+      轨迹与 band 轨迹同轮产出（unit `patch-match` / `mr-patch-match`）。
+- [ ] `min_player_presence` 门槛切换到 multi-region 分数：**preset 数值
+      不随本接线切换**——`badminton_highlight` 的 0.3 是 Phase 1 patch-max
+      标度上的标定；band 模型分数是三带加权票，标度不同。阈值换算已在
+      标注素材上实测（见下），切换等待一次真实 A/B（rally 标注 manifest
+      未存档，重建属研究复现）。
+
+### Multi-region 接线实测（2026-10-08 夜，标注素材 badminton-BV17Qv9ehEHD）
+
+同一 spot（白衣球员躯干区 0.42,0.28,0.14,0.18），全片 603.4s @2fps（1207 帧）：
+
+- **成本**：Phase 1 patch-max **12.8 ms/帧**（整片 15.4s）；MR 加权票
+  **246.2 ms/帧**（整片 297.2s）——**约 19 倍**，逐窗口评分没有积分图
+  可共享。测量属 analyze 阶段、签名哈希缓存、opt-in（仅种子了 spot 的
+  资产付费）；两级 shortlist（单直方图积分图选 top-K 窗再带评分）是
+  显而易见的后续优化，本次不做。
+- **分布**：两模型在本素材上全部饱和（mean=p50=p90=max=1.000）——白衣
+  球员 + 白墙/白线大厅，颜色模型无论单直方图还是三带都无判别力。这与
+  EVAL 台账"共享大厅素材已榨干"一致：**min_player_presence 的 band 标度
+  再标定在此素材上不可测**，等待单场地铁owner素材（与真实素材评测同一
+  个 owner 动作）。
+- 顺带发现的**先在缺陷**（非本次接线引入）：竖长采样超出流预算——
+  `MaxStreamBytes` 512MB 下，spot 采样高度 >~440 行（如 0.09×0.30 的
+  竖长 spot）或**竖幅媒体整帧扫描**（720×1280 → 320×570 ≈ 548MB）都会
+  被拒。修复方向：采样几何对长边封顶 320。见 progress 的候选清单。
 
 ## Phase 3 — Photo Reference Input (next)
 

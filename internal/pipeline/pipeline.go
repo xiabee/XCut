@@ -164,10 +164,11 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 		return opts, analyzers, path, nil
 	}
 	sig := player.Signature{}
+	var mr *player.MultiRegionSignature
 	if len(asset.PlayerSpot.Bins) > 0 {
 		sig = player.Signature{Bins: asset.PlayerSpot.Bins}
 	} else {
-		measured, frames, err := player.MeasureSignature(
+		measured, mrMeasured, frames, err := player.MeasureSignature(
 			ctx, d.tools(), path, asset.PlayerSpot.Rect, asset.PlayerSpot.At, asset.DurationSec)
 		if err != nil {
 			d.Log.Warn("player signature measurement failed; person filter off for this asset",
@@ -175,6 +176,9 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 			return opts, base, path, nil
 		}
 		asset.PlayerSpot.Bins = measured.Bins
+		if mrMeasured != nil {
+			asset.PlayerSpot.Bands = mrMeasured.Bands[:]
+		}
 		asset.PlayerSpot.SampledAt = time.Now().Unix()
 		if b, err := json.Marshal(asset.PlayerSpot); err == nil {
 			if _, err := d.DB.ExecContext(ctx,
@@ -182,14 +186,46 @@ func (d Deps) analysisInput(ctx context.Context, asset *storage.Asset, baseOpts 
 				d.Log.Warn("cannot persist player signature", "asset", asset.ID, "err", err)
 			}
 		}
+		model := "single-histogram"
+		if mrMeasured != nil {
+			model = "single-histogram + multi-region"
+		}
 		d.Log.Info("player signature measured",
-			"asset", asset.ID, "frames", frames, "bins", len(measured.Bins))
+			"asset", asset.ID, "frames", frames, "bins", len(measured.Bins), "model", model)
 		sig = measured
+		mr = mrMeasured
 	}
-	hash := player.SigHash(sig.Bins)
-	opts.PlayerSig = hash
+	if mr == nil && len(asset.PlayerSpot.Bands) == player.RegionCount {
+		mb := player.MultiRegionSignature{}
+		copy(mb.Bands[:], asset.PlayerSpot.Bands)
+		mr = &mb
+	}
+	opts.PlayerSig = player.SigHash(sig.Bins)
 	analyzers = append(analyzers, analysis.PlayerPresenceAnalyzer{Sig: sig})
+	if mr != nil {
+		// The band model rides the same analyze pass under its own cache
+		// namespace (the mr: hash prefix), so both scans exist for this
+		// asset and neither can satisfy the other's key.
+		opts.PlayerSigMR = player.SigHashMR(mr.Bands[:])
+		analyzers = append(analyzers, analysis.PlayerPresenceAnalyzer{
+			Sig: sig, MR: mr, SpotHPerW: spotHPerW(asset.PlayerSpot.Rect),
+		})
+	}
 	return opts, analyzers, path, nil
+}
+
+// spotHPerW is the spot rect's sampled height-per-width (clamped positive),
+// the patch aspect the multi-region scan keeps so its bands mean the anatomy
+// the histograms were trained on.
+func spotHPerW(rect []float64) float64 {
+	if len(rect) != 4 || rect[2] <= 0 {
+		return 1
+	}
+	a := rect[3] / rect[2]
+	if a <= 0 {
+		return 1
+	}
+	return a
 }
 
 func (d Deps) analysisInputBase(ctx context.Context, asset *storage.Asset, baseOpts analysis.Options, base []analysis.Analyzer) (analysis.Options, []analysis.Analyzer, string, error) {

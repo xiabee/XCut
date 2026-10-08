@@ -171,6 +171,80 @@ func TestScanPresenceRefusesAnEmptyRange(t *testing.T) {
 	}
 }
 
+// greenMultiRegion builds a band model whose every band is the green the fake
+// scan writes, so a green frame's best window must score 1 and the red final
+// frame 0 — the same value sequence the single-histogram scan pins, through
+// the band path.
+func greenMultiRegion(t *testing.T) MultiRegionSignature {
+	t.Helper()
+	mb := NewMultiRegionBuilder()
+	for band := 0; band < RegionCount; band++ {
+		row := []byte{0, 255, 0, 0, 255, 0, 0, 255, 0, 0, 255, 0}
+		if err := mb.bands[band].Add(4, 1, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mr, err := mb.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mr
+}
+
+// TestScanPresenceMRReassemblesWhatTheChildStreams drives the band-model scan
+// end to end on the fake decoder: the same four frames in odd chunks, scored
+// as person-shaped windows. The value sequence is the assertion — the red
+// final frame matches no band, and a splitter bug would smear it.
+func TestScanPresenceMRReassemblesWhatTheChildStreams(t *testing.T) {
+	t.Setenv("XCUT_FAKE_PLAYER_FRAMES", "scan")
+	tools := media.Tools{FFmpeg: os.Args[0]}
+
+	samples, err := ScanPresenceMR(context.Background(), tools, "unused.mp4",
+		640, 360, greenMultiRegion(t), 1.0, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 4 {
+		t.Fatalf("got %d samples, want the 4 frames the child wrote", len(samples))
+	}
+	want := []float64{1, 1, 1, 0}
+	for i, s := range samples {
+		if s.V < float64(want[i])-1e-9 || s.V > float64(want[i])+1e-9 {
+			t.Fatalf("sample %d scores %.3f, want %.0f — the band scan did not survive reassembly", i, s.V, want[i])
+		}
+	}
+}
+
+func TestScanPresenceMRRefuses(t *testing.T) {
+	tools := media.Tools{FFmpeg: os.Args[0]}
+	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
+		MultiRegionSignature{}, 1.0, 0, 2); err == nil {
+		t.Fatal("an empty band model scanned instead of refusing")
+	}
+	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
+		greenMultiRegion(t), 1.0, 2, 2); err == nil {
+		t.Fatal("an empty range scanned instead of refusing")
+	}
+	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
+		greenMultiRegion(t), 0, 0, 2); err == nil {
+		t.Fatal("a zero spot aspect scanned instead of refusing")
+	}
+}
+
+// TestPatchMaxMRKeepsScanningWhenTheSpotIsTallerThanTheFrame pins the clamp:
+// a portrait spot aspect on landscape video must not produce a window that
+// never fits — the scan runs, the best window is the whole frame height, and
+// the score stays a real number in [0,1].
+func TestPatchMaxMRKeepsScanningWhenTheSpotIsTallerThanTheFrame(t *testing.T) {
+	mr := greenMultiRegion(t)
+	w, h := 320, 180
+	frame := greenFrame(w, h)
+	v := s_patchMaxMR(mr, 3.0, w, h, frame)
+	if v < 0.999 || v > 1.001 {
+		t.Fatalf("all-green frame with a too-tall spot scored %.3f, want ~1 — the clamp broke the scan", v)
+	}
+}
+
 // TestMeasureSignatureCropsAndBuildsTheModel is the measure arm: the spot
 // rect must reach the child as a crop filter, the frames it answers must all
 // be absorbed, and the model that comes back must be a normalized histogram
@@ -184,7 +258,7 @@ func TestMeasureSignatureCropsAndBuildsTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig, frames, err := MeasureSignature(context.Background(), tools, path,
+	sig, _, frames, err := MeasureSignature(context.Background(), tools, path,
 		[]float64{0, 0, 0.5, 1}, 5, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +288,7 @@ func TestMeasureSignatureRefusesABadRect(t *testing.T) {
 	if err := os.WriteFile(path, []byte("placeholder"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := MeasureSignature(context.Background(), tools, path,
+	if _, _, _, err := MeasureSignature(context.Background(), tools, path,
 		[]float64{0.5, 0.5, 0.5}, 5, 10); err == nil {
 		t.Fatal("a three-component rect was accepted")
 	}

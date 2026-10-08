@@ -82,6 +82,17 @@ func TestEvalPlayerSpotMeasuresThroughTheProductionWrite(t *testing.T) {
 	if len(spot.Bins) == 0 {
 		t.Fatal("the spot is on the row but no signature was measured from it")
 	}
+	// The measure pass builds both models from the one decode: the band
+	// model rides the same row (this square spot yields three usable bands),
+	// and each band carries the full histogram geometry.
+	if len(spot.Bands) != 3 {
+		t.Fatalf("spot carries %d band models, want the 3 the multi-region measure builds", len(spot.Bands))
+	}
+	for i, b := range spot.Bands {
+		if len(b) == 0 {
+			t.Fatalf("band %d measured empty", i)
+		}
+	}
 	if spot.SampledAt == 0 {
 		t.Fatal("a measured signature must carry its sampled-at moment")
 	}

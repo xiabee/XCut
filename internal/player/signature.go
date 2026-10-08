@@ -193,3 +193,22 @@ func SigHash(bins []float64) string {
 	}
 	return h
 }
+
+// SigHashMR is the multi-region model's cache key half. The mr: prefix puts
+// band-model entries in their own analysis-cache namespace — a Phase 1 scan
+// of the same media must never satisfy a band-model request or the reverse,
+// without versioning the analyzer for both.
+func SigHashMR(bands [][]float64) string {
+	if len(bands) != RegionCount {
+		return ""
+	}
+	h := fmt.Sprintf("mr%d:", RegionCount)
+	for _, bins := range bands {
+		h += fmt.Sprintf("%d:[", len(bins))
+		for _, b := range bins {
+			h += fmt.Sprintf("%.5f,", b)
+		}
+		h += "],"
+	}
+	return h
+}

@@ -20,6 +20,10 @@ type ConfigKey struct {
 	// PlayerSig is the hash of the color signature a presence scan was run
 	// with. Re-seeding the player spot must re-scan, never cross-serve.
 	PlayerSig string `json:"player_sig,omitempty"`
+	// PlayerSigMR namespaces the band-model presence scan: an mr-prefixed
+	// hash so a single-histogram result can never satisfy a band-model
+	// request or the reverse.
+	PlayerSigMR string `json:"player_sig_mr,omitempty"`
 }
 
 // cacheKey = SHA256(fingerprint | analyzer names+versions | config). Stored

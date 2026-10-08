@@ -90,6 +90,11 @@ type PlayerSpot struct {
 	// Bins is the sampled HSV histogram, flattened H-major (len == H*S*V
 	// when measured; nil when the spot is set but not yet scanned).
 	Bins []float64 `json:"bins,omitempty"`
+	// Bands is the per-band model the multi-region filter scores against
+	// (head/torso/legs, each len == H*S*V; nil when the spot predates the
+	// band model or its shape could not yield three usable bands — those
+	// spots keep running on Bins alone).
+	Bands [][]float64 `json:"bands,omitempty"`
 	// SampledAt records when the signature was measured (unix seconds), so
 	// the analyze stage can see "spot set, never scanned" and "scanned
 	// against an older rect" as different states — the same split the

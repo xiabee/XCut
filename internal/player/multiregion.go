@@ -111,9 +111,16 @@ func (mr MultiRegionSignature) ScoreFrame(width, height int, frame []byte) (floa
 		return 0, xcerr.E(xcerr.CodeValidation,
 			fmt.Sprintf("frame has %d bytes, want %d", len(frame), stride), nil)
 	}
+	return scoreWindow(&mr, frame, width*3, 0, 0, width, height), nil
+}
 
+// scoreWindow backprojects one rect of a row-major RGB frame (strideBytes per
+// frame row; the window's columns are taken from x onward) against the band
+// model: each band's rows are cut from the WINDOW at the builder's fractions,
+// so the window is read as a hypothesized person box. Callers validate the
+// bands and the window's fit; the score is 0..1.
+func scoreWindow(mr *MultiRegionSignature, frame []byte, strideBytes, x, y, winW, winH int) float64 {
 	bandScores := make([]float64, RegionCount)
-
 	for band := 0; band < RegionCount; band++ {
 		loF := 0.0
 		if band > 0 {
@@ -123,15 +130,17 @@ func (mr MultiRegionSignature) ScoreFrame(width, height int, frame []byte) (floa
 		if band < RegionCount-1 {
 			hiF = bandFracAt(band)
 		}
-		lo := int(float64(loF) * float64(height))
-		hi := int(float64(hiF) * float64(height))
+		lo := int(float64(loF) * float64(winH))
+		hi := int(float64(hiF) * float64(winH))
 		if lo >= hi {
 			bandScores[band] = 0
 			continue
 		}
 		total, matched := 0, 0
-		for y := lo; y < hi; y++ {
-			for px := y * width * 3; px+2 < (y+1)*width*3; px += 9 {
+		for ry := lo; ry < hi; ry++ {
+			rowStart := (y+ry)*strideBytes + x*3
+			rowEnd := (y+ry)*strideBytes + (x+winW)*3
+			for px := rowStart; px+2 < rowEnd; px += 9 {
 				r, g, bl := float64(frame[px]), float64(frame[px+1]), float64(frame[px+2])
 				if r+g+bl < 24 {
 					continue
@@ -149,8 +158,7 @@ func (mr MultiRegionSignature) ScoreFrame(width, height int, frame []byte) (floa
 	}
 
 	// Weighted vote: torso (band 1) is the anchor.
-	score := regionWeights[0]*bandScores[0] +
+	return regionWeights[0]*bandScores[0] +
 		regionWeights[1]*bandScores[1] +
 		regionWeights[2]*bandScores[2]
-	return score, nil
 }

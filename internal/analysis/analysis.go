@@ -56,6 +56,10 @@ type Options struct {
 	// signature hash measured from the asset's player spot. Empty = no
 	// presence track. The value feeds the cache key (ConfigKey.PlayerSig).
 	PlayerSig string
+	// PlayerSigMR is the multi-region model's hash, its own cache
+	// namespace beside PlayerSig (ConfigKey.PlayerSigMR). Set exactly
+	// when a band-model presence analyzer is in the list.
+	PlayerSigMR string
 }
 
 // Analyzer is the pluggable analysis unit. Future Rust/AI workers implement

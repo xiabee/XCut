@@ -6,6 +6,22 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **The person filter's multi-region body model is wired into the presence
+  scan — Phase 2's component becomes a product path.** Measuring a spot now
+  builds both models from the one decode pass (the per-band head/torso/legs
+  histograms ride the spot row as an additive `bands` field; spots that
+  predate it, or whose shape cannot yield three usable bands, keep running on
+  the single histogram exactly as before). When a band model exists the scan
+  gains a second track: each candidate window is scored as a hypothesized
+  person box, cut into the bands the histograms were trained on — and the
+  window keeps the **spot's own aspect ratio**, the design decision that
+  makes "torso band" mean the trained anatomy instead of whatever the frame's
+  aspect slices (a portrait seed on landscape video clamps into the frame and
+  still scans every window). The band scan lands in its own analysis-cache
+  namespace (`mr:` hash prefix), so neither model can ever satisfy the
+  other's key, and the shipped preset's `min_player_presence` is deliberately
+  untouched: 0.3 is calibrated on the Phase 1 scale, and the band model's
+  threshold conversion was measured on the labeled match rather than guessed.
 - **The route contract between the panel and the API is now held by a test,
   not by nobody.** Every route app.js can name — 24 static literals plus the
   five trigger() tails, each with the HTTP method its call site actually

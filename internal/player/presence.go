@@ -123,8 +123,7 @@ func decodeRange(ctx context.Context, tools media.Tools, path string,
 }
 
 // s_patchMax scores one frame: the densest window's signature-match fraction.
-func s_patchMax(sig Signature, w, h int, frame []byte) float64 {
-	win := int(float64(w) * PatchFrac)
+func s_patchMax(sig Signature, w, h int, frame []byte) float64 {	win := int(float64(w) * PatchFrac)
 	if win%2 != 0 {
 		win++
 	}
@@ -168,6 +167,45 @@ func s_patchMax(sig Signature, w, h int, frame []byte) float64 {
 	return best
 }
 
+// s_patchMaxMR is the multi-region patch-max: the same sliding statistic, but
+// each candidate window is scored as a hypothesized person box — the three
+// bands are cut from the WINDOW at the fractions the model was trained on,
+// which only means anatomy when the window has the spot's own shape. So the
+// patch keeps the spot's aspect (sampled height-per-width, measured from the
+// spot rect by the caller), clamped into the frame so a portrait spot on
+// landscape video still scans — the clamp degrades the band correspondence
+// for that degenerate seeding, and is the honest behavior: every window
+// still scores, none is dropped silently.
+func s_patchMaxMR(mr MultiRegionSignature, spotHPerW float64, w, h int, frame []byte) float64 {
+	win := int(float64(w) * PatchFrac)
+	if win%2 != 0 {
+		win++
+	}
+	if win < 4 {
+		win = 4
+	}
+	winH := int(float64(win) * spotHPerW)
+	if winH%2 != 0 {
+		winH++
+	}
+	if winH > h {
+		winH = h
+	}
+	if winH < 4 {
+		winH = 4
+	}
+
+	best := 0.0
+	for y := 0; y+winH <= h; y += 4 {
+		for x := 0; x+win <= w; x += 4 {
+			if f := scoreWindow(&mr, frame, w*3, x, y, win, winH); f > best {
+				best = f
+			}
+		}
+	}
+	return best
+}
+
 // ScanPresence decodes the [start,end] range full-frame at PresenceScanFPS and
 // returns the presence curve: one sample per decoded frame, value = the best
 // patch's signature match (0..1). The analysis cache keys this under the
@@ -194,34 +232,77 @@ func ScanPresence(ctx context.Context, tools media.Tools, path string, probeW, p
 	return samples, nil
 }
 
+// ScanPresenceMR is the multi-region scan: the decode is the same, the per-
+// frame statistic scores every candidate window as a hypothesized person box
+// against the band model. spotHPerW is the spot rect's sampled height-per-
+// width — the aspect the patch keeps so its bands mean the anatomy the
+// histograms were built from (clamped into the frame for degenerate seeds;
+// see s_patchMaxMR).
+func ScanPresenceMR(ctx context.Context, tools media.Tools, path string, probeW, probeH int, mr MultiRegionSignature, spotHPerW float64, start, end float64) ([]Sample, error) {
+	for band := 0; band < RegionCount; band++ {
+		if len(mr.Bands[band]) == 0 {
+			return nil, errEmptySignature
+		}
+	}
+	if end <= start {
+		return nil, errEmptyRange
+	}
+	if spotHPerW <= 0 {
+		return nil, xcerr.E(xcerr.CodeValidation, "spot aspect must be positive", nil)
+	}
+	outW, outH := frameGeom(probeW, probeH)
+
+	var samples []Sample
+	t := start
+	err := decodeRange(ctx, tools, path, start, end, "", outW, outH, func(frame []byte) error {
+		samples = append(samples, Sample{T: t, V: s_patchMaxMR(mr, spotHPerW, outW, outH, frame)})
+		t += 1.0 / PresenceScanFPS
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return samples, nil
+}
+
 // MeasureSignature samples the spot rect across the asset (spread over the
-// duration, plus the moment the user drew the spot) and builds the model.
-// Lighting changes across a session are real, so frames span the whole
-// recording and the histogram absorbs them all.
-func MeasureSignature(ctx context.Context, tools media.Tools, path string, rect []float64, spotAt, duration float64) (Signature, int, error) {
+// duration, plus the moment the user drew the spot) and builds both models
+// from the one decode pass: the single histogram (Phase 1) and the per-band
+// model (Phase 2). The band model is nil when the spot's sampled shape
+// cannot yield three usable bands — a wide-short crop starves the head band
+// — and that spot then runs on the single histogram alone.
+func MeasureSignature(ctx context.Context, tools media.Tools, path string, rect []float64, spotAt, duration float64) (Signature, *MultiRegionSignature, int, error) {
 	probe, err := media.ProbeFile(ctx, tools, path)
 	if err != nil {
-		return Signature{}, 0, err
+		return Signature{}, nil, 0, err
 	}
 	sx, sy, sw, sh, err := rectPixels(rect, probe.Width, probe.Height)
 	if err != nil {
-		return Signature{}, 0, err
+		return Signature{}, nil, 0, err
 	}
 	outW, outH := frameGeom(sw, sh)
 	crop := fmt.Sprintf("crop=%d:%d:%d:%d", sw, sh, sx, sy)
 
 	builder := NewBuilder()
+	mrBuilder := NewMultiRegionBuilder()
 	frames := 0
 	err = decodeRange(ctx, tools, path, 0, duration, crop, outW, outH, func(frame []byte) error {
 		frames++
-		return builder.Add(outW, outH, frame)
+		if err := builder.Add(outW, outH, frame); err != nil {
+			return err
+		}
+		return mrBuilder.AddFeed(outW, outH, frame)
 	})
 	if err != nil {
-		return Signature{}, 0, err
+		return Signature{}, nil, 0, err
 	}
 	sig, err := builder.Build()
 	if err != nil {
-		return Signature{}, frames, err
+		return Signature{}, nil, frames, err
 	}
-	return sig, frames, nil
+	var mr *MultiRegionSignature
+	if m, merr := mrBuilder.Build(); merr == nil {
+		mr = &m
+	}
+	return sig, mr, frames, nil
 }
