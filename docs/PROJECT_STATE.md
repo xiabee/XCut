@@ -3,10 +3,60 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-08 04:5x +0800 (session #33's paragraphs below are the state that holds now).
-This section is a session log, read oldest first: the state that holds now is the
-last paragraph before `Verification for the night: …` in session #33 (night
-2026-10-07).
+Updated: 2026-10-09 06:5x +0800 (session #34's paragraph below is the state that
+holds now; session #33's follows it). This section is a session log, read oldest
+first: the state that holds now is the last paragraph before
+`Verification for the night: …` in session #34 (night 2026-10-08).
+
+Session #34 (night 2026-10-08) took the person filter from "component shipped"
+to "product that actually bites", and paid two long-standing debts the
+measurement runs surfaced on the way. The multi-region body model is wired
+into the presence scan (1e8dc98): measuring a spot builds both models from the
+one decode pass (the spot row carries an additive `bands` field; old or
+band-starved spots keep the single histogram), the band scan scores each
+sliding window as a hypothesized person box cut at the trained fractions with
+the window keeping the SPOT's aspect ratio — the design decision that makes
+"torso band" mean the trained anatomy — and the band track lives in its own
+cache namespace (`mr:` hash prefix), so neither model can satisfy the other's
+key. The shipped `min_player_presence` stays on the phase-1 scale
+deliberately: the labeled match saturates both models (white shirt, white
+walls), and the measured cost of the band scan is 246 ms/frame against 12.8 —
+the re-baseline waits for single-court footage like the rest of that thread.
+Legacy spots upgrade themselves on the next analyze (2de149b): a row with
+Bins and no bands runs the measure pass once, and a shape that starves the
+bands writes a present-but-empty marker so the attempt happens exactly once.
+The measurement run also flushed out that portrait media and tall spot crops
+could not presence-scan at all — the width-rule sampling sent a 9:16 clip to
+320×570 and crossed the 512 MB streaming intake mid-recording — fixed by
+capping the LONGER sampled side at 320 (32ef197; landscape byte-identical,
+per-frame cost now shape-independent, budget fit a duration property every
+aspect shares). The biggest find was a seam that had run dark since the
+person filter shipped: the presence analyzer never set the track's Kind and
+the event builder matches tracks by Kind, so `min_player_presence` had never
+bit on real data on any asset (a3e8874) — the track carries its Kind now, the
+two models carry different ones (the phase-1 scale the threshold is
+calibrated on stays `player_presence`; the band scale is `player_presence_mr`
+and feeds nothing until the footage-owned re-baseline), and the analyzer
+version bumped because the Kind-less cached results could never have worked.
+Phase 3's CLI half shipped on the same models (e0c9f18):
+`xcut player --photo <image> --set x,y,w,h` seeds the spot from a still —
+the rect is normalized to the photo, the row lands complete so analyze never
+re-measures it from the video, and `--at` is refused because a photo has no
+source second; the web UI half stays open. One earlier milestone fixed the
+render-time temp-budget refusal to tell the truth about who ate the budget
+(98bc504): debris from earlier failed runs now names `xcut cleanup` (stop
+serve first) with the split on the wire, instead of advising "raise the
+budget" at the one moment that advice is wrong. Verification for the night:
+fast gate PASS at each content tree through the control-plane channel;
+win-devops remote PASS on every pushed head — tonight's remotely
+accepted heads: 98bc504 (4m12s), febb6fa
+(3m27s), 32ef197 (3m32s), 2de149b (3m32s), a3e8874 (3m40s), e0c9f18
+(3m37s); shuffle full-suite ×2 green at 2de149b and ×2 at e0c9f18 (21
+packages each); soak 30 rounds ×2 green (2de149b and e0c9f18, counters
+perfect); full leg PASS at 2de149b and e0c9f18 (race over all 21 packages,
+cross-compile, cargo trio, in-gate gitleaks double-clean, govulncheck 0,
+gosec HIGH 0); security trio re-scanned at 027f95f and in-gate at the full
+legs.
 
 Session #33 (night 2026-10-07) put contracts where only luck had been, and
 made two caption decisions honest. The panel's route surface is now held by a
