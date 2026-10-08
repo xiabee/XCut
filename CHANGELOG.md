@@ -45,6 +45,22 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **The person filter's gate can finally see the presence it was shipped to
+  gate on.** The presence analyzer never set the feature track's Kind, and
+  the event builder's segment pass matches tracks by Kind — so the measured
+  presence never reached a segment and `min_player_presence` never bit on
+  real data, on any asset, since the person filter shipped. Two tested
+  surfaces hid the dead seam: the style gate's tests build segments directly,
+  and the analyzer's tests assert the track's Analyzer name, not its Kind.
+  The track now carries its Kind, and the two models carry different ones:
+  the phase-1 scale the shipped threshold is calibrated on stays
+  `player_presence`, the band model's scale is `player_presence_mr` (present
+  in the result, feeding nothing until the threshold re-baseline that needs
+  real footage). Cached presence results under the old version carried the
+  empty Kind and could never have worked; the analyzer version bumps so they
+  re-scan. The attach itself remains rally-mode — where the one style that
+  sets the knob lives; activity-mode presence is a possible future feature,
+  not a silent promise.
 - **Portrait media and tall spot crops can presence-scan again.** The sampling
   geometry scaled the WIDTH to 320 and derived the height, so a 9:16 phone
   clip sampled at 320×570 and a tall spot crop sampled taller still — their

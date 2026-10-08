@@ -30,7 +30,12 @@ type PlayerPresenceAnalyzer struct {
 }
 
 func (PlayerPresenceAnalyzer) Name() string { return "player_presence" }
-func (PlayerPresenceAnalyzer) Version() int { return 1 }
+
+// Version 2: the track now carries its Kind. Every Kind-less result cached
+// under version 1 was invisible to the event builder's Kind switch — the
+// segment gate never saw it — so those entries must re-scan to become
+// usable at all.
+func (PlayerPresenceAnalyzer) Version() int { return 2 }
 
 func (a PlayerPresenceAnalyzer) Analyze(ctx context.Context, opts Options, path string, _ bool, log *slog.Logger) ([]FeatureTrack, error) {
 	// The full source range is scanned; the caller bounds it with the same
@@ -40,9 +45,17 @@ func (a PlayerPresenceAnalyzer) Analyze(ctx context.Context, opts Options, path 
 		return nil, xcerr.E(xcerr.CodeAnalyzerFailure, "cannot probe source for presence scan", err)
 	}
 	unit := "patch-match"
+	kind := "player_presence"
 	var samples []player.Sample
 	if a.MR != nil {
+		// The band model is a different SCALE, not just a different
+		// estimator: the segment gate's threshold is calibrated on the
+		// phase-1 patch-match, so the band track carries its own Kind and
+		// the event switch keeps consuming the phase-1 one. The band
+		// track stays in the result for the re-baseline that owns real
+		// footage will make possible.
 		unit = "mr-patch-match"
+		kind = "player_presence_mr"
 		samples, err = player.ScanPresenceMR(ctx, opts.Tools, path,
 			probe.Width, probe.Height, *a.MR, a.SpotHPerW, 0, probe.DurationSec)
 	} else {
@@ -54,6 +67,7 @@ func (a PlayerPresenceAnalyzer) Analyze(ctx context.Context, opts Options, path 
 	}
 	track := FeatureTrack{
 		Analyzer: a.Name(),
+		Kind:     kind,
 		Unit:     unit,
 		Samples:  make([]Sample, 0, len(samples)),
 	}
