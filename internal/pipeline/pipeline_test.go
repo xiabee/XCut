@@ -439,6 +439,74 @@ func TestRenderFailureKeepsScratch(t *testing.T) {
 	}
 }
 
+// TestRenderBudgetRefusalNamesDebrisReclaim: the headroom a render is given
+// is the configured budget minus what temp/ already holds — so when earlier
+// failed runs' scratch is what shrank it, the refusal must talk about the
+// debris and name the reclaim recourse. This pins the pipeline wiring that
+// hands the renderer the configured total; the message shapes themselves are
+// pinned in internal/render.
+func TestRenderBudgetRefusalNamesDebrisReclaim(t *testing.T) {
+	if !testmedia.HasFFmpeg() {
+		t.Skip("ffmpeg not available")
+	}
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Workspace = root
+	if err := config.Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ws := workspace.New(root)
+	if err := ws.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	// A 1 MB budget with ~940 KB of prior debris: NewTempDir admits the
+	// render (940 KB < 1 MB), the first clips' scratch trips the ~85 KB
+	// headroom, and the prior — not this render — is what the refusal must
+	// explain.
+	if err := os.WriteFile(filepath.Join(ws.TempDir(), "debris-from-an-earlier-failed-run"), make([]byte, 940*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws.MaxTempBytes = 1 << 20
+	db, err := storage.Open(ws.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d := NewDeps(context.Background(), db, ws, cfg, logger)
+
+	p, err := db.CreateProject(context.Background(), "budget-refusal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path, err := testmedia.Generate(dir, "fx.mp4", testmedia.DefaultFixture(), 320, 240, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ImportAsset(p, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AnalyzeProject(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.BuildTimeline(p, Style("generic_highlight")); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(root, "out.mp4")
+	err = d.RenderProject(p, out, "", nil)
+	if err == nil {
+		t.Fatal("render over a debris-filled budget must refuse")
+	}
+	if !strings.Contains(err.Error(), "was already in workspace temp") || !strings.Contains(err.Error(), "xcut cleanup") {
+		t.Fatalf("budget refusal = %v, want the debris recourse named", err)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Fatal("refused render must not publish an output file")
+	}
+}
+
 // TestRestoreTimelineBackupRollsBackFailedSwap: when the second half of the
 // swap (backup := old current) fails, the first half is rolled back — the
 // restore becomes a clean no-op instead of silently consuming the undo
