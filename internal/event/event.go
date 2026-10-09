@@ -249,6 +249,17 @@ func Build(tracks []analysis.FeatureTrack, duration float64, cfg Config) ([]Segm
 				continue
 			}
 			seg := scoreSpan(s, cfg)
+			// Person presence rides activity segments the way it rides
+			// rallies: the mean phase-1 match inside the window. Attaching
+			// the measurement is mode-independent data; gating on it stays
+			// the style preset's opt-in (min_player_presence).
+			if playerPresence != nil {
+				mean := intervalMean(playerPresence, seg.Start, seg.End)
+				if !math.IsNaN(mean) && !math.IsInf(mean, 0) {
+					seg.PlayerPresence = round4(mean)
+					seg.HasPlayerPresence = true
+				}
+			}
 			// Transient density inside activity segments: a generic music /
 			// percussive-energy signal (styles score it via hits/density
 			// weights; it is never surfaced as a "chorus" or other claim we

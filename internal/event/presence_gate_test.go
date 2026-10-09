@@ -74,3 +74,64 @@ func TestBandModelTrackDoesNotFeedTheGate(t *testing.T) {
 		}
 	}
 }
+
+// activityPresenceTracks assembles the activity recipe (one constant active
+// run: above the floor, below the cut) plus whatever presence tracks the
+// caller wants beside it.
+func activityPresenceTracks(presence ...analysis.FeatureTrack) []analysis.FeatureTrack {
+	motion := analysis.FeatureTrack{Kind: "frame_diff"}
+	for t := 0.0; t <= 15.0; t += 0.5 {
+		motion.Samples = append(motion.Samples, analysis.Sample{T: t, V: 0.15})
+	}
+	return append([]analysis.FeatureTrack{motion}, presence...)
+}
+
+// TestActivitySegmentsCarryThePhase1PresenceTrack: the person filter's data
+// is mode-independent — an activity-mode reel (vlog, KTV) answers
+// min_player_presence the same way a rally reel does, from the phase-1
+// track only.
+func TestActivitySegmentsCarryThePhase1PresenceTrack(t *testing.T) {
+	tracks := activityPresenceTracks(
+		presenceTrack("player_presence", 0.75),
+		presenceTrack("player_presence_mr", 0.05),
+	)
+	segs, _, err := Build(tracks, 15, DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) == 0 {
+		t.Fatal("expected activity segments from the constant-run recipe")
+	}
+	withPresence := 0
+	for _, s := range segs {
+		if !s.HasPlayerPresence {
+			continue
+		}
+		withPresence++
+		if math.Abs(s.PlayerPresence-0.75) > 0.01 {
+			t.Fatalf("activity segment carries presence %.3f, want the phase-1 track's 0.75", s.PlayerPresence)
+		}
+	}
+	if withPresence == 0 {
+		t.Fatal("no activity segment carried presence — the attachment is still rally-only")
+	}
+}
+
+// TestActivityBandModelTrackDoesNotFeedTheGate: the band scale stays out of
+// the gate's input in activity mode too — presence lands or not exactly as
+// in rally mode, never from the uncalibrated track.
+func TestActivityBandModelTrackDoesNotFeedTheGate(t *testing.T) {
+	tracks := activityPresenceTracks(presenceTrack("player_presence_mr", 0.9))
+	segs, _, err := Build(tracks, 15, DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) == 0 {
+		t.Fatal("expected activity segments from the constant-run recipe")
+	}
+	for _, s := range segs {
+		if s.HasPlayerPresence {
+			t.Fatalf("the band track leaked into the phase-1-calibrated gate: %+v", s)
+		}
+	}
+}

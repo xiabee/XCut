@@ -40,6 +40,11 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
       原样）。分析缓存以 `mr:` 前缀哈希分命名空间（`ConfigKey.PlayerSigMR`），
       两种模型互不命中对方条目，analyzer 版本不动。双轨并行：单直方图
       轨迹与 band 轨迹同轮产出（unit `patch-match` / `mr-patch-match`）。
+- [x] presence 附着覆盖两种分段模式（2026-10-09 夜）：activity 段与 rally
+      段同样携带 phase-1 presence（区间均值 + NaN/Inf 守卫同规则）；数据
+      附着无条件，门控仍由 preset 的 `min_player_presence` opt-in——此前
+      activity 模式（vlog/KTV）的段从不携带 presence，门在那种 reel 上
+      无从咬合。band 轨（`player_presence_mr`）两种模式都不进门，等再标定。
 - [ ] `min_player_presence` 门槛切换到 multi-region 分数：**preset 数值
       不随本接线切换**——`badminton_highlight` 的 0.3 是 Phase 1 patch-max
       标度上的标定；band 模型分数是三带加权票，标度不同。阈值换算已在

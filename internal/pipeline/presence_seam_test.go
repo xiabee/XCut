@@ -107,4 +107,27 @@ func TestPresenceTrackKindReachesTheSegmentGate(t *testing.T) {
 	if withPresence == 0 {
 		t.Fatal("no rally carried presence — the analyzer's track still does not reach the gate")
 	}
+
+	// The same analyzer feed through the ACTIVITY builder: presence is
+	// mode-independent data, and the gate must see it in vlog/KTV reels too
+	// (the attachment lived rally-only until 2026-10-09).
+	asegs, _, err := event.Build(feeds, probe.DurationSec, event.Config{
+		CutThreshold: 0.25, MotionFloor: 0.05, SilenceDB: -45,
+		MergeGap: 1.2, MinDuration: 2.0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asegs) == 0 {
+		t.Fatal("expected activity segments from the seam feed")
+	}
+	aWithPresence := 0
+	for _, s := range asegs {
+		if s.HasPlayerPresence {
+			aWithPresence++
+		}
+	}
+	if aWithPresence == 0 {
+		t.Fatal("no activity segment carried presence — the analyzer's track reaches rallies only")
+	}
 }
