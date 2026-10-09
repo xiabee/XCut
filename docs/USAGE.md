@@ -158,10 +158,16 @@ point boundaries. Bare `xcut roi <project>` lists what each asset carries.
 
 ## xcut player
 ```
-usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]
+usage: xcut player <project> [--asset id [--set x,y,w,h [--at seconds]] [--photo image]]
 
 person filter: mark where you are in a source
 ```
+
+Bare `xcut player <project>` lists every asset's spot state (the same
+always-end-with-the-listing shape `xcut roi` speaks): rect and drawn-at
+moment, whether the signature is measured, and the band model's state —
+full (`+ 3 bands`), band-starved (the shape could not yield three bands),
+or pending backfill on a pre-band row.
 
 `--photo <image>` seeds the spot from a still photo instead of the video:
 `--set` names the rect **on the photo** (normalized, so the photo's

@@ -13,13 +13,13 @@ import (
 )
 
 func init() {
-	register("player", "person filter: mark where you are in a source", usageSyntax("xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]"), cmdPlayer)
+	register("player", "person filter: mark where you are in a source", usageSyntax("xcut player <project> [--asset id [--set x,y,w,h [--at seconds]] [--photo image]]"), cmdPlayer)
 }
 
 func cmdPlayer(a *App, args []string) error {
 	if len(args) < 1 {
 		return xcerr.E(xcerr.CodeValidation,
-			"usage: xcut player <project> --asset <id> [--set x,y,w,h [--at seconds]] [--photo image]", nil)
+			"usage: xcut player <project> [--asset id [--set x,y,w,h [--at seconds]] [--photo image]]", nil)
 	}
 	projectName := args[0]
 
@@ -35,8 +35,8 @@ func cmdPlayer(a *App, args []string) error {
 	}); err != nil {
 		return err
 	}
-	if assetID == "" {
-		return xcerr.E(xcerr.CodeValidation, "--asset <id> is required", nil)
+	if assetID == "" && (set != "" || photo != "" || atStr != "") {
+		return xcerr.E(xcerr.CodeValidation, "--asset <id> is required to seed a spot", nil)
 	}
 	if photo != "" && set == "" {
 		return xcerr.E(xcerr.CodeValidation,
@@ -61,6 +61,36 @@ func cmdPlayer(a *App, args []string) error {
 	assets, err := db.ListAssets(ctx, p.ID)
 	if err != nil {
 		return err
+	}
+	if len(assets) == 0 {
+		return xcerr.E(xcerr.CodeNotFound, "project has no assets (import first)", nil)
+	}
+
+	// Listing mode: bare `xcut player <project>` shows every asset's spot
+	// state — the same always-end-with-the-listing shape `xcut roi` speaks,
+	// so scripts (and humans) can see what the person filter will eat.
+	if assetID == "" {
+		for _, as := range assets {
+			state := "no spot"
+			if sp := as.PlayerSpot; sp != nil {
+				r := sp.Rect
+				sig := "signature not measured — run analyze"
+				switch {
+				case len(sp.Bins) > 0 && player.ValidBands(sp.Bands):
+					sig = fmt.Sprintf("signature measured (%d bins + 3 bands)", len(sp.Bins))
+				case len(sp.Bins) > 0 && sp.Bands != nil:
+					// The present-but-empty marker: the shape starved the
+					// bands; the single histogram is all this spot will have.
+					sig = fmt.Sprintf("signature measured (%d bins, band-starved shape)", len(sp.Bins))
+				case len(sp.Bins) > 0:
+					sig = fmt.Sprintf("signature measured (%d bins, bands pending — next analyze backfills)", len(sp.Bins))
+				}
+				state = fmt.Sprintf("spot %.4f,%.4f %.4fx%.4f at %.1fs  %s",
+					r[0], r[1], r[2], r[3], sp.At, sig)
+			}
+			fmt.Fprintf(a.Stdout, "%s  %-24s  %s\n", as.ID, as.Filename, state)
+		}
+		return nil
 	}
 	var asset *storage.Asset
 	for i := range assets {

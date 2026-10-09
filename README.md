@@ -299,6 +299,7 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 播种入口走同一条存储规则，重框即弃旧签名、下次分析按新框重测：
 
 ```sh
+xcut player <project>                                                # 列出各资产的标记状态
 xcut player <project> --asset <id> --set x,y,w,h [--at seconds]      # 在视频帧上框选
 xcut player <project> --asset <id> --set x,y,w,h --photo me.png      # 在照片上框选，立即量签
 xcut analyze <project>                                               # 量取色签（视频框选时）
