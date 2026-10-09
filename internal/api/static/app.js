@@ -1837,7 +1837,11 @@ function closeROIEditor() {
 
 $("btn-roi").addEventListener("click", openROIEditor);
 $("btn-roi-cancel").addEventListener("click", closeROIEditor);
-$("subs-asset").addEventListener("change", refreshROIStatus);
+// Switching assets closes the editor: the rect on screen was drawn against
+// the asset the editor opened with — letting the dropdown move underneath it
+// would invite saving one source's region onto another's row (the save pins
+// to the opened asset too; the close is the visible half of that rule).
+$("subs-asset").addEventListener("change", () => { closeROIEditor(); refreshROIStatus(); });
 $("roi-target").addEventListener("change", () => { closeROIEditor(); refreshROIStatus(); });
 $("btn-roi-clear").addEventListener("click", async () => {
   const asset = roiAsset();
@@ -1851,8 +1855,10 @@ $("btn-roi-clear").addEventListener("click", async () => {
 });
 $("btn-roi-save").addEventListener("click", async () => {
   if (!roiRect || !currentProject) return;
-  const asset = roiAsset();
-  if (!asset) return;
+  // The editor drew against the asset it opened with (roiAssetId); the save
+  // targets that asset even if the dropdown moved while the editor sat open —
+  // a rect drawn over one source's frame must never land on another's row.
+  if (!roiAssetId) return;
   try {
     if (roiPhotoFile) {
       // Photo seed: the rect travels in the query (x,y,w,h normalized to the
@@ -1860,7 +1866,7 @@ $("btn-roi-save").addEventListener("click", async () => {
       // the completed spot — the signature is measured the moment this
       // returns.
       const rect = [roiRect.x, roiRect.y, roiRect.w, roiRect.h].map((v) => v.toFixed(6)).join(",");
-      const url = roiUrl(asset.value) + "/photo?filename=" +
+      const url = roiUrl(roiAssetId) + "/photo?filename=" +
         encodeURIComponent(roiPhotoFile.name) + "&rect=" + rect;
       const body = await roiPhotoFile.arrayBuffer();
       await api(url, {
@@ -1878,7 +1884,7 @@ $("btn-roi-save").addEventListener("click", async () => {
     const body = roiIsSpot()
       ? { rect: [roiRect.x, roiRect.y, roiRect.w, roiRect.h], at: $("roi-video").currentTime || 1 }
       : roiRect;
-    await api(roiUrl(asset.value), {
+    await api(roiUrl(roiAssetId), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
