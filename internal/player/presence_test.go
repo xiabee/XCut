@@ -3,6 +3,7 @@ package player
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -201,7 +202,7 @@ func TestScanPresenceMRReassemblesWhatTheChildStreams(t *testing.T) {
 	tools := media.Tools{FFmpeg: os.Args[0]}
 
 	samples, err := ScanPresenceMR(context.Background(), tools, "unused.mp4",
-		640, 360, greenMultiRegion(t), 1.0, 0, 2)
+		640, 360, greenMultiRegion(t), 1.0, Signature{}, 0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,15 +220,15 @@ func TestScanPresenceMRReassemblesWhatTheChildStreams(t *testing.T) {
 func TestScanPresenceMRRefuses(t *testing.T) {
 	tools := media.Tools{FFmpeg: os.Args[0]}
 	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
-		MultiRegionSignature{}, 1.0, 0, 2); err == nil {
+		MultiRegionSignature{}, 1.0, Signature{}, 0, 2); err == nil {
 		t.Fatal("an empty band model scanned instead of refusing")
 	}
 	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
-		greenMultiRegion(t), 1.0, 2, 2); err == nil {
+		greenMultiRegion(t), 1.0, Signature{}, 2, 2); err == nil {
 		t.Fatal("an empty range scanned instead of refusing")
 	}
 	if _, err := ScanPresenceMR(context.Background(), tools, "x.mp4", 640, 360,
-		greenMultiRegion(t), 0, 0, 2); err == nil {
+		greenMultiRegion(t), 0, Signature{}, 0, 2); err == nil {
 		t.Fatal("a zero spot aspect scanned instead of refusing")
 	}
 }
@@ -310,12 +311,26 @@ func TestScanPresenceOnPortraitMedia(t *testing.T) {
 	if len(samples) == 0 {
 		t.Fatal("portrait scan produced no samples")
 	}
-	mrSamples, err := ScanPresenceMR(context.Background(), tools, path, 240, 426, *mr, 1.0, 0, 6)
+	mrSamples, err := ScanPresenceMR(context.Background(), tools, path, 240, 426, *mr, 1.0, Signature{}, 0, 6)
 	if err != nil {
 		t.Fatalf("portrait band scan failed: %v", err)
 	}
 	if len(mrSamples) == 0 {
 		t.Fatal("portrait band scan produced no samples")
+	}
+	// The shortlisted form on the same media: every sample within the sweep's
+	// value (the subset-max property) and non-empty.
+	slSamples, err := ScanPresenceMR(context.Background(), tools, path, 240, 426, *mr, 1.0, sig, 0, 6)
+	if err != nil {
+		t.Fatalf("portrait shortlisted scan failed: %v", err)
+	}
+	if len(slSamples) != len(mrSamples) {
+		t.Fatalf("shortlisted scan produced %d samples, want the sweep's %d", len(slSamples), len(mrSamples))
+	}
+	for i := range slSamples {
+		if slSamples[i].V > mrSamples[i].V+1e-9 {
+			t.Fatalf("sample %d: shortlisted %.4f exceeds the sweep's %.4f", i, slSamples[i].V, mrSamples[i].V)
+		}
 	}
 }
 
@@ -462,5 +477,88 @@ func TestSignatureContract(t *testing.T) {
 	}
 	if SigHash(nil) != "" {
 		t.Fatal("an empty model hashes to something rather than nothing")
+	}
+}
+
+// noiseFrame fills w*h RGB with a deterministic LCG pattern — no ffmpeg, no
+// fixture file: the shortlist properties need adversarial pixel soup, not
+// real media.
+func noiseFrame(seed, w, h int) []byte {
+	frame := make([]byte, w*h*3)
+	s := uint32(seed)
+	for i := 0; i < len(frame); i++ {
+		s = s*1664525 + 1013904223
+		frame[i] = byte(s >> 24)
+	}
+	return frame
+}
+
+// plantRect overwrites a rect with the pure green the green* helpers train
+// on, at frame coordinates (a planted "person" the prefilter must rank).
+func plantRect(frame []byte, w, x, y, rw, rh int) {
+	for yy := y; yy < y+rh; yy++ {
+		row := yy * w * 3
+		for xx := x; xx < x+rw; xx++ {
+			frame[row+xx*3+1] = 255
+		}
+	}
+}
+
+// TestMRShortlistFindsThePlantedPerson: a green rect planted on noise makes
+// the winning window obvious — the shortlist must report the sweep's exact
+// best, or the prefilter is not a prefilter but a different statistic.
+func TestMRShortlistFindsThePlantedPerson(t *testing.T) {
+	mr := greenMultiRegion(t)
+	sig := greenSignature(t)
+	const w, h = 320, 240
+	aspect := 1.0
+
+	for _, seed := range []int{1, 7, 42, 2026} {
+		frame := noiseFrame(seed, w, h)
+		plantRect(frame, w, 120, 80, 64, 64)
+		full := s_patchMaxMR(mr, aspect, w, h, frame)
+		short := s_patchMaxMRShortlist(mr, sig, aspect, w, h, frame)
+		if math.Abs(full-short) > 1e-9 {
+			t.Fatalf("seed %d: shortlisted %.6f != sweep %.6f — the prefilter missed the planted window", seed, short, full)
+		}
+	}
+}
+
+// TestMRShortlistNeverExceedsTheSweep: the prefilter scores a subset of the
+// grid, so its max can only be lower or equal — on noise where nothing
+// matches, on planted scenes, everywhere.
+func TestMRShortlistNeverExceedsTheSweep(t *testing.T) {
+	mr := greenMultiRegion(t)
+	sig := greenSignature(t)
+	const w, h = 320, 240
+	for _, seed := range []int{2, 3, 5, 8, 13, 21} {
+		frame := noiseFrame(seed, w, h)
+		full := s_patchMaxMR(mr, 1.0, w, h, frame)
+		short := s_patchMaxMRShortlist(mr, sig, 1.0, w, h, frame)
+		if short > full+1e-9 {
+			t.Fatalf("seed %d: shortlisted %.6f > sweep %.6f — the subset-max property broke", seed, short, full)
+		}
+		plantRect(frame, w, 40, 30, 96, 96)
+		full = s_patchMaxMR(mr, 1.0, w, h, frame)
+		short = s_patchMaxMRShortlist(mr, sig, 1.0, w, h, frame)
+		if short > full+1e-9 {
+			t.Fatalf("seed %d planted: shortlisted %.6f > sweep %.6f", seed, short, full)
+		}
+	}
+}
+
+// TestMRShortlistEmptySignatureIsTheFullSweep: an empty phase-1 signature
+// must reproduce the un-prefiltered scan exactly — the analyzer's degrade
+// path is the old statistic, byte for byte.
+func TestMRShortlistEmptySignatureIsTheFullSweep(t *testing.T) {
+	mr := greenMultiRegion(t)
+	const w, h = 320, 240
+	for _, seed := range []int{4, 9} {
+		frame := noiseFrame(seed, w, h)
+		full := s_patchMaxMR(mr, 1.0, w, h, frame)
+		short := s_patchMaxMRShortlist(mr, Signature{}, 1.0, w, h, frame)
+		if full != short {
+			t.Fatalf("seed %d: empty-shortlist run scored %.6f, want the sweep's %.6f", seed, short, full)
+		}
 	}
 }

@@ -31,11 +31,11 @@ type PlayerPresenceAnalyzer struct {
 
 func (PlayerPresenceAnalyzer) Name() string { return "player_presence" }
 
-// Version 2: the track now carries its Kind. Every Kind-less result cached
-// under version 1 was invisible to the event builder's Kind switch — the
-// segment gate never saw it — so those entries must re-scan to become
-// usable at all.
-func (PlayerPresenceAnalyzer) Version() int { return 2 }
+// Version 3: the MR scan shortlists through the phase-1 integral image
+// (top-24 windows pay the band score) — an approximation whose track values
+// can differ from the full sweep a version-2 cache holds, so the band
+// namespace re-scans. The phase-1 track is unchanged by this version.
+func (PlayerPresenceAnalyzer) Version() int { return 3 }
 
 func (a PlayerPresenceAnalyzer) Analyze(ctx context.Context, opts Options, path string, _ bool, log *slog.Logger) ([]FeatureTrack, error) {
 	// The full source range is scanned; the caller bounds it with the same
@@ -56,8 +56,13 @@ func (a PlayerPresenceAnalyzer) Analyze(ctx context.Context, opts Options, path 
 		// footage will make possible.
 		unit = "mr-patch-match"
 		kind = "player_presence_mr"
+		// The phase-1 signature rides along as the shortlist prefilter: the
+		// band scan keeps its trained semantics but pays for 24 windows per
+		// frame instead of every one (measured 172 → 5.3 ms per 320x240
+		// frame on the bench rig, PERFORMANCE.md). An empty phase-1
+		// signature degrades to the full sweep.
 		samples, err = player.ScanPresenceMR(ctx, opts.Tools, path,
-			probe.Width, probe.Height, *a.MR, a.SpotHPerW, 0, probe.DurationSec)
+			probe.Width, probe.Height, *a.MR, a.SpotHPerW, a.Sig, 0, probe.DurationSec)
 	} else {
 		samples, err = player.ScanPresence(ctx, opts.Tools, path,
 			probe.Width, probe.Height, a.Sig, 0, probe.DurationSec)

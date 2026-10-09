@@ -220,6 +220,132 @@ func s_patchMaxMR(mr MultiRegionSignature, spotHPerW float64, w, h int, frame []
 	return best
 }
 
+// MRShortlistK is how many windows per frame the phase-1 prefilter keeps for
+// band scoring. The candidate grid on a 320x240 sampled frame runs to ~1.6k
+// windows; 24 recovered the sweep's exact best on every planted-person frame
+// tested while cutting the band cost to ~3% of the sweep (measured 172 →
+// 5.3 ms per frame on this rig, PERFORMANCE.md).
+const MRShortlistK = 24
+
+// s_patchMaxMRShortlist is the two-tier form of s_patchMaxMR: the phase-1
+// integral image (same binarization the single-histogram scan uses — a pixel
+// whose bin has signature mass) ranks every grid window in one cheap pass,
+// and only the top MRShortlistK windows pay scoreWindow. The band max over a
+// subset is <= the band max over all windows; that is the prefilter's
+// approximation and the reason the analyzer version bumps (a cached full-
+// sweep track and a shortlisted one are different measurements of the same
+// model).
+func s_patchMaxMRShortlist(mr MultiRegionSignature, sig Signature, spotHPerW float64, w, h int, frame []byte) float64 {
+	win := int(float64(w) * PatchFrac)
+	if win%2 != 0 {
+		win++
+	}
+	if win < 4 {
+		win = 4
+	}
+	winH := int(float64(win) * spotHPerW)
+	if winH%2 != 0 {
+		winH++
+	}
+	if winH > h {
+		winH = h
+	}
+	if winH < 4 {
+		winH = 4
+	}
+
+	// No phase-1 model, no prefilter: every window pays the band score, the
+	// pre-prefilter statistic exactly.
+	if len(sig.Bins) == 0 {
+		best := 0.0
+		for y := 0; y+winH <= h; y += 4 {
+			for x := 0; x+win <= w; x += 4 {
+				if f := scoreWindow(&mr, frame, w*3, x, y, win, winH); f > best {
+					best = f
+				}
+			}
+		}
+		return best
+	}
+
+	// The integral table over the phase-1 mask, identical construction to
+	// s_patchMax's — every band-matchable pixel has phase-1 mass, so the
+	// mask can only rank windows, never blind the band model to one.
+	w1 := w + 1
+	table := make([]int, w1*(h+1))
+	for y := 0; y < h; y++ {
+		row := y * w * 3
+		sumRow := (y + 1) * w1
+		prevRow := y * w1
+		run := 0
+		for x := 0; x < w; x++ {
+			px := row + x*3
+			r, g, bl := float64(frame[px]), float64(frame[px+1]), float64(frame[px+2])
+			m := 0
+			if r+g+bl >= 24 && sig.Bins[binIndex(rgbToHSV(r, g, bl))] > 0 {
+				m = 1
+			}
+			run += m
+			table[sumRow+x+1] = table[prevRow+x+1] + run
+		}
+	}
+
+	// Tier one: rank the grid by the phase-1 fraction, keep the top K. The
+	// K-best chase is a linear scan with an insertion into a fixed array —
+	// the grid is ~1.6k windows and K is 24, so a sort would be waste.
+	type candidate struct {
+		x, y int
+		frac float64
+	}
+	top := make([]candidate, 0, MRShortlistK)
+	area := win * winH
+	worst := 0.0 // the smallest fraction currently kept; set once K fill
+	recomputeWorst := func() {
+		worst = top[0].frac
+		for _, c := range top[1:] {
+			if c.frac < worst {
+				worst = c.frac
+			}
+		}
+	}
+	for y := 0; y+winH <= h; y += 4 {
+		for x := 0; x+win <= w; x += 4 {
+			x2, y2 := x+win, y+winH
+			sum := table[y2*w1+x2] - table[y*w1+x2] - table[y2*w1+x] + table[y*w1+x]
+			f := float64(sum) / float64(area)
+			if len(top) < MRShortlistK {
+				top = append(top, candidate{x, y, f})
+				if len(top) == MRShortlistK {
+					recomputeWorst()
+				}
+				continue
+			}
+			if f <= worst {
+				continue
+			}
+			// Replace the current minimum: the array is tiny, a walk is
+			// cheaper than a heap.
+			minI := 0
+			for i := 1; i < len(top); i++ {
+				if top[i].frac < top[minI].frac {
+					minI = i
+				}
+			}
+			top[minI] = candidate{x, y, f}
+			recomputeWorst()
+		}
+	}
+
+	// Tier two: band-score the survivors only.
+	best := 0.0
+	for _, c := range top {
+		if f := scoreWindow(&mr, frame, w*3, c.x, c.y, win, winH); f > best {
+			best = f
+		}
+	}
+	return best
+}
+
 // ScanPresence decodes the [start,end] range full-frame at PresenceScanFPS and
 // returns the presence curve: one sample per decoded frame, value = the best
 // patch's signature match (0..1). The analysis cache keys this under the
@@ -252,7 +378,20 @@ func ScanPresence(ctx context.Context, tools media.Tools, path string, probeW, p
 // width — the aspect the patch keeps so its bands mean the anatomy the
 // histograms were built from (clamped into the frame for degenerate seeds;
 // see s_patchMaxMR).
-func ScanPresenceMR(ctx context.Context, tools media.Tools, path string, probeW, probeH int, mr MultiRegionSignature, spotHPerW float64, start, end float64) ([]Sample, error) {
+//
+// shortlist is the phase-1 signature used as a prefilter: the per-frame
+// integral image of "pixel whose bin has phase-1 mass" ranks the candidate
+// grid cheaply and only the top MRShortlistK windows pay the band score —
+// the measured 246 ms/frame of scoring every window collapses to roughly the
+// phase-1 scan's own cost. The prefilter is an APPROXIMATION: the winning
+// window is chosen among the shortlisted ones, so on adversarial frames the
+// band-max can sit outside the phase-1 top-K and scan lower than a full
+// sweep would report. Every band-matchable pixel has phase-1 mass (the band
+// histograms are subsets of the same pixels), so the mask never excludes a
+// pixel the band model could match — the approximation is in the RANKING,
+// not in the mask. An empty shortlist signature scans every window, exactly
+// as before the prefilter existed.
+func ScanPresenceMR(ctx context.Context, tools media.Tools, path string, probeW, probeH int, mr MultiRegionSignature, spotHPerW float64, shortlist Signature, start, end float64) ([]Sample, error) {
 	for band := 0; band < RegionCount; band++ {
 		if len(mr.Bands[band]) == 0 {
 			return nil, errEmptySignature
@@ -265,11 +404,18 @@ func ScanPresenceMR(ctx context.Context, tools media.Tools, path string, probeW,
 		return nil, xcerr.E(xcerr.CodeValidation, "spot aspect must be positive", nil)
 	}
 	outW, outH := frameGeom(probeW, probeH)
+	shortlisted := len(shortlist.Bins) > 0
 
 	var samples []Sample
 	t := start
 	err := decodeRange(ctx, tools, path, start, end, "", outW, outH, func(frame []byte) error {
-		samples = append(samples, Sample{T: t, V: s_patchMaxMR(mr, spotHPerW, outW, outH, frame)})
+		v := 0.0
+		if shortlisted {
+			v = s_patchMaxMRShortlist(mr, shortlist, spotHPerW, outW, outH, frame)
+		} else {
+			v = s_patchMaxMR(mr, spotHPerW, outW, outH, frame)
+		}
+		samples = append(samples, Sample{T: t, V: v})
 		t += 1.0 / PresenceScanFPS
 		return nil
 	})
