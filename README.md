@@ -296,18 +296,24 @@ export XCUT_SIDECAR_INSECURE_TLS=1   # 自签证书时
 无 AI 依赖的人物标记：在源视频某一帧上框住自己，分析阶段从这块区域量出
 一个 HSV 色签（18×3×3 直方图），presence 扫描按滑动窗口回答"这一帧里
 '我'在场的强度"——`min_player_presence` 风格项据此筛掉你不在场的片段。
-三种播种入口走同一条存储规则，重框即弃旧签名、下次分析按新框重测：
+播种入口走同一条存储规则，重框即弃旧签名、下次分析按新框重测：
 
 ```sh
-xcut player <project> --asset <id> --set x,y,w,h [--at seconds]  # 框选并显示状态
-xcut analyze <project>                                           # 量取色签
+xcut player <project> --asset <id> --set x,y,w,h [--at seconds]      # 在视频帧上框选
+xcut player <project> --asset <id> --set x,y,w,h --photo me.png      # 在照片上框选，立即量签
+xcut analyze <project>                                               # 量取色签（视频框选时）
 ```
 
-Web UI 的 Regions 面板第三个目标就是它（画框 → 保存 → 运行分析）；
-评测台 manifest 也能按 case 播种 `player_spot:{x,y,w,h,at}`，让
-`min_player_presence` 在标注素材上可 A/B。诚实边界：单一直方图不认人
-——同色系两个人无法区分；多人区分属后续多区域/检测器路线
-（docs/PERSON_FILTER_ROADMAP.md）。
+照片播种的坐标归一化在照片上（与分辨率无关），签名当场量好落库——
+下一次分析直接使用，绝不从视频重测；Web UI 的 Regions 面板同样支持
+（画框保存，或"从照片种入"选图拖框，立即出签）；评测台 manifest 也能
+按 case 播种 `player_spot:{x,y,w,h,at}`，让 `min_player_presence`
+在标注素材上可 A/B。
+
+诚实边界：门槛当前标定在单直方图的 patch-max 标度上；三带（头/躯干/腿）
+多区域模型已接入扫描（双轨并行，band 轨等真实素材再标定后才进门），
+但本质仍是颜色模型——同色系场景（白衣球员+白墙）会饱和，多人区分属
+检测器/re-ID 路线（docs/PERSON_FILTER_ROADMAP.md）。
 
 ## ⚙️ 配置
 
