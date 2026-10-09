@@ -53,10 +53,12 @@ var xhrOpenRe = regexp.MustCompile(`open\(\s*["']([A-Z]+)["']\s*,\s*["'\x60]$`)
 // spelling is what made this extraction silently empty once already.
 var triggerTailRe = regexp.MustCompile(`trigger\(\s*['"](/[A-Za-z0-9_\-]+)['"]`)
 
-// extraProbes cover the one template static extraction cannot resolve: the
+// extraProbes cover the templates static extraction cannot resolve: the
 // asset-route helper builds .../assets/{id}/{name} where {name} comes from
-// its callers and a ternary. These are probed method-agnostically (the
-// literal that GETs each of them carries its own method assertion). The
+// its callers and a ternary, and the photo seed appends "/photo?..." to the
+// player-spot path — a fragment that does not start with /api/v1, so the
+// literal extractor can never see it. These are probed method-agnostically
+// (the literal that GETs each of them carries its own method assertion). The
 // guards in the contract test keep this table honest — if the template shape
 // changes, the test fails and asks for the table to be revisited rather than
 // silently probing shapes the UI no longer builds.
@@ -65,6 +67,7 @@ var extraProbes = []string{
 	"/api/v1/projects/{}/assets/{}/score",
 	"/api/v1/projects/{}/assets/{}/file",
 	"/api/v1/projects/{}/assets/{}/player-spot",
+	"/api/v1/projects/{}/assets/{}/player-spot/photo",
 }
 
 // uiCalls maps each normalized path to the methods the UI exercises it with.
@@ -136,7 +139,7 @@ func TestRouteContractEveryPathTheUIFetchesIsRegistered(t *testing.T) {
 	appjs := string(src)
 	// Guards for the dynamic shapes extraProbes exist for. Each names the
 	// app.js text it watches; edits to those lines must revisit the table.
-	for _, guard := range []string{"currentProject.id}${path}", "assets/${assetValue}/"} {
+	for _, guard := range []string{"currentProject.id}${path}", "assets/${assetValue}/", `+ "/photo?filename=" +`} {
 		if !strings.Contains(appjs, guard) {
 			t.Fatalf("app.js no longer contains %q — the dynamic-route table in this test watches a shape that moved; revisit extraProbes", guard)
 		}
@@ -144,7 +147,7 @@ func TestRouteContractEveryPathTheUIFetchesIsRegistered(t *testing.T) {
 
 	calls := uiCalls(appjs)
 	// The floor exists so a regex regression that silently extracts nothing
-	// fails here instead of asserting on an empty set. 24 distinct routes
+	// fails here instead of asserting on an empty set. 25 distinct routes
 	// today; legitimate UI churn moves this by a few, not by twenty.
 	if len(calls) < 20 {
 		t.Fatalf("extracted %d routes from app.js, want >= 20 — the extractor likely regressed and would assert on nothing", len(calls))
