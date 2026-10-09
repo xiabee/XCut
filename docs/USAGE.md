@@ -172,6 +172,11 @@ never re-measures it from the video. Seeding `--set` again without
 `--photo` goes back to video coordinates and re-measures on the next
 analyze.
 
+The web panel does the same without a terminal: in **Regions → player spot**,
+open the picker and choose **seed from a photo…**, then drag the rect over
+the person in the picture — the photo goes up, the signature comes back
+measured, and the spot is complete exactly as with `--photo`.
+
 ## xcut render
 ```
 usage: xcut render <project> [--out path] [--subs file|auto] [--encoder name]

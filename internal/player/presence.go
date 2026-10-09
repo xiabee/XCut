@@ -332,6 +332,14 @@ func MeasureSignatureFromImage(ctx context.Context, tools media.Tools, path stri
 	if err != nil {
 		return Signature{}, nil, err
 	}
+	// Some non-image payloads probe "successfully" with a video stream that
+	// carries no dimensions (png_pipe sniffing of garbage). The rect math
+	// would turn that into "spot rect too small" — a lie about the user's
+	// rect when the truth is the file is not a readable image.
+	if probe.Width <= 0 || probe.Height <= 0 {
+		return Signature{}, nil, xcerr.E(xcerr.CodeUnsupportedMedia,
+			"the file is not a readable image", nil)
+	}
 	sx, sy, sw, sh, err := rectPixels(rect, probe.Width, probe.Height)
 	if err != nil {
 		return Signature{}, nil, err

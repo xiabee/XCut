@@ -1778,9 +1778,10 @@ async function refreshROIStatus() {
 
 function drawROIOverlay() {
   const canvas = $("roi-canvas");
-  const video = $("roi-video");
-  canvas.width = video.clientWidth || 320;
-  canvas.height = video.clientHeight || 240;
+  // In photo mode the rect is drawn over the <img>; otherwise the <video>.
+  const stage = roiPhotoFile ? $("roi-photo") : $("roi-video");
+  canvas.width = stage.clientWidth || 320;
+  canvas.height = stage.clientHeight || 240;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!roiRect) return;
@@ -1791,6 +1792,22 @@ function drawROIOverlay() {
     roiRect.w * canvas.width, roiRect.h * canvas.height);
 }
 
+// Photo-reference seeding (the web half of the CLI's --photo): the rect is
+// drawn ON the photo, the photo content goes up, and the server measures
+// both models from that one image — the spot row lands complete, so the
+// next analyze never re-measures it from the video.
+let roiPhotoFile = null;
+let roiPhotoURL = "";
+
+function leavePhotoMode() {
+  if (roiPhotoURL) { URL.revokeObjectURL(roiPhotoURL); roiPhotoURL = ""; }
+  roiPhotoFile = null;
+  $("roi-photo").hidden = true;
+  $("roi-photo").removeAttribute("src");
+  $("roi-video").hidden = false;
+  $("roi-hint-photo").hidden = true;
+}
+
 async function openROIEditor() {
   if (!currentProject) return;
   const opt = roiAsset();
@@ -1798,6 +1815,10 @@ async function openROIEditor() {
   roiAssetId = opt.value;
   roiRect = null;
   $("btn-roi-save").disabled = true;
+  leavePhotoMode();
+  // Seeding from a photo is a person-filter move; the court and scoreboard
+  // regions are measured from the source itself.
+  $("btn-roi-photo").hidden = !roiIsSpot();
   $("roi-editor").hidden = false;
   const video = $("roi-video");
   video.src = `/api/v1/projects/${currentProject.id}/assets/${roiAssetId}/file#t=1`;
@@ -1808,6 +1829,7 @@ async function openROIEditor() {
 
 function closeROIEditor() {
   $("roi-editor").hidden = true;
+  leavePhotoMode();
   const video = $("roi-video");
   video.removeAttribute("src");
   video.load();
@@ -1832,6 +1854,25 @@ $("btn-roi-save").addEventListener("click", async () => {
   const asset = roiAsset();
   if (!asset) return;
   try {
+    if (roiPhotoFile) {
+      // Photo seed: the rect travels in the query (x,y,w,h normalized to the
+      // photo), the photo content is the body, and the server answers with
+      // the completed spot — the signature is measured the moment this
+      // returns.
+      const rect = [roiRect.x, roiRect.y, roiRect.w, roiRect.h].map((v) => v.toFixed(6)).join(",");
+      const url = roiUrl(asset.value) + "/photo?filename=" +
+        encodeURIComponent(roiPhotoFile.name) + "&rect=" + rect;
+      const body = await roiPhotoFile.arrayBuffer();
+      await api(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body,
+      });
+      banner(t("Player spot seeded from the photo — your signature is measured now"));
+      closeROIEditor();
+      refreshROIStatus();
+      return;
+    }
     // The spot's wire shape carries the rect as an array and the frame the
     // user drew it against; roi and score posts stay bare rects.
     const body = roiIsSpot()
@@ -1850,6 +1891,23 @@ $("btn-roi-save").addEventListener("click", async () => {
     closeROIEditor();
     refreshROIStatus();
   } catch (e) { banner(tf("Save failed: {msg}", { msg: e.message })); }
+});
+$("btn-roi-photo").addEventListener("click", () => $("roi-photo-file").click());
+$("roi-photo-file").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  leavePhotoMode();
+  roiPhotoFile = file;
+  roiPhotoURL = URL.createObjectURL(file);
+  roiRect = null;
+  $("btn-roi-save").disabled = true;
+  $("roi-video").hidden = true;
+  const img = $("roi-photo");
+  img.src = roiPhotoURL;
+  img.hidden = false;
+  $("roi-hint-photo").hidden = false;
+  img.addEventListener("load", drawROIOverlay, { once: true });
 });
 $("style").addEventListener("change", refreshROIStatus);
 

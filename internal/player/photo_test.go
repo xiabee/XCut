@@ -2,6 +2,7 @@ package player
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -74,5 +75,19 @@ func TestMeasureSignatureFromImage(t *testing.T) {
 		t.Fatal("a non-image measured instead of refusing")
 	} else if !xcerr.IsCode(err, xcerr.CodeUnsupportedMedia) && !xcerr.IsCode(err, xcerr.CodeNotFound) {
 		t.Fatalf("non-image error = %v, want unsupported_media/not_found", err)
+	}
+
+	// A garbage payload that ffprobe "identifies" without dimensions must
+	// also refuse as unsupported media — not as "spot rect too small",
+	// which would blame the user's rect for a file that is not an image.
+	garbage := filepath.Join(t.TempDir(), "garbage.png")
+	if err := os.WriteFile(garbage, []byte("this is not an image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := MeasureSignatureFromImage(context.Background(), tools,
+		garbage, []float64{0.3, 0.3, 0.2, 0.2}); err == nil {
+		t.Fatal("garbage content measured instead of refusing")
+	} else if !xcerr.IsCode(err, xcerr.CodeUnsupportedMedia) {
+		t.Fatalf("garbage-content error = %v, want unsupported_media", err)
 	}
 }

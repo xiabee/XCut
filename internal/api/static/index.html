@@ -132,14 +132,18 @@
       <div id="roi-editor" hidden>
         <div id="roi-stage">
           <video id="roi-video" muted preload="metadata"></video>
+          <img id="roi-photo" alt="" hidden>
           <canvas id="roi-canvas"></canvas>
         </div>
         <div class="row">
           <button id="btn-roi-save" disabled data-i18n="save ROI">save ROI</button>
+          <button id="btn-roi-photo" class="ghost" hidden data-i18n="seed from a photo…">seed from a photo…</button>
           <button id="btn-roi-cancel" class="ghost" data-i18n="cancel">cancel</button>
+          <input type="file" id="roi-photo-file" accept="image/*" hidden>
           <span id="roi-hint-court" class="hint" data-i18n="drag a rectangle over the court area — saved for this asset; it overrides the style's region.">drag a rectangle over the court area — saved for this asset; it overrides the style's region.</span>
           <span id="roi-hint-score" class="hint" hidden data-i18n="drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.">drag a rectangle over the score digits only — the boundaries are measured on the next analyze run.</span>
           <span id="roi-hint-spot" class="hint" hidden data-i18n="drag a rectangle around yourself in one frame — the analyze run measures your color signature from it.">drag a rectangle around yourself in one frame — the analyze run measures your color signature from it.</span>
+          <span id="roi-hint-photo" class="hint" hidden data-i18n="drag a rectangle around the person in the photo — the signature is measured right away, no analyze run needed.">drag a rectangle around the person in the photo — the signature is measured right away, no analyze run needed.</span>
         </div>
       </div>
     </section>

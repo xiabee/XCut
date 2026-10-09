@@ -76,7 +76,12 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
       种子即完整落行——analyze 直接用、绝不从视频重测；饥饿形状写标记与视频路径
       同规则）
 - [x] 照片与视频分辨率无关（归一化坐标即可；采样几何沿用长边封顶 320）
-- [ ] Web UI：上传照片 → 点选人物 → 自动生成 spot
+- [x] Web UI：上传照片 → 点选人物 → 自动生成 spot（2026-10-09 夜：
+      Regions 面板 player spot 模式新增"从照片种入"——选图、拖框、保存即
+      `POST …/player-spot/photo`（内容上传，rect 在 query），服务端用与 CLI
+      同一 `MeasureSignatureFromImage` 一次建成双模型、种子完整落行；
+      暂存照片在请求级 temp 目录、请求结束即删；垃圾内容以
+      unsupported_media 干净拒绝，不再误报"rect 过小"）
 
 ## Phase 4 — ONNX Person Detector (sidecar)
 
@@ -103,6 +108,7 @@ Goal: 从"手动框一个颜色区域"演进到"给一张照片，自动找到�
 
 ## 当前状态
 
-Phase 2 组件已交付（multi-region body model，含 2026-09-29 的打分几何修正），
-**尚未接入 presence 扫描**——扫描与 `min_player_presence` 仍走 Phase 1 分数，
-接入是 Phase 2 的剩余工作。Phase 3 是下一步。
+Phase 2 已接入产品路径（multi-region body model 进 presence 扫描，2026-10-08），
+`min_player_presence` 仍在 Phase 1 标度（band 标度再标定等真实素材）。Phase 3
+照片参考输入已全量交付（CLI `--photo` + Web UI"从照片种入"，2026-10-08/09）。
+下一步是 Phase 4。

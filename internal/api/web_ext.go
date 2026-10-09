@@ -30,10 +30,13 @@ func (s *Server) RegisterExtensionEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIPut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/roi", s.handleAssetROIDelete)
 	// The person filter's seed surface: the CLI's `xcut player --set` over HTTP,
-	// same storage rule, same re-measure-on-redraw semantics.
+	// same storage rule, same re-measure-on-redraw semantics. The photo route
+	// is Phase 3's web half — content up, both models measured server-side,
+	// the row lands complete like `--photo` does.
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotPut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/player-spot", s.handleAssetSpotDelete)
+	mux.HandleFunc("POST /api/v1/projects/{id}/assets/{assetID}/player-spot/photo", s.handleAssetSpotPhotoPost)
 	mux.HandleFunc("GET /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreGet)
 	mux.HandleFunc("PUT /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScorePut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/assets/{assetID}/score", s.handleAssetScoreDelete)
