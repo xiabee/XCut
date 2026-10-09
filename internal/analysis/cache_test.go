@@ -215,3 +215,32 @@ func TestProxyEvictionPlanNoTouch(t *testing.T) {
 		t.Fatal("plan must keep the proxy on disk")
 	}
 }
+
+// TestCacheKeySeparatesAnalyzerVersions pins the mechanism every analyzer
+// version bump leans on: two analyzer sets differing ONLY in an analyzer's
+// Version must produce different cache keys, or a bumped analyzer would be
+// silently served the results it just declared stale (the seam the presence
+// gate's Kind fix and the band scan's shortlist both re-scanned away).
+func TestCacheKeySeparatesAnalyzerVersions(t *testing.T) {
+	cfg := ConfigKey{SampleFPS: 2, AnalysisWidth: 320}
+	key := func(version int) string {
+		return cacheKey("fp", []Analyzer{fakeAnalyzer{name: "presence", version: version}}, cfg)
+	}
+	if key(2) == key(3) {
+		t.Fatal("a version bump did not move the cache key — a bumped analyzer would be served its own stale results")
+	}
+	// The name half of the pair: two analyzers at the same version but
+	// different names must not collide either.
+	k1 := cacheKey("fp", []Analyzer{fakeAnalyzer{name: "a", version: 1}}, cfg)
+	k2 := cacheKey("fp", []Analyzer{fakeAnalyzer{name: "b", version: 1}}, cfg)
+	if k1 == k2 {
+		t.Fatal("distinct analyzers collided at the same version")
+	}
+	// And the config tail: a signature-hash change re-scans (the re-seed
+	// contract), never cross-serves.
+	c1 := cacheKey("fp", []Analyzer{fakeAnalyzer{name: "a", version: 1}}, ConfigKey{PlayerSig: "h1"})
+	c2 := cacheKey("fp", []Analyzer{fakeAnalyzer{name: "a", version: 1}}, ConfigKey{PlayerSig: "h2"})
+	if c1 == c2 {
+		t.Fatal("a re-seeded signature hash did not move the cache key")
+	}
+}
