@@ -3,10 +3,61 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-09 06:5x +0800 (session #34's paragraph below is the state that
-holds now; session #33's follows it). This section is a session log, read oldest
-first: the state that holds now is the last paragraph before
-`Verification for the night: …` in session #34 (night 2026-10-08).
+Updated: 2026-10-10 23:2x +0800 — session #35's paragraph below is the state
+that holds now (drafted at that session's close, landed by session #36);
+session #34's follows it. This section is a session log,
+read oldest first: the state that holds now is the last paragraph before
+`Verification for the night: …` in session #35 (night 2026-10-09).
+
+Session #35 (night 2026-10-09) closed the person filter's Phase 3 and paid
+the accuracy debts the closure surfaced. The photo reference input reached
+the web panel (a4ca40f): Regions' player spot gains "seed from a photo" —
+pick an image, drag the rect over the person, and POST
+`…/player-spot/photo` measures both signature models server-side from the
+one upload through the same `MeasureSignatureFromImage` the CLI `--photo`
+uses, landing the row complete so analyze never re-measures from the video;
+the staged photo lives in a request-scoped temp dir that dies with the
+request, and a 64 MiB bound keeps the body and the temp budget finite. A
+truth fix rode along: a garbage payload that ffprobe "identifies" without
+dimensions used to refuse as "spot rect too small" — blaming the user's
+rect for a file that is not an image; the image measure now names
+unsupported media (CLI and API share the fix). Presence became
+mode-independent data (47a3b07): activity segments carry the phase-1 mean
+exactly as rallies do, so `min_player_presence` can finally bite on a
+vlog/KTV reel — the attachment lived rally-only until now, which left the
+gate blind on every non-rally style; gating stays the preset's opt-in, and
+the band track stays out of the gate's input in both modes. The band scan
+got affordable (0c5e477): the phase-1 integral image (the same binarization
+the single-histogram scan already builds) ranks the candidate grid on the
+MR window geometry and only the top 24 windows pay the per-band
+backprojection — measured 172 → 5.3 ms per 320×240 frame, ~33×, below the
+phase-1 scan's own cost; the bound is structural (subset-max, and the mask
+never excludes a band-matchable pixel), planted scenes recovered the
+sweep's exact best on every seed tested, and analyzer Version 3 re-scans
+cached band tracks so a full-sweep result can never satisfy the shortlist
+scan's key. Two contract holes closed with it: the regions editor now
+saves to the asset it opened with and switching assets closes it outright
+(fb676fa — the dropdown shares the panel, so a mid-draw switch used to land
+one source's rect on another's row), and the photo route joined the
+contract probe table (4a4bb71 — the app.js append does not start with
+/api/v1, so the literal extractor could never see it). Around the code:
+bare `xcut player <project>` lists every asset's spot state like
+`xcut roi` always has (2509506), the cache key's version half got the pin
+two bumps leaned on (2edca15), and README's person-filter section caught
+up with what actually ships (b80ee86). Verification for the night: fast
+gate PASS at each content head; win-devops remote PASS on a4ca40f,
+47a3b07, 0c5e477, b80ee86, 2509506 and 4a4bb71 (fb676fa's content rode
+b80ee86's tree, 2edca15's rode 4a4bb71's — one remote each, recorded as
+such; the one capacity rejection at 03:02 — the node busy with two
+neighbor jobs — resolved on the next head); govulncheck 0 callable-path,
+gosec HIGH 0, gitleaks double-clean in-gate; race+shuffle strikes over the
+seven packages the gate's race subset skips, two seeds, all green; the
+close battery reached its soak and shuffle legs — soak 30 rounds
+errors=0 (spotOK=30 and carryOK=30 among the counters: the player-spot
+face green on a binary carrying every one of the night's changes) and
+the full-tree shuffle 21 packages × 2 seeds all ok — and was cut during
+the full leg, which never reported; the leg re-runs at the next night's
+close battery.
 
 Session #34 (night 2026-10-08) took the person filter from "component shipped"
 to "product that actually bites", and paid two long-standing debts the
