@@ -3,11 +3,70 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-10 23:2x +0800 — session #35's paragraph below is the state
-that holds now (drafted at that session's close, landed by session #36);
-session #34's follows it. This section is a session log,
+Updated: 2026-10-12 02:2x +0800 — session #36's paragraph below is the state
+that holds now (landed mid-session with the battery's last leg in flight; the
+verification sentence carries what had reported at landing time);
+session #35's follows it. This section is a session log,
 read oldest first: the state that holds now is the last paragraph before
-`Verification for the night: …` in session #35 (night 2026-10-09).
+`Verification for the night: …` in session #36 (night 2026-10-11).
+
+Session #36 (night 2026-10-11) was a truth-and-infra night with three
+milestones and seven commits. The security discovery pass opened on
+govulncheck's symbol scan reporting **eleven callable-path standard-library
+vulnerabilities** where the previous night's baseline read zero — all eleven
+(GO-2026-6603..6617, the HTTP/2 HPACK encoder race that crashes a net/http
+server among them) traced through code this project really runs, and all
+eleven fixed by the same release: one go.mod line took the toolchain
+1.26.6 → 1.26.9 (b6ecc6e) and the scan reads zero again, language version
+and workflow pins untouched. The truth pass caught CHANGELOG lying twice —
+the photo-seeding entry still said the web half stays open (a4ca40f closed
+it) and the presence-Kind entry still promised activity attachment as
+future work (47a3b07 shipped it) — both caught up (a103c69) alongside a
+PERFORMANCE.md drift row earned the hard way: benches under the new
+toolchain read ~1.4–3× above their recorded rows, and a same-session A/B
+against the still-cached go1.26.6 (GOTOOLCHAIN pin, byte-identical code)
+showed both toolchains agreeing within run variance — the host state moved,
+not the bump, and the row records that attribution with the numbers
+instead of assuming it. The coverage sweep's only fresh zero was
+`FrameDiffROIAnalyzer.Kind()`, dead since the analyzer's first commit —
+the track took a duplicate string literal while the accessor nothing
+called carried the name the event matcher switches on; the track now
+reads the accessor and the corner-fixture test pins accessor, track and
+the wiring sites' constant to each other, mutation-killed (a561871). The
+big find came from refusing to accept "the full leg was cut, never
+reported": the 2026-10-10 log had run to a verdict at 04:29 — `go test
+-race ./...` killed by go's default 10-minute per-package timeout
+(internal/cli 602.9 s, internal/pipeline 607.7 s, under the race build on
+a night of neighbor gates) — and sat untriaged for a day. The fast-mode
+race subset has carried `-timeout=30m` and the one-isolated-retry policy
+since the five-gates night of 2026-10-03; the budget and policy now
+travel to the full-tree run in both gate twins (81a0730), the recovery
+names itself in the verdict — where the sh twin, it turned out, never
+read its own recovery note variable at all, so a race flake recovered on
+a Linux node has been recovering silently — and a TSan-refusing kernel is
+named rather than red in the full leg the way the subset already named
+it. `scripts/battery.sh` wraps the close battery in one command with
+per-leg verdicts, and its first flight proved the design the hard way:
+soak 30 rounds errors=0 (1485 s, spotOK/carryOK 30/30) and both shuffles
+green (207 s / 292 s), while the flight itself exposed two of its
+author's defects — the shuffle seed announcement only prints under `-v`,
+so tonight's two shuffles stand as order evidence without a replay
+handle (f0856c4 pays the bigger log for the handle), and the author
+edited the running wrapper mid-flight, whose lazily-read offset
+detonated at the next statement and silently skipped the full leg
+(lesson in the operator's memory: never edit a script a live interpreter
+is still reading). The full gate leg re-ran standalone in the same
+evidence directory. Verification for the night (interim, at landing):
+fast gate PASS at each content head (b6ecc6e 852 passed / 7 skipped with
+race subset and idle 17 MB / 0%; the a103c69-content gate struck the
+empty-stderr neighbor-collision signature once — the author's own
+concurrent cargo build was half of that load — and passed on the
+serialized re-run at the 81a0730 tree, race subset wall 352 s);
+win-devops remote PASS at b6ecc6e (4m20s) and 19f49bb (3m58s, = the
+81a0730 content plus docs-only); govulncheck 0 callable-path, gosec HIGH
+0, gitleaks double-clean in-gate at every discovery pass; battery legs
+soak and shuffle ×2 PASS with the full gate leg in flight at this
+paragraph's landing.
 
 Session #35 (night 2026-10-09) closed the person filter's Phase 3 and paid
 the accuracy debts the closure surfaced. The photo reference input reached
