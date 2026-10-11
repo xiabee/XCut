@@ -2,7 +2,7 @@ module github.com/xiabee/XCut
 
 go 1.25.8
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	golang.org/x/sys v0.47.0
