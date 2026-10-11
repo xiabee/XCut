@@ -293,7 +293,14 @@ $ErrorActionPreference = "Continue"
 # an IOException, `go test` never ran, and the step that must be the gate's whole point
 # reported "0 passed, 0 skipped" under a PASS line.
 $testErrFile = Join-Path ([System.IO.Path]::GetTempPath()) "xcut-gate-test-$PID.err"
-$testLines = @(go test -count=1 -json ./... 2>$testErrFile | ForEach-Object { "$_" })
+# -timeout=30m is the same work budget the race steps run on, carried here
+# because the plain step's own isolated retry would otherwise inherit go's
+# 10 m default and a load-inflated strike would die twice: plain cli sits at
+# ~170 s and pipeline ~280 s quiet (race: 275 s / 335 s tonight), so the
+# default holds until a night inflates this host ~2–3.5× — the race step's
+# 04:29 killing needed only 1.3–2.3×. Same class, same budget, no assertion
+# loosened: a real hang still dies, 30 minutes later instead of 10.
+$testLines = @(go test -count=1 -json -timeout=30m ./... 2>$testErrFile | ForEach-Object { "$_" })
 $testExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 $TestPass = 0
@@ -367,7 +374,7 @@ if ($testExit -ne 0) {
         throw "go test exited $testExit with no failing test to isolate — a tool-level failure; its own words are printed above"
     }
     Write-Host "== go test: isolated retry of $($failedPkgs.Count) failed package(s) (known load-flake family)"
-    $retryLines = @(go test -count=1 -json $failedPkgs 2>$testErrFile | ForEach-Object { "$_" })
+    $retryLines = @(go test -count=1 -json -timeout=30m $failedPkgs 2>$testErrFile | ForEach-Object { "$_" })
     $retryExit = $LASTEXITCODE
     $retryFail = @()
     foreach ($line in $retryLines) {

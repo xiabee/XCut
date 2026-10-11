@@ -268,7 +268,14 @@ echo "== go test"
 test_json=$(mktemp)
 test_err=$(mktemp)
 set +e
-go test -count=1 -json ./... >"$test_json" 2>"$test_err"
+# -timeout=30m is the same work budget the race steps run on, carried here:
+# the plain step has no isolated retry on this side, so a load-inflated
+# timeout would be a single unhealed death — plain cli sits at ~170 s and
+# pipeline ~280 s quiet (race: 275 s / 335 s on the same host), meaning the
+# 10 m default holds until a night inflates this machine ~2–3.5×, the same
+# shape that killed the 2026-10-10 full leg's race run at only 1.3–2.3×.
+# A real hang still dies; thirty minutes later instead of ten.
+go test -count=1 -json -timeout=30m ./... >"$test_json" 2>"$test_err"
 test_exit=$?
 set -e
 if [ "$test_exit" -ne 0 ]; then
