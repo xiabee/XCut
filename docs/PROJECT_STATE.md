@@ -63,25 +63,51 @@ the default and died twice on one strike) now runs `-timeout=30m` in both
 gate twins (19b6bda) — plain cli sits at ~170 s quiet where race sits at
 275 s, so the trip needs a 2–3.5× night where the 04:29 race kill needed
 only 1.3–2.3×, but the class is the one the budget exists for, and a real
-hang still dies, thirty minutes later instead of ten. Verification for
-the night: fast gate PASS at each content head (b6ecc6e 852 passed / 7
-skipped with race subset and idle 17 MB / 0%; the a103c69-content gate
-struck the empty-stderr neighbor-collision signature once — the author's
-own concurrent cargo build was half of that load — and passed on the
-serialized re-run at the 81a0730 tree, race subset wall 352 s; 19b6bda's
-gate passed with two environment-conditioned skips that both passed in
-isolation immediately after, disclosed in the ledger); win-devops remote
-PASS at b6ecc6e (4m20s), 19f49bb (3m58s, = the 81a0730 content plus
-docs-only) and 19b6bda (3m21s); govulncheck 0 callable-path, gosec HIGH
-0, gitleaks double-clean in-gate at every discovery pass; and the close
-battery ran end to end on the 8bc9e86 tree — soak 30 rounds errors=0
-(1485 s, spotOK/carryOK 30/30), shuffle ×2 green (207 s / 292 s, tonight
-without recorded seeds — the verbose-seed fix lands for the next
-flight), and the full gate PASS with **the race full-tree step at 278 s**
-where the same step died at go's 10-minute default at 04:29 the night
-before: the failure that sat untriaged for a day was re-run on the code
-that fixes it, and the whole battery's evidence sits in
-`.night-2026-10-12/` with a verdict line per leg.
+hang still dies, thirty minutes later instead of ten. The fifth and
+sixth milestones came out of the night's own endurance leg: a 100-round
+soak — depth no 30-round battery reaches — errored at rounds 44, 58 and
+90–95, and the triage split it honestly. Round 58's litter was real:
+the refused-upload cleanup discarded its `os.Remove` error, and on
+Windows the just-probed file can still be held by the real-time scanner
+long enough for one discard to leave the copy standing, silently — the
+cleanup now retries on a spacing that outlasts a filter driver's hold
+and names any residue that survives in the log, with the call site
+pinned by a source guard and the helper by unit tests (10d7c13; the
+same soak's round 44 — one transport-level 000 against a server the log
+proves stayed alive — and the FK refusal at 04:31:22 that the late
+completion of a timed-out tap would explain are recorded as
+environment-shaped, the forensics boundary being that a 100-round run's
+rows are pruned and its projects deleted before anyone reads them,
+which is also why soak error lines now carry the wall clock and both
+project ids, a256a66). The 90–95 cluster was the operator's own doing —
+the M5 gate ran while the soak ran, and HasFFmpeg's 10-second probe
+timed out in chorus (a gate whose skip list reads 31 is a gate running
+beside a soak; the clean re-gate at a256a66 read 7, the baseline). The
+close sequence re-ran clean: fast gate at a256a66 with the 7-skip
+baseline, win-devops remote PASS 4m13s, and **soak-100 round two: 100
+rounds errors=0** on the M5-fixed binary (upNoLitter=100,
+expDoor=100/0/0, spotOK/carryOK=100) — the depth that caught the defect
+re-run green on the code that fixes it. Verification for the night:
+fast gate PASS at each content head (b6ecc6e 852 passed / 7 skipped
+with race subset and idle 17 MB / 0%; the a103c69-content gate struck
+the empty-stderr neighbor-collision signature once — the author's own
+concurrent cargo build was half of that load — and passed on the
+serialized re-run at the 81a0730 tree, race subset wall 352 s;
+19b6bda's gate carried two environment-conditioned skips that both
+passed in isolation immediately after; the M5 gate's 31-skip set is
+recorded as soak-contaminated, superseded by the a256a66 re-gate);
+win-devops remote PASS at b6ecc6e (4m20s), 19f49bb (3m58s, = the
+81a0730 content plus docs-only), 19b6bda (3m21s) and a256a66 (4m13s);
+govulncheck 0 callable-path, gosec HIGH 0, gitleaks double-clean
+in-gate at every discovery pass and in the close battery's full gate
+(race full-tree step 278 s where the same step died at go's 10-minute
+default at 04:29 the night before). The battery's first flight on
+8bc9e86 stood green through soak, both shuffles and the full gate
+before the night's own tooling defects — a live edit of the running
+wrapper, then the same mistake on soak.sh hours later, both recorded in
+the operator's memory with the detonation shapes — cost the wrapper its
+last leg and the soak its tail, and both runs were re-done clean
+rather than explained away.
 
 Session #35 (night 2026-10-09) closed the person filter's Phase 3 and paid
 the accuracy debts the closure surfaced. The photo reference input reached
