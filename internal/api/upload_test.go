@@ -541,3 +541,53 @@ func TestConcurrentSameNameUploadsNeverOverwrite(t *testing.T) {
 		t.Fatalf("%d asset rows, want %d", len(assets), n)
 	}
 }
+
+// TestRemoveLandedCopy: the refused-upload cleanup retries through a
+// filter driver's transient hold on the just-probed file, and a residue
+// that outlives the budget is logged with its name — the soak's round-58
+// litter (once in 100 rounds, never in a gate) died in the discarded
+// os.Remove error; the invariant is now that it cannot die silently.
+func TestRemoveLandedCopy(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+
+	// A removable file: gone on the first attempt, nothing logged.
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "landed.mp4")
+	if err := os.WriteFile(plain, []byte("junk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	removeLandedCopy(plain, log)
+	if _, err := os.Stat(plain); !os.IsNotExist(err) {
+		t.Fatal("removable copy survived removeLandedCopy")
+	}
+	if strings.Contains(buf.String(), "refused upload") {
+		t.Fatalf("a successful removal must not log residue: %q", buf.String())
+	}
+
+	// A path that cannot be removed (its directory does not exist): every
+	// attempt fails, and the residue is named in the log instead of the
+	// error vanishing into a discarded return.
+	ghost := filepath.Join(dir, "missing-dir", "landed.mp4")
+	removeLandedCopy(ghost, log)
+	if !strings.Contains(buf.String(), "refused upload left its landed copy") {
+		t.Fatalf("an unremovable residue must be logged, got %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "landed.mp4") {
+		t.Fatalf("the residue log must name the file: %q", buf.String())
+	}
+}
+
+// The call site must route the refused copy through the retrying helper:
+// a bare discarded os.Remove is the exact defect the soak's round-58
+// litter exposed, and no black-box test can force a filter driver's hold
+// on demand — so the wiring itself is the thing pinned.
+func TestRefusedUploadRoutesThroughTheRetryingCleanup(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("upload.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "removeLandedCopy(finalPath, s.Log)") {
+		t.Fatal("the refused-upload path must call removeLandedCopy(finalPath, s.Log) — a discarded os.Remove there is the round-58 litter defect")
+	}
+}

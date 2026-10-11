@@ -2,6 +2,7 @@ package api
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -224,8 +225,15 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	asset, err := s.Pipe.ImportAsset(p, finalPath)
 	if err != nil {
 		// Not user's original media — a failed probe means the copy is
-		// unusable; remove it rather than littering imports/.
-		_ = os.Remove(finalPath)
+		// unusable; remove it rather than littering imports/. On Windows
+		// the just-closed file can still be held briefly by a filter
+		// driver (real-time antivirus scans the bytes the probe read), so
+		// the first Remove can fail with access-denied and a bare
+		// discard would leave the litter silently — a 100-round soak hit
+		// exactly that shape once in 58 rounds while every gate passed.
+		// The retry covers the transient; a residue that survives it is
+		// named in the log instead of vanishing.
+		removeLandedCopy(finalPath, s.Log)
 		s.writeErr(w, r, err)
 		return
 	}
@@ -234,4 +242,22 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 			"project_id", p.ID, "name", name, "bytes", written, "asset_id", asset.ID)
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"asset": asset})
+}
+
+// removeLandedCopy reclaims a refused upload's landed copy: four attempts
+// spaced to outlast a filter driver's short hold on the just-probed file,
+// and a residue that outlives them is logged with its name — the one
+// outcome this path exists to refuse must never disappear silently.
+func removeLandedCopy(path string, log *slog.Logger) {
+	var err error
+	for i := 0; i < 4; i++ {
+		if err = os.Remove(path); err == nil {
+			return
+		}
+		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+	}
+	if log != nil {
+		log.Warn("refused upload left its landed copy in imports/",
+			"path", path, "err", err)
+	}
 }
