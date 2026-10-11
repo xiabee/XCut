@@ -56,23 +56,32 @@ edited the running wrapper mid-flight, whose lazily-read offset
 detonated at the next statement and silently skipped the full leg
 (lesson in the operator's memory: never edit a script a live interpreter
 is still reading). The full gate leg re-ran standalone in the same
-evidence directory. Verification for the night: fast gate PASS at each
-content head (b6ecc6e 852 passed / 7 skipped with race subset and idle
-17 MB / 0%; the a103c69-content gate struck the empty-stderr
-neighbor-collision signature once — the author's own concurrent cargo
-build was half of that load — and passed on the serialized re-run at the
-81a0730 tree, race subset wall 352 s); win-devops remote PASS at b6ecc6e
-(4m20s) and 19f49bb (3m58s, = the 81a0730 content plus docs-only);
-govulncheck 0 callable-path, gosec HIGH 0, gitleaks double-clean in-gate
-at every discovery pass; and the close battery ran end to end on the
-8bc9e86 tree — soak 30 rounds errors=0 (1485 s, spotOK/carryOK 30/30),
-shuffle ×2 green (207 s / 292 s, tonight without recorded seeds — the
-verbose-seed fix lands for the next flight), and the full gate PASS with
-**the race full-tree step at 278 s** where the same step died at go's
-10-minute default at 04:29 the night before: the failure that sat
-untriaged for a day was re-run on the code that fixes it, and the whole
-battery's evidence sits in `.night-2026-10-12/` with a verdict line per
-leg.
+evidence directory. The night's fourth milestone carried the same work
+budget to the step M3's fix had walked past: the plain `go test` run (and
+the Windows twin's isolated retry, which would otherwise have inherited
+the default and died twice on one strike) now runs `-timeout=30m` in both
+gate twins (19b6bda) — plain cli sits at ~170 s quiet where race sits at
+275 s, so the trip needs a 2–3.5× night where the 04:29 race kill needed
+only 1.3–2.3×, but the class is the one the budget exists for, and a real
+hang still dies, thirty minutes later instead of ten. Verification for
+the night: fast gate PASS at each content head (b6ecc6e 852 passed / 7
+skipped with race subset and idle 17 MB / 0%; the a103c69-content gate
+struck the empty-stderr neighbor-collision signature once — the author's
+own concurrent cargo build was half of that load — and passed on the
+serialized re-run at the 81a0730 tree, race subset wall 352 s; 19b6bda's
+gate passed with two environment-conditioned skips that both passed in
+isolation immediately after, disclosed in the ledger); win-devops remote
+PASS at b6ecc6e (4m20s), 19f49bb (3m58s, = the 81a0730 content plus
+docs-only) and 19b6bda (3m21s); govulncheck 0 callable-path, gosec HIGH
+0, gitleaks double-clean in-gate at every discovery pass; and the close
+battery ran end to end on the 8bc9e86 tree — soak 30 rounds errors=0
+(1485 s, spotOK/carryOK 30/30), shuffle ×2 green (207 s / 292 s, tonight
+without recorded seeds — the verbose-seed fix lands for the next
+flight), and the full gate PASS with **the race full-tree step at 278 s**
+where the same step died at go's 10-minute default at 04:29 the night
+before: the failure that sat untriaged for a day was re-run on the code
+that fixes it, and the whole battery's evidence sits in
+`.night-2026-10-12/` with a verdict line per leg.
 
 Session #35 (night 2026-10-09) closed the person filter's Phase 3 and paid
 the accuracy debts the closure surfaced. The photo reference input reached
