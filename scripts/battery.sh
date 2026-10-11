@@ -48,13 +48,13 @@ leg() {
 
 leg soak sh scripts/soak.sh "$ROUNDS"
 
-# Shuffle twice with recorded seeds: the go tool announces the seed it chose
-# on stderr as "-test.shuffle <N>" (verified live: it is not in stdout, and
-# no line says "shuffle seed"), and the seed is what makes a failure
-# reproducible — replay it with `go test -shuffle=<N>` — so it comes back
-# out of the log into the verdict.
+# Shuffle twice with recorded seeds: the seed announcement ("-test.shuffle
+# <N>", stderr) only prints under -v — the first flight ran without it and
+# both seeds were lost (the order evidence stood, the replay did not) — so
+# the shuffle legs run verbose and pay the bigger log for the replay handle.
+# Replay a failure with `go test -shuffle=<N>`.
 for i in 1 2; do
-    leg "shuffle$i" go test -shuffle=on -count=1 ./...
+    leg "shuffle$i" go test -shuffle=on -count=1 -v ./...
     seed=$(grep -m1 -o '\-test\.shuffle [0-9]*' "$dir/battery-shuffle$i.log" 2>/dev/null || true)
     echo "   shuffle$i ${seed:-seed not printed}"
 done
