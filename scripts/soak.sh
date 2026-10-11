@@ -522,7 +522,15 @@ print([p['id'] for p in d['projects'] if p['name']=='soak-exp-$round'][0])" 2>/d
 
     if [ -n "$err" ]; then
         errors=$((errors+1))
-        echo "round $round ERROR:$err"
+        # The wall-clock stamp and the round's project ids ride every error
+        # line: a 100-round run's DB rows are pruned and its projects
+        # idle-deleted by the time anyone triages, and the night that
+        # tried to reconstruct a three-error window from serve.log alone
+        # found the round's projects unnameable (2026-10-12, rounds
+        # 44/58/90/91). Timestamp + ids make the serve.log window findable
+        # from the one line that survives (the export arms' project is
+        # EXP_ID; the upload-litter arm counts under PROJ_ID).
+        echo "round $round ERROR:$err (at $(date +%H:%M:%S), project $PROJ_ID, exp $EXP_ID)"
     fi
 done
 
