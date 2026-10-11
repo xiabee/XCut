@@ -15,7 +15,20 @@ sections are tagged; anything above the newest one is unreleased.
   re-measures it from the video, because a photo rect describes the photo.
   A rect too small for three usable bands degrades to the single histogram
   under the same marker rules as the video path; `--at` is refused (a photo
-  has no source second) and the web UI half of Phase 3 stays open.
+  has no source second).
+- **Photo-reference seeding reaches the web panel — Phase 3's web half
+  closes.** Regions' player spot gains "seed from a photo": pick an image,
+  drag the rect over the person, and `POST …/player-spot/photo` measures
+  both signature models server-side from the one upload through the same
+  `MeasureSignatureFromImage` the CLI uses, landing the row complete so
+  analyze never re-measures it from the video. A band-starving rect
+  degrades under the same marker rules; the staged photo lives in a
+  request-scoped temp dir that dies with the request, and a 64 MiB bound
+  keeps the body and the temp budget finite. A truth fix rides along: a
+  garbage payload that ffprobe "identifies" without dimensions used to be
+  refused as "spot rect too small", blaming the user's rect for a file
+  that is not an image — the image measure now names unsupported media
+  (CLI and API share the fix).
 - **Spots measured before the multi-region wiring upgrade themselves on the
   next analyze.** A row carrying the single histogram and no band model runs
   the measure pass once — the stored rect rebuilds both models and the band
@@ -68,9 +81,11 @@ sections are tagged; anything above the newest one is unreleased.
   in the result, feeding nothing until the threshold re-baseline that needs
   real footage). Cached presence results under the old version carried the
   empty Kind and could never have worked; the analyzer version bumps so they
-  re-scan. The attach itself remains rally-mode — where the one style that
-  sets the knob lives; activity-mode presence is a possible future feature,
-  not a silent promise.
+  re-scan. The attach itself landed rally-mode first, where the one style
+  that sets the knob lives; presence now rides activity segments exactly as
+  it rides rallies, so the gate can finally bite on a vlog/KTV reel too —
+  the attachment is mode-independent data, and gating stays the style
+  preset's opt-in.
 - **Portrait media and tall spot crops can presence-scan again.** The sampling
   geometry scaled the WIDTH to 320 and derived the height, so a 9:16 phone
   clip sampled at 320×570 and a tall spot crop sampled taller still — their
