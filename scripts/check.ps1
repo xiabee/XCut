@@ -458,13 +458,46 @@ if ($Mode -eq "fast") {
 }
 
 if ($Mode -eq "full") {
-    # The race detector needs cgo + a C toolchain (absent on this Windows
-    # setup). Skip loudly rather than silently; run scripts/race-docker.sh
-    # (WSL/docker) or a CI dispatch for race coverage.
+    # The race detector needs cgo + a C toolchain; this host has both (the
+    # subset above has been running on it since the C toolchain landed), and
+    # a host that loses either says so in the verdict rather than passing
+    # quietly. Run scripts/race-docker.sh (WSL/docker) or a CI dispatch for
+    # race coverage where neither exists.
     $cgoOn = (go env CGO_ENABLED).Trim() -eq "1"
     $hasGcc = $null -ne (Get-Command gcc -ErrorAction SilentlyContinue)
     if ($cgoOn -and $hasGcc) {
-        Invoke-Step "go test -race" { go test -count=1 -race ./... }
+        Write-Host "== go test -race (full tree)"
+        $raceFullStart = Get-Date
+        # -timeout=30m is the subset's work budget, carried down: go's default
+        # 10 m per package is what ended the 2026-10-10 full leg at 04:29 —
+        # cli (602.9 s) and pipeline (607.7 s) both blew it under the race
+        # build on a night this machine also hosted neighbors' gates, with
+        # every package green in isolation. The subset documented the same
+        # class on 2026-10-03 and fixed it for four packages; the budget just
+        # never traveled to the ./... run that the subset's own comment calls
+        # the real race coverage. The retry policy is the subset's too: one
+        # isolated retry of exactly the failed packages, the first failure
+        # printed as the evidence, the recovery disclosed in the verdict, a
+        # second failure still fatal.
+        $raceOut = @(go test -count=1 -race -timeout=30m ./... | ForEach-Object { "$_" })
+        $raceExit = $LASTEXITCODE
+        $raceOut | ForEach-Object { Write-Host $_ }
+        if ($raceExit -ne 0) {
+            $raceFailed = @($raceOut | ForEach-Object { if ($_ -match "^FAIL\s+(\S+)") { $Matches[1] } })
+            if ($raceFailed.Count -eq 0) {
+                throw "go test -race (full tree) failed with exit $raceExit and no FAIL line to isolate (build or panic output above)"
+            }
+            Write-Host "== go test -race (full tree): isolated retry of $($raceFailed.Count) failed package(s) (known load-flake family)"
+            $raceRetry = @(go test -count=1 -race -timeout=30m @raceFailed | ForEach-Object { "$_" })
+            $raceRetryExit = $LASTEXITCODE
+            $raceRetry | ForEach-Object { Write-Host $_ }
+            if ($raceRetryExit -ne 0) {
+                throw "go test -race (full tree) failed twice (full run: exit $raceExit; isolated retry: exit $raceRetryExit)"
+            }
+            $script:RaceFlakeRecovered = ($raceFailed | ForEach-Object { ($_ -split '/')[-1] }) -join ", "
+            Write-Host "== go test -race (full tree): isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
+        }
+        Write-Host "   race full-tree wall: $([int]((Get-Date) - $raceFullStart).TotalSeconds)s"
     }
     else {
         Write-Host "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)"
@@ -535,5 +568,5 @@ $skipNote = ""
 if ($TestSkips.Count -gt 0) { $skipNote = "; tests skipped: $($TestSkips.Count) (see '== go test' above)" }
 $flakeNote = ""
 if ($script:FlakeRecovered) { $flakeNote = "; flake-recovered: $script:FlakeRecovered (failed under full load, passed the isolated retry — first failure printed above)" }
-if ($script:RaceFlakeRecovered) { $flakeNote = "$flakeNote; race flake-recovered: $script:RaceFlakeRecovered (same policy, the -race subset)" }
+if ($script:RaceFlakeRecovered) { $flakeNote = "$flakeNote; race flake-recovered: $script:RaceFlakeRecovered (same policy, the -race subset and the full tree)" }
 Write-Host "== gate ($Mode): PASS (steps not run: $(if ($NotRun) { $NotRun -join ", " } else { "none" })$skipNote$flakeNote)"

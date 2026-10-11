@@ -421,12 +421,49 @@ if [ "$mode" = "fast" ]; then
 fi
 
 if [ "$mode" = "full" ]; then
-    # The race detector needs cgo + a C toolchain (absent on this Windows
-    # setup). Skip loudly rather than silently; run the linux container race
-    # gate (scripts/race-docker.sh) or a CI dispatch for race coverage.
+    # The race detector needs cgo + a C toolchain; a host without either says
+    # so in the verdict rather than passing quietly. Run the linux container
+    # race gate (scripts/race-docker.sh) or a CI dispatch for race coverage
+    # where neither exists.
     if go env CGO_ENABLED | grep -q '^1$' && command -v gcc >/dev/null 2>&1; then
-        echo "== go test -race"
-        go test -race ./...
+        echo "== go test -race (full tree)"
+        race_full_start=$(date +%s)
+        # -timeout=30m is the subset's work budget, carried down: go's default
+        # 10 m per package is what ended the 2026-10-10 full leg at 04:29 —
+        # cli (602.9 s) and pipeline (607.7 s) both blew it under the race
+        # build on a night the machine also hosted neighbors' gates, with
+        # every package green in isolation. The retry policy is the subset's:
+        # one isolated retry of exactly the failed packages, the first failure
+        # printed as the evidence, the recovery disclosed in the verdict, a
+        # second failure still fatal. The VMA refusal is named rather than
+        # red for the same reason the subset names it: a kernel that cannot
+        # host TSan is a platform fact, not a finding.
+        if ! race_out=$(go test -race -count=1 -timeout=30m ./... 2>&1); then
+            if printf '%s\n' "$race_out" | grep -q 'ThreadSanitizer: unsupported VMA range' &&
+                ! printf '%s\n' "$race_out" | grep -q -- '--- FAIL'; then
+                echo "== go test -race (full tree): SKIPPED (this kernel refuses TSan: unsupported VMA range — no test ran)" >&2
+                NOT_RUN="$NOT_RUN race-full(tsan-vma)"
+            else
+            printf '%s\n' "$race_out"
+            race_failed=$(printf '%s\n' "$race_out" | grep '^FAIL' | awk 'NF >= 2 {print $2}' | sort -u)
+            if [ -z "$race_failed" ]; then
+                echo "go test -race (full tree) failed with no FAIL line to isolate (build or panic above)" >&2
+                exit 1
+            fi
+            echo "== go test -race (full tree): isolated retry of $(printf '%s\n' "$race_failed" | wc -l) failed package(s) (known load-flake family)"
+            if ! retry_out=$(go test -race -count=1 -timeout=30m $race_failed); then
+                printf '%s\n' "$retry_out"
+                echo "go test -race (full tree) failed twice (isolated retry included)" >&2
+                exit 1
+            fi
+            printf '%s\n' "$retry_out"
+            RACE_FLAKE_NOTE="; race flake-recovered: $(printf '%s\n' "$race_failed" | awk -F/ '{print $NF}' | paste -sd, -) (failed under load, passed the isolated retry)"
+            echo "== go test -race (full tree): isolated retry PASSED — load-flake strike recorded, the first failure above stays the evidence"
+            fi
+        else
+            printf '%s\n' "$race_out"
+        fi
+        echo "   race full-tree wall: $(($(date +%s) - race_full_start))s"
     else
         echo "== go test -race: SKIPPED (no cgo/C toolchain; use scripts/race-docker.sh or CI dispatch)" >&2
         NOT_RUN="$NOT_RUN race"
@@ -509,4 +546,9 @@ skipnote=""
 if [ "${TestSkip:-0}" -gt 0 ]; then
     skipnote="; tests skipped: $TestSkip (see '== go test' above)"
 fi
-echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS; not run:${NOT_RUN:- nothing}$skipnote)"
+# The race-flake recovery note is earned in the race steps above; a recovery
+# that the verdict never mentions is a recovery that did not happen as far as
+# the record is concerned — the variable existed since the subset learned the
+# retry policy, but this line never read it (found 2026-10-11, the same night
+# the full tree gained the same policy).
+echo "== gate ($mode): PASS (secret scan: $SECRET_STATUS; not run:${NOT_RUN:- nothing}${RACE_FLAKE_NOTE:-}$skipnote)"
