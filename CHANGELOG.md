@@ -68,6 +68,24 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **The close battery's full leg can no longer time itself into a false
+  verdict, and its own script exists.** The full gate's `-race ./...` run
+  carried go's default 10-minute per-package timeout while the fast-mode
+  subset has run `-timeout=30m` since the five-gates night of 2026-10-03 —
+  and on 2026-10-10 at 04:29 the default killed the full leg for real:
+  `internal/cli` (602.9 s) and `internal/pipeline` (607.7 s) both blew it
+  under the race build on a night the machine also hosted neighbors' gates,
+  with every package green in isolation. The budget and the subset's
+  one-isolated-retry policy now travel to the full-tree run in both gate
+  twins, the recovery names itself in the verdict line — which on the sh
+  side never read the note variable at all, so a race flake recovered on a
+  Linux node has been recovering silently since the policy landed — and a
+  kernel that refuses TSan is named in the full leg the way the subset
+  already names it. `scripts/battery.sh` wraps the whole close battery
+  (soak, shuffle ×2 with recorded seeds, the full gate) in one command that
+  prints each leg's verdict the moment it lands and files each leg's log
+  under `.night-<date>/`, because the leg that failed at 04:29 sat untriaged
+  for a day inside a log nothing summarised.
 - **The person filter's gate can finally see the presence it was shipped to
   gate on.** The presence analyzer never set the feature track's Kind, and
   the event builder's segment pass matches tracks by Kind — so the measured
