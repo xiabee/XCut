@@ -96,7 +96,7 @@ func (a FrameDiffROIAnalyzer) Analyze(ctx context.Context, opts Options, path st
 	track := FeatureTrack{
 		Analyzer: a.Name(),
 		Version:  a.Version(),
-		Kind:     "frame_diff_roi",
+		Kind:     a.Kind(),
 		Unit:     "ratio",
 		Samples:  samples,
 	}

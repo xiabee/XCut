@@ -79,9 +79,20 @@ func TestFrameDiffROIAnalyzerIsolatesMotion(t *testing.T) {
 		t.Fatal(err)
 	}
 	roi := ROI{X: 0, Y: 0, W: 0.5, H: 0.5}
-	roiTrack, err := (FrameDiffROIAnalyzer{ROI: roi}).Analyze(context.Background(), opts, path, false, slog.Default())
+	an := FrameDiffROIAnalyzer{ROI: roi}
+	roiTrack, err := an.Analyze(context.Background(), opts, path, false, slog.Default())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The kind is the segment pass's match key (event.Config.MotionTrack,
+	// auto-wired to "frame_diff_roi" by a preset's motion_roi block and by
+	// pipeline.eventConfigFor for an asset ROI) — the presence analyzer
+	// shipped an empty track kind once and its gate never ran, so the
+	// accessor and the track it feeds must be pinned to each other and to
+	// the string every wiring site spells.
+	if roiTrack[0].Kind != an.Kind() || an.Kind() != "frame_diff_roi" {
+		t.Errorf("kind seam broken: track %q accessor %q, wiring sites spell %q",
+			roiTrack[0].Kind, an.Kind(), "frame_diff_roi")
 	}
 
 	fullMean := trackMean(full[0].Samples)
