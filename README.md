@@ -334,6 +334,7 @@ xcut analyze <project>                                               # 量取色
 | `resource.max_analysis_workers` | 2 | 一次分析同时推进多少个素材（子进程数仍受 `max_ffmpeg_processes` 限制） |
 | `resource.ffmpeg_threads` | 2 | 每进程 `-threads` |
 | `resource.ffmpeg_max_memory_mb` | 1536 | 单 ffmpeg 进程内存上限（Windows 由 job object 强制；Linux 由 systemd scope 的 `MemoryMax` 强制，混合 cgroup 的机器上可能不生效，见 docs/OPERATIONS.md；超限 = 编码器因分配失败退出，渲染响亮报错）。实测最贵的正常子进程是 xfade 渲染 566 MB，默认值据此定；0 = 不限，高分辨率渲染可再调高 |
+| `resource.ffmpeg_sandbox` | `none` | Linux 子进程网络隔离（D20）：`net` 时每个 ffmpeg/ffprobe 跑在 `unshare` 建的新 network namespace 里——无任何网络接口（loopback 也不通），PID/mount namespace 随行；本地文件工作流不碰网络，开启不损失任何功能，解码器漏洞无法再外联。内核级边界，探测通过即生效；与内存帽独立启停、可叠加（scope 在外、namespace 在内）。Windows 上此旋钮休眠（job object 是那边的机制） |
 | `resource.frame_sample_fps` | 2 | 分析采样率 |
 | `resource.analysis_width` | 640 | 分析降采样宽度 |
 | `resource.proxy_enabled` | `true` | 生成低分辨率分析代理（重复分析实测快 10–20×；磁盘由 `max_proxy_gb` 兜住，`false` 可显式关掉） |

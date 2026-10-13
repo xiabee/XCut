@@ -360,6 +360,7 @@ defaults < config file (`<workspace>/config.json`) < environment (`XCUT_*`)
 | `resource.max_analysis_workers` | 2 | how many assets one analyze run keeps in flight (children still bounded by `max_ffmpeg_processes`) |
 | `resource.ffmpeg_threads` | 2 | per-process `-threads` |
 | `resource.ffmpeg_max_memory_mb` | 1536 | per-ffmpeg-process memory cap: enforced by the Windows job object, and on Linux by starting each child in its own systemd scope (`MemoryMax`, no swap). Exceeding it fails the encoder on allocation and the render reports it loudly. Measured most expensive normal child: a 566 MB xfade render, which is what the default is sized against; 0 = uncapped, raise it for high-resolution renders |
+| `resource.ffmpeg_sandbox` | `none` | Linux child network isolation (D20): `net` runs every ffmpeg/ffprobe inside a fresh network namespace created by `unshare` — no interfaces at all (loopback down), PID/mount namespaces ride along. Local-file workflows never touch the network, so arming costs nothing; a decoder exploit can no longer open a socket. Kernel-level boundary — a passing probe is enforcement; arms and refuses independently of the memory cap, chains scope-outside-namespace when both are on. Dormant on Windows (the job object is that platform's mechanism) |
 | `resource.frame_sample_fps` | 2 | analysis sampling rate |
 | `resource.analysis_width` | 640 | analysis downscale width |
 | `resource.proxy_enabled` | `false` | generate low-res analysis proxies (opt-in) |

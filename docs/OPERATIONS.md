@@ -266,6 +266,40 @@ systemd-run -q --user --scope -p MemoryMax=128M -p MemorySwapMax=0 \
 # rc=0  and  "survived 536870912" -> it does not, whatever doctor says
 ```
 
+## The network sandbox rung **measured 2026-10-13** (D20)
+
+`resource.ffmpeg_sandbox: "net"` (default `none`) puts every ffmpeg/ffprobe child
+inside a fresh network namespace — no interfaces at all, so nothing in the child can
+open a socket, and a PID namespace on top (the child is PID 1 of its own table). The
+wrap is `unshare --user --map-root-user --fork --mount --mount-proc --pid --net --`,
+created by the kernel itself: unlike the memory scope there is no manager between the
+probe and the enforcement, so a passing probe *is* the boundary. It arms independently
+of the memory cap and chains with it (scope outside, namespace inside); if the kernel
+refuses unprivileged user namespaces the half steps aside, quotes the refusal in the
+posture, and the memory cap still arms. Local-file workflows never touch the network,
+so arming costs an honest workflow nothing.
+
+Re-measure on any Linux host in two commands:
+
+```sh
+unshare --user --map-root-user --fork --pid --mount --mount-proc --net --   python3 -c 'import socket
+s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(1)
+c=socket.socket(); c.connect(s.getsockname()); print("loopback-ok")'
+# OSError (network unreachable)  -> the namespace holds (loopback exists, down)
+# "loopback-ok"                  -> it does not, whatever the config says
+python3 -c 'import socket
+s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(1)
+c=socket.socket(); c.connect(s.getsockname()); print("loopback-ok")'
+# "loopback-ok" on the host      -> the probe itself works, the comparison is fair
+```
+(Bind alone is the wrong probe — measured: bind() consults the local address table
+and never the interface's operstate, so 127.0.0.1 binds on a down loopback. Connect
+is where the namespace bites, and connecting is what "no socket opens" means.)
+
+The container leg that measures both halves against a real manager lives in
+`scripts/sandbox-docker.sh` (systemd as PID 1 in a throwaway container), for hosts
+that cannot create user namespaces themselves.
+
 ## Troubleshooting
 
 | Symptom | What it means |

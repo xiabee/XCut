@@ -143,6 +143,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Must land before the first exec: the job object reads the cap once,
 	// when the kernel handle is created.
 	media.SetProcessMemoryLimitMB(cfg.Resource.FFmpegMaxMemoryMB)
+	// Same deadline, second knob (D20): the Linux namespace wrap resolves once
+	// per (cap, policy) pair, before the first child can start.
+	media.SetSandboxPolicy(media.SandboxPolicy{
+		NetIsolation: cfg.Resource.FFmpegSandbox == "net",
+	})
 
 	a := &App{
 		Ctx:     ctx,

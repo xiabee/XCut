@@ -6,6 +6,21 @@ sections are tagged; anything above the newest one is unreleased.
 ## [Unreleased] — after v0.1.9-alpha
 
 ### Added
+- **The child sandbox gains its network rung on Linux** (`resource.ffmpeg_sandbox:
+  "net"`, opt-in, D20): every ffmpeg/ffprobe child then runs inside a fresh network
+  namespace — no interfaces at all, so nothing in the child can open a socket, and a
+  decoder exploit processing untrusted media cannot phone home — with a PID namespace
+  riding along (the child is PID 1 of its own table) and a private mount namespace.
+  The boundary is kernel-made, so a passing probe is enforcement rather than a
+  promise, and it arms and refuses independently of the memory cap, chaining
+  scope-outside-namespace when both are on. D20 also records why the filesystem
+  half did not ride the systemd channel: `systemd-run --scope` forks the child
+  client-side, so namespace properties would sit on the unit while the child ran
+  unwrapped — and the enforcement readback would echo them back. The live legs
+  measure the boundary at the kernel (loopback connect refused in the namespace
+  — the probe is bind+listen+connect, because bind alone passes on a down
+  interface and the first container leg caught exactly that — connects on the host; `scripts/sandbox-docker.sh` runs them against a real manager from any
+  dev box).
 - **Photo-reference seeding: `xcut player --photo <image> --set x,y,w,h`
   measures the person filter from a still image** (the person-filter
   roadmap's Phase 3, CLI half). The rect is normalized to the photo — its

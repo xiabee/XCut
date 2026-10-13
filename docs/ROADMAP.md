@@ -565,10 +565,32 @@ web UI stays the same asset tree served to browsers).
       `MemoryMax`/`MemorySwapMax=0`, measured to kill a 512 MB allocation under a
       128 MB cap on cgroup v2 — and measured *inert* on a hybrid-cgroup Kylin, where
       `doctor` says only what it can see (the scope started). See OPERATIONS.md.
-- [ ] Sandbox options for FFmpeg, container rung (Linux): sandbox the child
-      pipeline under a container/cgroup boundary. The *resource* half landed with
-      D18; this is the filesystem/syscall/network half — an FFmpeg that reaches for
-      files or sockets still sees everything `xcut` itself can.
+- [x] Sandbox options for FFmpeg, container rung — network half (D20,
+      2026-10-13): `resource.ffmpeg_sandbox: "net"` (opt-in, default none)
+      wraps every Linux child in `unshare --user --map-root-user --fork
+      --mount --mount-proc --pid --net --` — a network namespace with no
+      interfaces (loopback connect refused, measured via
+      bind+listen+connect after the bind-only probe passed for the wrong
+      reason in the first container leg), a PID namespace
+      (the child is PID 1 of its own table), a private mount namespace.
+      The boundary is kernel-made, so a passing probe *is* enforcement; the
+      halves (memory cap / netns) arm and refuse independently and chain
+      scope-outside-namespace when both arm. Live legs run wherever unshare
+      and python3 exist, plus `scripts/sandbox-docker.sh` (systemd as PID 1
+      in a throwaway container) so a Windows host measures Linux kernels.
+- [ ] Sandbox options for FFmpeg, container rung — filesystem half: an
+      FFmpeg that reaches for *files* still sees everything `xcut` itself
+      can (reads the home directory, not just the media). The carrier is
+      the open question, recorded in D20: `systemd-run --scope` cannot
+      carry `ProtectSystem`/`RestrictAddressFamilies` (the manager applies
+      namespace properties only to children it forks itself, and the scope
+      child is forked client-side — the readback would echo properties the
+      child never ran under); the service channel (manager-forked, `--pipe`
+      + exit-status propagation) is version-sensitive and unmeasured. A
+      bwrap-class mount choreography (tmpfs root, bind the workspace in
+      read-write) is the other known shape; both need the same treatment
+      D18/D20 gave their halves: measure the carrier on every kernel class
+      this project targets before the posture may claim it.
 
 ## Notched, with the reason
 

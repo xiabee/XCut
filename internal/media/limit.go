@@ -70,6 +70,33 @@ func SetProcessLimit(n int) {
 	limiter = make(chan struct{}, n)
 }
 
+// SandboxPolicy is the network-isolation rung of the child sandbox (D20). On
+// Linux a NetIsolation policy puts every FFmpeg child into a fresh network
+// namespace — no interfaces, so no socket opens — with PID and mount
+// namespaces riding along. The memory cap is a separate, independently armed
+// half; either alone is enough to wrap, and both together chain (scope outside,
+// namespaces inside). Non-Linux platforms have no reader for this today (the
+// job object is Windows' mechanism) and the policy rests unused there.
+type SandboxPolicy struct {
+	NetIsolation bool
+}
+
+var sandboxPolicy atomic.Pointer[SandboxPolicy]
+
+// SetSandboxPolicy stores the network-isolation policy. Must land before the
+// first exec: the Linux wrap resolves once per (cap, policy) pair, exactly
+// like the memory cap it sits beside.
+func SetSandboxPolicy(p SandboxPolicy) {
+	sandboxPolicy.Store(&p)
+}
+
+func currentSandboxPolicy() SandboxPolicy {
+	if p := sandboxPolicy.Load(); p != nil {
+		return *p
+	}
+	return SandboxPolicy{}
+}
+
 func acquire(ctx context.Context) (release func(), err error) {
 	limiterMu.Lock()
 	ch := limiter

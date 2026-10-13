@@ -68,6 +68,26 @@ func TestProcessMemoryLimitClampsNegatives(t *testing.T) {
 	}
 }
 
+// The sandbox policy round-trips through the setter byte-exact, and a zero
+// policy is what an unset config means (the same "unsaid reads as default"
+// rule the memory cap's zero follows). On non-Linux the policy rests unused —
+// wrapChild is platform code — so this case holds the cross-platform contract
+// the Linux tests cannot: the knob stores, and storing changes nothing here.
+func TestSandboxPolicyStores(t *testing.T) {
+	SetSandboxPolicy(SandboxPolicy{})
+	if got := currentSandboxPolicy(); got.NetIsolation {
+		t.Fatal("default policy has NetIsolation on")
+	}
+	SetSandboxPolicy(SandboxPolicy{NetIsolation: true})
+	if got := currentSandboxPolicy(); !got.NetIsolation {
+		t.Fatal("armed policy lost NetIsolation")
+	}
+	SetSandboxPolicy(SandboxPolicy{})
+	if got := currentSandboxPolicy(); got.NetIsolation {
+		t.Fatal("disarming the policy left NetIsolation on")
+	}
+}
+
 // TestRunSerializesUnderLimit proves Run honors the process cap with real
 // processes: with a limit of 1, two helper invocations must not overlap in
 // time. The helper (this same test binary, re-executed by Run) records its

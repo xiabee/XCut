@@ -114,14 +114,20 @@ intends to render HTML (that would need its own sanitiser and its own argument h
 ## Known Limitations (current)
 
 - FFmpeg parses untrusted media in-process with full user rights. What is applied
-  is a resource boundary, not a filesystem or syscall one: every child joins a
-  kill-on-close job object on Windows (since session #8) and, on Linux, starts in
-  its own systemd scope capped with `MemoryMax` (D18) — so a parse that balloons
-  cannot take the machine with it. What is *not* applied: no seccomp filter, no
-  container, no filesystem or network isolation around the child, so an FFmpeg
-  vulnerability that reaches for files or sockets sees the same rights as `xcut`
-  itself. Mitigations today: timeouts, concurrency and byte ceilings, and the
-  loopback-only bind. Future hardening: the container rung in ROADMAP Phase 4.
+  is a resource boundary plus, since D20, a *network* one on Linux: every child
+  joins a kill-on-close job object on Windows (since session #8) and, on Linux,
+  starts in its own systemd scope capped with `MemoryMax` (D18) — so a parse that
+  balloons cannot take the machine with it — and, with
+  `resource.ffmpeg_sandbox: "net"` (opt-in), runs in a fresh network namespace
+  where no socket can open at all, so a decoder exploit cannot phone home.
+  What is *not* applied: no seccomp filter beyond what the namespace wrap
+  implies, no container, no filesystem isolation — an FFmpeg vulnerability can
+  still *read* whatever the user can read (the media it was handed, the home
+  directory); only its network egress and process visibility are fenced (D20
+  records why the filesystem half did not ride the systemd channel). Mitigations
+  today: timeouts, concurrency and byte ceilings, the loopback-only bind, and
+  the opt-in netns rung. Future hardening: the filesystem half in ROADMAP
+  Phase 4, carrier question named in D20.
 - No HTTP API auth beyond the static bearer token (D12): there is no
   per-client identity, no rotation or revocation surface (revoke = edit the
   config and restart), and no TLS — `serve` speaks cleartext HTTP. A remote

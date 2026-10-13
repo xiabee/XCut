@@ -110,6 +110,37 @@ func TestResolveFFmpegMemoryCap(t *testing.T) {
 	}
 }
 
+// The sandbox rung is spelled, not guessed: unset reads as "none", an unknown
+// value is a validation error (a typo that silently meant "none" would read as
+// a boundary in the config while children run unwrapped), and the one armed
+// value survives case and whitespace.
+func TestResolveFFmpegSandbox(t *testing.T) {
+	if got := Default().Resource.FFmpegSandbox; got != "" {
+		t.Fatalf("default FFmpegSandbox = %q, want unset (Resolve decides \"none\")", got)
+	}
+	cfg := Default()
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.FFmpegSandbox != "none" {
+		t.Fatalf("unset sandbox = %q, want \"none\"", cfg.Resource.FFmpegSandbox)
+	}
+
+	cfg.Resource.FFmpegSandbox = "NET"
+	if err := Resolve(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resource.FFmpegSandbox != "net" {
+		t.Fatalf("sandbox = %q, want case-folded \"net\"", cfg.Resource.FFmpegSandbox)
+	}
+
+	cfg.Resource.FFmpegSandbox = " namespace "
+	err := Resolve(cfg)
+	if err == nil || !strings.Contains(err.Error(), "resource.ffmpeg_sandbox") {
+		t.Fatalf("got %v, want resource.ffmpeg_sandbox validation error", err)
+	}
+}
+
 func TestLoadInvalidFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")

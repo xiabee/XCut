@@ -469,3 +469,74 @@ by the zip reader) and not an authenticity check — provenance still rests on t
 SHA-256 and byte-count gate that runs before it. Both halves are tested by running this
 test binary as the tool under verification (an env var picks the answer it gives), which
 keeps the checks honest without a shell, a compiler call, or a committed fixture.
+
+## D20: the child sandbox's container rung lands as network isolation through unshare — and records why the filesystem half did not ride the systemd channel
+
+Context: D18 closed the resource half of the child sandbox (the memory cap through a
+per-child systemd scope). The ROADMAP's container rung asked for the rest — the
+filesystem/syscall/network half, "an FFmpeg that reaches for files or sockets still
+sees everything `xcut` itself can". The obvious-looking carrier was the same
+`systemd-run` wrap: add `-p ProtectSystem=strict -p RestrictAddressFamilies=AF_UNIX`.
+Reading how scope units work killed that on evidence before any code shipped: the
+namespace properties are applied by the manager's own fork of the child, but
+`systemd-run --scope` forks the child client-side and only asks the manager to place
+the PID in a cgroup — so the properties would be registered on the unit while the
+child ran unwrapped, and `systemctl show` would echo them back, making the
+enforcement readback lie in the same breath. That is the armed-is-not-enforced
+fiction D18 built its posture wording against, arriving through the front door.
+(The service channel — plain `systemd-run` without `--scope`, where the manager
+forks and namespaces do apply — needs `--pipe` plus exit-status propagation through
+the manager: a version-sensitive surface, recorded as the filesystem half's
+candidate carrier, not shipped on faith.)
+
+Decision (2026-10-13): the network half lands through `unshare` instead, behind an
+opt-in knob — `resource.ffmpeg_sandbox: "net"` (`"none"` is the default). Every
+Linux child then runs inside `unshare --user --map-root-user --fork --mount
+--mount-proc --pid --net --`: a fresh network namespace with no interfaces at all
+(the loopback exists and is down), a PID namespace that makes the child PID 1 of
+its own process table, and a private mount namespace so mount changes cannot
+propagate. The memory half chains outside it when both arm — scope wraps unshare
+wraps ffmpeg, and the scope's cgroup contains the whole subtree. The halves resolve
+independently and refuse independently: the kernel refusing unprivileged user
+namespaces steps the network half aside and quotes the refusal in the posture
+while the memory cap still arms, and vice versa.
+
+Why unshare: the boundary is created by the kernel, not negotiated with a manager —
+there is no version surface between the probe and the enforcement, so a passing
+probe *is* the enforcement and the posture may say "enforced at namespace creation"
+where the scope half may only say "the scope started". `unshare` ships in
+util-linux on every distribution this project targets, is argv-first, and degrades
+with exactly the pattern D18 established. The user namespace comes first because
+an unprivileged caller cannot create the others without it (`--map-root-user` maps
+root inside), which is also the one place a hardened kernel (`userns` disabled) can
+refuse — and the refusal is a posture sentence, not a broken render.
+
+Consequences, measured rather than assumed:
+1. *The boundary holds where it claims to.* In the new namespace, connecting over
+   loopback fails — the interface exists but is down, and the route to it is dead —
+   while the identical probe run on the host connects (`TestNetnsChildHasNoLoopback`).
+   The probe is bind+listen+connect, and the first container leg is why: bind alone
+   passed *inside* the namespace because bind() never looks at the interface's
+   operstate, only at the local address table — a probe shape that would have
+   shipped the boundary as fiction. The child reports PID 1
+   (`TestNetnsChildIsPidOne`). Stdout stays byte-pure and exit statuses propagate
+   through the wrap (`TestNetOnlyPolicyWrapsThroughUnshare`), the chain's argv
+   shape is pinned (`TestBothHalvesChain`), and each half's refusal leaves the
+   other armed (`TestUnshareRefusalLeavesMemoryHalfArmed`). The live legs run
+   wherever unshare and python3 exist, and in the throwaway systemd container via
+   `scripts/sandbox-docker.sh` (the D11 Docker pattern), which is how a Windows
+   dev host measures Linux kernels it does not have.
+2. *What this buys and what it does not.* A decoder exploit processing untrusted
+   media can no longer open a socket — no exfiltration channel, no C2 callback.
+   It can still *read* what the XCut user can read: the media, the libraries, the
+   home directory. The filesystem-read half stays open on the ROADMAP with its
+   carrier question named; this milestone shipped the half that could be measured
+   tonight rather than half of a claim that could not.
+3. *Local-file workflows never touch the network*, so arming costs an honest
+   workflow nothing — but the default is still `"none"`, because a boundary that
+   arrives uninvited must be diagnosed from a render failure. The knob is spelled
+   in Resolve: an unknown value is a validation error, not a silent `"none"`, so a
+   typo cannot read as a boundary in the config while children run unwrapped.
+4. *Doctor keeps its shape.* The posture row carries both halves' sentences in the
+   existing register; the enforcement readback stays the memory half's question,
+   because the network half has no manager to lie to it.

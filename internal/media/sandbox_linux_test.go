@@ -19,10 +19,20 @@ func withCapForTest(t *testing.T, mb int) {
 	before := processMemoryLimitMB()
 	t.Cleanup(func() {
 		SetProcessMemoryLimitMB(int(before))
+		SetSandboxPolicy(SandboxPolicy{})
 		resetSandbox()
 	})
 	resetSandbox()
 	SetProcessMemoryLimitMB(mb)
+}
+
+// withPolicyForTest pairs with withCapForTest for the network half: it arms (or
+// explicitly disarms) the namespace policy and restores the zero policy on the
+// way out, for the same reason the cap helper does.
+func withPolicyForTest(t *testing.T, pol SandboxPolicy) {
+	t.Helper()
+	SetSandboxPolicy(pol)
+	resetSandbox()
 }
 
 // resetSandbox clears the memoized posture so each case resolves against the state it
@@ -33,6 +43,7 @@ func resetSandbox() {
 	sandboxMu.Lock()
 	sandbox = sandboxState{}
 	sandboxMB = -1
+	sandboxPol = SandboxPolicy{}
 	sandboxMu.Unlock()
 }
 
@@ -326,5 +337,239 @@ func TestEnforcementQuotesTheManagerWhenTheQueryFails(t *testing.T) {
 	}
 	if !strings.Contains(detail, "Host is down") {
 		t.Errorf("detail = %q, want the manager's error quoted", detail)
+	}
+}
+
+// requireNetArmed skips when the namespace half cannot arm on this host — unshare
+// missing, or a kernel that refuses unprivileged user namespaces. Callers arm the
+// policy first.
+func requireNetArmed(t *testing.T) {
+	t.Helper()
+	resetSandbox()
+	if !SandboxArmed() {
+		t.Skipf("no namespace wrap on this host (%s)", SandboxPosture())
+	}
+}
+
+// TestNetOnlyPolicyWrapsThroughUnshare is the network half's basic live claim: with
+// the policy armed and the cap at zero, children go through unshare, stdout stays
+// exactly the child's, and exit statuses still travel.
+func TestNetOnlyPolicyWrapsThroughUnshare(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+	echo, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skip("no echo to run")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	stdout, stderr, err := Run(ctx, echo, "hello-netns")
+	if err != nil {
+		t.Fatalf("wrapped run failed: %v (stderr %q)", err, stderr)
+	}
+	if got := strings.TrimSpace(string(stdout)); got != "hello-netns" {
+		t.Errorf("child stdout = %q, want exactly the payload — the namespace wrap must not write there", got)
+	}
+	if falseBin, err := exec.LookPath("false"); err == nil {
+		if _, _, err := Run(ctx, falseBin); err == nil {
+			t.Error("a namespace-wrapped child that exited 1 came back without an error")
+		}
+	}
+}
+
+// TestNetnsChildHasNoLoopback is the boundary the rung exists for, asserted at the
+// kernel: in a fresh network namespace the loopback interface exists but is down, so
+// a connection over it fails — while the identical probe outside the wrap connects.
+// The probe is bind+listen+CONNECT, not bind alone: measured in the first sandbox
+// container leg, bind() only consults the local address table and never looks at the
+// interface's operstate, so 127.0.0.1 binds happily on a down lo and a bind-only
+// probe passes inside the namespace for the wrong reason. connect() is where the
+// missing route bites (ENETUNREACH), and connect is what "no socket can open" means
+// anyway.
+func TestNetnsChildHasNoLoopback(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 to probe sockets with")
+	}
+	probe := "import socket\n" +
+		"s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n" +
+		"s.bind((\"127.0.0.1\",0)); s.listen(1)\n" +
+		"c=socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n" +
+		"c.connect(s.getsockname())\nprint(\"loopback-ok\")\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// The control leg is deliberately a bare exec, not Run: the policy is armed
+	// for the whole test, so Run here would wrap the control in the same
+	// namespace and the comparison would measure the wrap against itself.
+	ctrl := exec.CommandContext(ctx, py, "-c", probe)
+	if out, err := ctrl.CombinedOutput(); err != nil {
+		t.Fatalf("the host itself cannot connect over loopback — the probe measures nothing: %v (%s)", err, out)
+	}
+	_, stderr, err := Run(ctx, py, "-c", probe)
+	if err == nil {
+		t.Fatalf("a child inside the network namespace connected over loopback — the boundary does not hold (stderr %q)", stderr)
+	}
+}
+
+// TestNetnsChildIsPidOne pins the PID namespace ride-along: unshare --fork --pid
+// makes the child PID 1 of its own namespace, so it can neither see nor signal host
+// processes. Cheap to assert, and it is the part of the wrap a socket-only reading
+// of the knob would forget.
+func TestNetnsChildIsPidOne(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 to read /proc with")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stdout, stderr, err := Run(ctx, py, "-c", "import os; print(os.getpid())")
+	if err != nil {
+		t.Fatalf("wrapped run failed: %v (stderr %q)", err, stderr)
+	}
+	if got := strings.TrimSpace(string(stdout)); got != "1" {
+		t.Errorf("child reported pid %q, want 1 — the PID namespace did not ride along", got)
+	}
+}
+
+// TestNetOnlyArgvIsWellFormed pins the namespace argv shape: the child sits
+// immediately after the final "--", the network flag is present, and the exec
+// target is unshare.
+func TestNetOnlyArgvIsWellFormed(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+
+	gotBin, gotArgs := wrapChild("/usr/bin/ffmpeg", "-hide_banner", "-i", "in.mp4")
+	if filepath.Base(gotBin) != "unshare" {
+		t.Fatalf("wrapped binary = %s, want unshare", gotBin)
+	}
+	joined := strings.Join(gotArgs, "\x00")
+	for _, want := range []string{"--net", "--user", "--map-root-user", "--fork", "--pid", "--mount-proc", "--"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv is missing %q: %v", want, gotArgs)
+		}
+	}
+	dash := -1
+	for i, a := range gotArgs {
+		if a == "--" {
+			dash = i
+		}
+	}
+	if dash < 0 || dash+1 >= len(gotArgs) || gotArgs[dash+1] != "/usr/bin/ffmpeg" {
+		t.Fatalf("the child does not follow \"--\": %v", gotArgs)
+	}
+	if got := strings.Join(gotArgs[dash+2:], " "); got != "-hide_banner -i in.mp4" {
+		t.Errorf("the child's own argv was altered: %q", got)
+	}
+}
+
+// TestBothHalvesChain pins the composition: cap and policy armed together produce
+// systemd-run outside and unshare inside, with the child after the final "--". The
+// cgroup question (does the cap bind) stays TestCapKillsAChildThatOverrunsIt's; this
+// is the argv shape both probes would pass while the chain is assembled wrong.
+func TestBothHalvesChain(t *testing.T) {
+	withCapForTest(t, 256)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireScope(t)
+	if !strings.Contains(SandboxPosture(), "network namespace") {
+		t.Fatalf("posture does not name the network half: %s", SandboxPosture())
+	}
+
+	gotBin, gotArgs := wrapChild("/usr/bin/ffmpeg", "-version")
+	if filepath.Base(gotBin) != "systemd-run" {
+		t.Fatalf("outermost binary = %s, want systemd-run", gotBin)
+	}
+	joined := strings.Join(gotArgs, "\x00")
+	if !strings.Contains(joined, "MemoryMax=256M") {
+		t.Errorf("argv lost the memory half: %v", gotArgs)
+	}
+	unshareIdx := -1
+	for i, a := range gotArgs {
+		if filepath.Base(a) == "unshare" {
+			unshareIdx = i
+		}
+	}
+	if unshareIdx < 0 {
+		t.Fatalf("argv lost the namespace half: %v", gotArgs)
+	}
+	dash := -1
+	for i := unshareIdx; i < len(gotArgs); i++ {
+		if gotArgs[i] == "--" {
+			dash = i
+		}
+	}
+	if dash < 0 || dash+1 >= len(gotArgs) || gotArgs[dash+1] != "/usr/bin/ffmpeg" {
+		t.Fatalf("the child does not follow the final \"--\": %v", gotArgs)
+	}
+
+	// And the chain runs: stdout pure, exit status real.
+	echo, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skip("no echo to run")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stdout, _, err := Run(ctx, echo, "hello-chain")
+	if err != nil {
+		t.Fatalf("chained run failed: %v", err)
+	}
+	if got := strings.TrimSpace(string(stdout)); got != "hello-chain" {
+		t.Errorf("child stdout = %q, want exactly the payload through both wrappers", got)
+	}
+}
+
+// TestUnshareRefusalLeavesMemoryHalfArmed is the independence claim: the kernel
+// refusing the namespaces must not tear down the memory cap, and the posture must
+// say both sentences — what armed, and what the kernel refused.
+func TestUnshareRefusalLeavesMemoryHalfArmed(t *testing.T) {
+	withCapForTest(t, 256)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	dir := fakeTool(t, "systemd-run", "exit 0")
+	nsDir := fakeTool(t, "unshare", "echo 'unshare: Operation not permitted' >&2; exit 1")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+nsDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	resetSandbox()
+
+	if !SandboxArmed() {
+		t.Fatalf("a refused namespace half took the memory half down (%s)", SandboxPosture())
+	}
+	gotBin, gotArgs := wrapChild("/bin/true")
+	if filepath.Base(gotBin) != "systemd-run" {
+		t.Fatalf("wrapped binary = %s, want systemd-run — the refused half must not wrap", gotBin)
+	}
+	if strings.Contains(strings.Join(gotArgs, "\x00"), "unshare") {
+		t.Errorf("the refused namespace half still sits in the argv: %v", gotArgs)
+	}
+	p := SandboxPosture()
+	if !strings.Contains(p, "MemoryMax=256M") || !strings.Contains(p, "Operation not permitted") {
+		t.Errorf("posture = %q, want the armed memory half and the refused network half both named", p)
+	}
+}
+
+// TestNetArmedWithNothingInstalledDegradesCompletely is the policy-only arm of the
+// same shape: no systemd-run and no unshare, policy on, cap 0 — nothing wraps, and
+// the posture names unshare as the missing piece rather than failing silently.
+func TestNetArmedWithNothingInstalledDegradesCompletely(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	t.Setenv("PATH", t.TempDir())
+	resetSandbox()
+
+	if gotBin, _ := wrapChild("/bin/true"); gotBin != "/bin/true" {
+		t.Errorf("a host with no wrappers got a different binary: %s", gotBin)
+	}
+	if SandboxArmed() {
+		t.Error("SandboxArmed is true with no wrapper installed")
+	}
+	if p := SandboxPosture(); !strings.Contains(p, "unshare") {
+		t.Errorf("posture = %q, want the missing namespace wrapper named", p)
 	}
 }

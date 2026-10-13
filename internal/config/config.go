@@ -67,14 +67,22 @@ type Resource struct {
 	// not the ceiling on processes: every ffmpeg/ffprobe child still asks
 	// MaxFFmpegProcesses, so raising this past that changes nothing measurable
 	// (docs/PERFORMANCE.md, 2026-09-23).
-	MaxAnalysisWorkers int     `json:"max_analysis_workers"`
-	MaxRenderWorkers   int     `json:"max_render_workers"`
-	FFmpegThreads      int     `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
-	FFmpegMaxMemoryMB  int     `json:"ffmpeg_max_memory_mb"` // per-process cap via the Windows job object; 0 = uncapped, default 1536
-	ProxyThreads       int     `json:"proxy_threads"`        // one-shot proxy encode; 0 = inherit ffmpeg_threads
-	MaxCacheGB         float64 `json:"max_cache_gb"`
-	MaxTempGB          float64 `json:"max_temp_gb"`
-	MaxProxyGB         float64 `json:"max_proxy_gb"` // analysis-proxy disk budget
+	MaxAnalysisWorkers int `json:"max_analysis_workers"`
+	MaxRenderWorkers   int `json:"max_render_workers"`
+	FFmpegThreads      int `json:"ffmpeg_threads"`       // per ffmpeg/ffprobe process; 0 = default (2)
+	FFmpegMaxMemoryMB  int `json:"ffmpeg_max_memory_mb"` // per-process cap via the Windows job object; 0 = uncapped, default 1536
+	// FFmpegSandbox arms the network-isolation rung of the child sandbox (D20):
+	// on Linux each FFmpeg child runs in its own network namespace — no
+	// interfaces at all, so a decoder exploit processing untrusted media cannot
+	// open so much as a socket — with PID and mount namespaces riding along.
+	// Opt-in ("net" arms it, "none" is the default): local-file workflows never
+	// touch the network, so arming costs an honest workflow nothing, but the
+	// refusal must be a config decision an operator made, not a surprise.
+	FFmpegSandbox string  `json:"ffmpeg_sandbox"`
+	ProxyThreads  int     `json:"proxy_threads"` // one-shot proxy encode; 0 = inherit ffmpeg_threads
+	MaxCacheGB    float64 `json:"max_cache_gb"`
+	MaxTempGB     float64 `json:"max_temp_gb"`
+	MaxProxyGB    float64 `json:"max_proxy_gb"` // analysis-proxy disk budget
 	// ProxyEnabled is a pointer because a bool cannot tell "the file said false"
 	// from "the file said nothing", and with the shipped default on (owner decision
 	// 2026-09-23) the second reading has to mean "keep the default" while the first
@@ -346,6 +354,18 @@ func Resolve(cfg *Config) error {
 	// rather than to the posture the default replaced.
 	if r.FFmpegMaxMemoryMB < 0 {
 		r.FFmpegMaxMemoryMB = defaultFFmpegMemoryMB
+	}
+	// The sandbox rung is spelled, not guessed: an unknown value has to be refused
+	// the way log.level is, because a typo that silently meant "none" would read as
+	// a boundary in the config while the children run unwrapped.
+	r.FFmpegSandbox = strings.ToLower(strings.TrimSpace(r.FFmpegSandbox))
+	switch r.FFmpegSandbox {
+	case "", "none":
+		r.FFmpegSandbox = "none"
+	case "net":
+	default:
+		return xcerr.E(xcerr.CodeValidation,
+			fmt.Sprintf("invalid resource.ffmpeg_sandbox %q (want none|net)", r.FFmpegSandbox), nil)
 	}
 	// Normalise the pointer so every consumer (and `xcut config show`) sees a
 	// decided bool; the "unsaid" reading only exists between layers.
