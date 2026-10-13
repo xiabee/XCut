@@ -3,12 +3,52 @@
 > The single source of truth for "what actually works right now".
 > A future agent reading only this file should know the real state.
 
-Updated: 2026-10-12 02:2x +0800 — session #36's paragraph below is the state
-that holds now (landed mid-session with the battery's last leg in flight; the
-verification sentence carries what had reported at landing time);
-session #35's follows it. This section is a session log,
+Updated: 2026-10-13 09:5x +0800 — session #37's paragraph below is the state
+that holds now; session #36's follows it. This section is a session log,
 read oldest first: the state that holds now is the last paragraph before
-`Verification for the night: …` in session #36 (night 2026-10-11).
+`Verification for the night: …` in the newest session paragraph.
+
+Session #37 (night 2026-10-12/13) landed the child sandbox's container rung — its
+network half, as D20. The discovery pass read the two remaining ROADMAP checkboxes
+and rejected the obvious carrier for the filesystem/syscall/network half before any
+code shipped: `systemd-run --scope` forks the child client-side, so namespace
+properties like ProtectSystem would sit registered on the unit while the child ran
+unwrapped — and `systemctl show` would echo them back, making the enforcement
+readback lie in the same breath (the armed-is-not-enforced fiction D18's wording
+exists against, arriving through the front door). What landed instead is
+`resource.ffmpeg_sandbox: "net"` (opt-in, default none, unknown values a validation
+error): every Linux ffmpeg/ffprobe child runs inside `unshare --user
+--map-root-user --fork --mount --mount-proc --pid --net` — no interfaces at all, the
+child is PID 1 of its own process table, mount changes stay private — with the
+memory cap resolving independently beside it (either arms alone; both chain
+scope-outside-namespace; a refused half steps aside and quotes the kernel's refusal
+in the posture while the other still arms, and the posture names only the halves
+that survived). The boundary is kernel-made, so a passing probe *is* enforcement —
+which the first container leg promptly put to the test and corrected: a bind-only
+probe passed *inside* the namespace because bind() consults the local address table
+and never the interface's operstate, so the live leg is bind+listen+connect now
+(loopback connect refused in the namespace, the bare-exec control connects on the
+host), the same leg caught the control probe running through the armed wrap itself
+(run 4 failed exactly there — the boundary had held all along; the comparison is
+what was dishonest), and `scripts/sandbox-docker.sh` (systemd as PID 1 in a
+throwaway container, after a tmpfs-noexec and a cold-apt rig fix) ran the whole
+media sandbox suite 18/18 PASS against a live manager — cap killer binding at
+0.38 s, readback answering applied, PID 1, stdout byte-pure through wrap and chain.
+Windows and macOS are unchanged (the policy rests; the job object is that
+platform's mechanism). The filesystem-read half stays open on the ROADMAP with its
+carrier question named (the systemd service channel's version sensitivity, or a
+bwrap-class mount choreography — both needing D18/D20's measure-first treatment).
+Verification for the night: the content tree passed the fast gate before the commit
+(race subset 404 s, 7 skips = the documented baseline), win-devops remote PASS at
+3f60537 (3m44s), and the control-plane's own local CI — the channel the ledger
+actually reads — re-ran on the clean 3f60537 head and passed (race subset 186 s,
+7 skips), its CI_PASS event bound to the sha; the first gate run had gone through
+the self-run channel AGENTS rule 8 warns about, invisible to the commit-level
+acceptance record, and the re-run closed that. Recorded as it happened: the session
+drifted past the 09:00 hard stop — the accumulated foreground polling waits around
+the container legs and the two gates ran hours past what the timeline felt like —
+so the close-out landed late; long jobs belong in the background with docs moving
+in parallel, and the poll loop should never be where the night's clock lives.
 
 Session #36 (night 2026-10-11) was a truth-and-infra night with three
 milestones and seven commits. The security discovery pass opened on
