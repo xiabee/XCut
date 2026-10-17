@@ -4,12 +4,18 @@ package media
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xiabee/XCut/internal/testmedia"
 )
 
 // withCapForTest sets the cap for one case and restores whatever was there, so a case
@@ -571,5 +577,213 @@ func TestNetArmedWithNothingInstalledDegradesCompletely(t *testing.T) {
 	}
 	if p := SandboxPosture(); !strings.Contains(p, "unshare") {
 		t.Errorf("posture = %q, want the missing namespace wrapper named", p)
+	}
+}
+
+// procsMatchingToken reports the pids whose command line carries token, scanned
+// from /proc by a bare python3 exec. It is deliberately NOT Run: the policy is
+// armed inside these tests, so Run here would wrap the scanner in the same
+// namespaces and the scan would answer for the wrap instead of the host (the
+// control-leg lesson the loopback test paid for). The scanner excludes its own
+// pid explicitly — its cmdline carries the script, and the script carries the
+// token, so an unexcluded scan always matches itself and the assertion can
+// never pass (measured the hard way: four rig rounds of self-matching red).
+func procsMatchingToken(t *testing.T, token string) []string {
+	t.Helper()
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 to scan /proc with")
+	}
+	script := "import os\n" +
+		"me = str(os.getpid())\n" +
+		"for p in os.listdir('/proc'):\n" +
+		"    if not p.isdigit() or p == me:\n        continue\n" +
+		"    try:\n" +
+		"        c = open('/proc/' + p + '/cmdline', 'rb').read().decode('utf-8', 'replace')\n" +
+		"    except OSError:\n        continue\n" +
+		"    if '" + token + "' in c:\n        print(p)\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, py, "-c", script).Output()
+	if err != nil {
+		t.Fatalf("the /proc scan itself failed — the assertion measures nothing: %v", err)
+	}
+	var pids []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			pids = append(pids, line)
+		}
+	}
+	return pids
+}
+
+// awaitMarker waits, bounded, for the probe child to prove it is up: a cancel
+// that lands before the child started would measure nothing and pass on air.
+func awaitMarker(t *testing.T, marker string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the probe child never came up — the kill below would have measured air")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// runCancelProbe is the shared body of the two cancellation legs: a child that
+// sleeps for 30 s under the armed wrap is cancelled after it is verifiably up,
+// and the assertion is that the CHILD is gone — not merely the wrapper. This is
+// the shape a render cancellation takes on the API surface, and the direct child
+// there is the outermost wrapper, not the encoder; a kill that stops at the
+// wrapper strands the work (Windows answers with the kill-on-close job object;
+// the boundary here is what Linux does instead).
+func runCancelProbe(t *testing.T) {
+	t.Helper()
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 to sleep under the wrap")
+	}
+	token := "xcut-cancel-probe-" + strconv.Itoa(os.Getpid())
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "up")
+	// The token rides in the child's argv (a variable assignment is enough):
+	// the /proc scan identifies the child by its command line, and the first
+	// version of this probe forgot to put the token there — the scan then
+	// matched only itself and every round read red on air.
+	script := "import time\n" +
+		"token = '" + token + "'\n" +
+		"open('" + marker + "', 'w').write('up')\n" +
+		"time.sleep(30)\n"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	runCtx, runCancel := context.WithCancel(ctx)
+	type runResult struct {
+		stdout, stderr []byte
+		err            error
+	}
+	done := make(chan runResult, 1)
+	go func() {
+		s, e, rerr := Run(runCtx, py, "-c", script)
+		done <- runResult{s, e, rerr}
+	}()
+
+	awaitMarker(t, marker)
+	runCancel()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			t.Error("a cancelled run came back nil-error; cancellation must fail the run, not silently detach")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run did not return within 15s of cancellation — the wrapper held it")
+	}
+
+	// SIGKILL is immediate, but the assertion polls rather than checks once:
+	// a single scan racing the kill could pass or fail on timing instead of on
+	// the boundary. Three seconds of nothing is "gone"; one hit is the defect.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		pids := procsMatchingToken(t, token)
+		if len(pids) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the child outlived its cancellation (pids %v still alive) — the kill reached only the wrapper and stranded the work", pids)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// TestCancelReachesThroughTheWrap is the network half's cancellation claim: with
+// only the namespace wrap armed, cancelling the context must end the child, not
+// just unshare. Measured before the fix, the child survived — the kill stopped
+// at the direct child (the wrapper) and the sleeper kept its 30 s.
+func TestCancelReachesThroughTheWrap(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+	runCancelProbe(t)
+}
+
+// TestCancelReachesThroughTheChain is the same claim one wrapper deeper: scope
+// outside, namespace inside — the shape an armed cap plus an armed policy gives
+// every render. The scope's client-side fork is the exact place a group kill
+// could stop working, so this leg measures the chain rather than trusting the
+// netns-only result to compose.
+func TestCancelReachesThroughTheChain(t *testing.T) {
+	if !cgroupV2Unified(t) {
+		return
+	}
+	withCapForTest(t, 64)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireScope(t)
+	runCancelProbe(t)
+}
+
+// TestNetnsRenderMatchesTheBareRender measures the sentence D20 wrote but never
+// measured: "local-file workflows never touch the network, so arming costs an
+// honest workflow nothing." The same fixture is encoded twice — once bare (a
+// direct exec, the control-bypass rule) and once through the armed namespace
+// wrap — and the assertion is byte equality: a wrap that cost the encoder
+// anything (threads, code paths, output handling) would show in the bytes.
+// testmedia's own fixtures stand on the same determinism.
+func TestNetnsRenderMatchesTheBareRender(t *testing.T) {
+	withCapForTest(t, 0)
+	withPolicyForTest(t, SandboxPolicy{NetIsolation: true})
+	requireNetArmed(t)
+	if !testmedia.HasFFmpeg() {
+		t.Skip("no ffmpeg to render with")
+	}
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("no ffmpeg on PATH")
+	}
+	dir := t.TempDir()
+	src, err := testmedia.Generate(dir, "src.mp4", testmedia.DefaultFixture(), 320, 240, 15)
+	if err != nil {
+		t.Fatalf("fixture generation failed: %v", err)
+	}
+	encode := func(out string) []string {
+		return []string{"-nostdin", "-i", src,
+			"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+			"-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-y", out}
+	}
+	outBare := filepath.Join(dir, "bare.mp4")
+	outWrapped := filepath.Join(dir, "wrapped.mp4")
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	// The control is deliberately a bare exec: Run here would wrap the control
+	// in the same namespace and the comparison would measure the wrap against
+	// itself (the control-leg lesson, applied to the render).
+	if out, err := exec.CommandContext(ctx, ffmpeg, encode(outBare)...).CombinedOutput(); err != nil {
+		t.Fatalf("the bare control encode failed — the comparison measures nothing: %v (%s)", err, out)
+	}
+	if _, stderr, err := Run(ctx, ffmpeg, encode(outWrapped)...); err != nil {
+		t.Fatalf("the wrapped encode failed: %v (stderr %q)", err, stderr)
+	}
+
+	hash := func(p string) (string, int64) {
+		f, err := os.Open(p)
+		if err != nil {
+			t.Fatalf("cannot read back %s: %v", p, err)
+		}
+		defer f.Close()
+		h := sha256.New()
+		n, err := io.Copy(h, f)
+		if err != nil {
+			t.Fatalf("cannot hash %s: %v", p, err)
+		}
+		return fmt.Sprintf("%x", h.Sum(nil)), n
+	}
+	want, wantLen := hash(outBare)
+	got, gotLen := hash(outWrapped)
+	if got != want {
+		t.Errorf("the wrapped render's bytes differ from the bare render's (sha %s vs %s, %d vs %d bytes) — arming the namespace cost the encode something",
+			want, got, wantLen, gotLen)
 	}
 }

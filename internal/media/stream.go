@@ -36,6 +36,7 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 
 	wbin, wargs := wrapChild(bin, args...)
 	cmd := exec.CommandContext(ctx, wbin, wargs...)
+	armProcessGroup(cmd)
 	cmd.WaitDelay = pipeDrainGrace
 	// stderr is diagnostics: last-64KB wins (bounded intake — a corrupt file
 	// can emit decode errors per frame for the whole pass).
@@ -57,13 +58,13 @@ func StreamStdout(ctx context.Context, bin string, sink func(chunk []byte) error
 		if n > 0 {
 			total += int64(n)
 			if total > MaxStreamBytes {
-				_ = cmd.Process.Kill()
+				_ = stopProcessTree(cmd.Process)
 				_ = cmd.Wait()
 				return xcerr.E(xcerr.CodeResourceLimit,
 					"process output exceeded the streaming budget", nil)
 			}
 			if serr := sink(buf[:n]); serr != nil {
-				_ = cmd.Process.Kill()
+				_ = stopProcessTree(cmd.Process)
 				_ = cmd.Wait()
 				return serr
 			}

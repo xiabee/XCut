@@ -100,6 +100,7 @@ func Version(ctx context.Context, bin string) (string, error) {
 
 	wbin, wargs := wrapChild(bin, "-version")
 	cmd := exec.CommandContext(ctx, wbin, wargs...)
+	armProcessGroup(cmd)
 	cmd.WaitDelay = pipeDrainGrace
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -188,6 +189,7 @@ func Run(ctx context.Context, bin string, args ...string) (stdout, stderr []byte
 	// message below reads "cannot execute ffprobe" and not "cannot execute systemd-run".
 	wbin, wargs := wrapChild(bin, args...)
 	cmd := exec.CommandContext(ctx, wbin, wargs...)
+	armProcessGroup(cmd)
 	cmd.WaitDelay = pipeDrainGrace
 	outBuf := &cappedBuffer{max: stdoutCaptureCap}
 	errBuf := &cappedBuffer{max: maxCapturedOutput}

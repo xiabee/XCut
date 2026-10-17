@@ -30,16 +30,19 @@ MSYS_NO_PATHCONV=1 docker run -d --name "$cid" \
     -e "GOCACHE=/go-cache" -v xcut-go-cache:/go-cache \
     -e "GOMODCACHE=/go-mod" -v xcut-go-mod:/go-mod \
     "$image" \
-    sh -c 'apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq systemd python3 >/dev/null 2>&1; exec /lib/systemd/systemd' \
+    sh -c 'apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq systemd python3 ffmpeg >/dev/null 2>&1; exec /lib/systemd/systemd' \
     >/dev/null
 
-# Wait for the manager to answer — the container installs systemd before it
-# boots it, and a cold apt cache can take minutes; the loop gives that 8 minutes
-# before declaring the leg dead.
+# Wait for the manager to answer — the container installs systemd, python3 and
+# ffmpeg before it boots, and a cold apt cache with the ffmpeg dependency set
+# can outlast the 8 minutes the original systemd-only budget allowed (measured:
+# the first ffmpeg-carrying run died at exactly the old budget with a silent
+# apt still in flight); the loop gives that 20 minutes before declaring the leg
+# dead.
 i=0
 until docker exec "$cid" systemctl is-system-running >/dev/null 2>&1; do
     i=$((i + 1))
-    if [ "$i" -gt 240 ]; then
+    if [ "$i" -gt 600 ]; then
         echo "sandbox-docker: the container manager never came up" >&2
         docker logs "$cid" 2>&1 | tail -20 >&2
         exit 2
@@ -48,4 +51,4 @@ until docker exec "$cid" systemctl is-system-running >/dev/null 2>&1; do
 done
 
 docker exec "$cid" systemctl is-system-running || true
-docker exec -e XNIGHTOPS_CI=1 "$cid" sh -c 'cd /src && go test ./internal/media/ -count=1 -v -run "TestScope|TestCap|TestWrap|TestSandbox|TestEnforcement|TestNet|TestBoth|TestUnshare|TestNoCap|TestMissing"'
+docker exec -e XNIGHTOPS_CI=1 "$cid" sh -c 'cd /src && go test ./internal/media/ -count=1 -v -run "TestScope|TestCap|TestWrap|TestSandbox|TestEnforcement|TestNet|TestBoth|TestUnshare|TestNoCap|TestMissing|TestCancel"'

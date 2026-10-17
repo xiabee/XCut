@@ -83,6 +83,28 @@ sections are tagged; anything above the newest one is unreleased.
   and the one a browser check would have had to catch by eye.
 
 ### Fixed
+- **Cancellation now reaches through the Linux sandbox wraps.** Killing the
+  direct child — `exec.CommandContext`'s default, and `StreamStdout`'s overflow
+  path explicitly — stopped at systemd-run or unshare and left the encoder
+  running: a cancelled render's ffmpeg kept encoding, in the netns-only shape
+  and the scope+net chain shape (measured red on the container rig before the
+  fix). Two candidate relays were probed and rejected on evidence first: group
+  signals resolve per PID namespace, so the wrap's `--pid` shields the encoder
+  from a kill to its own group even though `ps` shows it there; and
+  `unshare --kill-child` is inert (flag accepted, delivery never happens, with
+  and without `--pid`). What ships: children start as their own process-group
+  leader, cancellation enumerates descendants from `/proc` while the tree is
+  intact and SIGKILLs each directly — a direct kill to a descendant's pid
+  crosses the namespace boundary, carried by the caller's ancestor-namespace
+  capabilities (the one mechanism the probes showed landing) — then takes the
+  group and the child. The same probes that killed the two rejected relays
+  found two facts worth keeping: the group kill still carries every shape that
+  stays in one namespace, and D20's "arming costs an honest workflow nothing"
+  is no longer reasoning — the same fixture encoded bare and through the armed
+  wrap comes out byte-identical (`TestNetnsRenderMatchesTheBareRender`). The
+  crash path (xcut dying without cancelling) still orphans the tree on Linux;
+  named in D20's amendment, not silently assumed away. Windows is unchanged —
+  the job object was already the whole answer.
 - **The close battery's full leg can no longer time itself into a false
   verdict, and its own script exists.** The full gate's `-race ./...` run
   carried go's default 10-minute per-package timeout while the fast-mode

@@ -123,6 +123,7 @@ func RunCombined(ctx context.Context, bin string, args ...string) ([]byte, error
 	defer release()
 	wbin, wargs := wrapChild(bin, args...)
 	cmd := exec.CommandContext(ctx, wbin, wargs...)
+	armProcessGroup(cmd)
 	cmd.WaitDelay = pipeDrainGrace
 	buf := &cappedBuffer{max: maxCapturedOutput}
 	cmd.Stdout = buf

@@ -540,3 +540,53 @@ Consequences, measured rather than assumed:
 4. *Doctor keeps its shape.* The posture row carries both halves' sentences in the
    existing register; the enforcement readback stays the memory half's question,
    because the network half has no manager to lie to it.
+
+Amended 2026-10-18 (night #38), after the cancellation path was measured: two
+of the sentences above turned out to need their measurements behind them, and
+one claim needed a caveat.
+
+*First, the claim that was fiction until measured.* "Local-file workflows never
+touch the network, so arming costs an honest workflow nothing" was reasoning,
+not evidence. It is now evidence: the same fixture encoded bare and through
+the armed namespace wrap comes out byte-identical
+(`TestNetnsRenderMatchesTheBareRender`, sha256 over both files). The measurement
+is also the regression tripwire for the fs half, whenever a carrier lands: any
+future wrap that costs the encoder anything shows in those bytes.
+
+*Second, cancellation did not reach through the wrap.* Killing the direct child
+— what `exec.CommandContext` does by default and what `StreamStdout`'s
+overflow path did explicitly — stops at systemd-run or unshare and strands the
+encoder: both cancel legs measured the child alive after the wrapper died,
+in the netns-only shape and the chain shape (`TestCancelReachesThroughTheWrap`,
+`TestCancelReachesThroughTheChain`; red on the rig before the fix, the
+defect's evidence). Two candidate relays were probed and rejected before the
+shipped one was found:
+
+- *Process groups alone are not enough*, and the reason is worth writing down:
+  group signals resolve per PID namespace. The wrap's `--pid` shields the
+  encoder from a `kill(-pgid)` sent from xcut's side even though `ps` shows
+  the child in the same group as the wrapper — probed directly: a same-group
+  child inside `unshare --pid` survived a SIGKILL to its group while the
+  identical shape without `--pid` died. The group kill still carries the shapes
+  that stay in one namespace (the bare child, the scope's fork), so it ships.
+- *`unshare --kill-child` measured inert*: accepted on the command line, never
+  delivered — the child outlived its parent with and without `--pid` (probed
+  on bookworm's util-linux 2.38). Nothing unmeasured ships in the argv; the
+  flag is not used.
+
+What ships is the mechanism the probes said works: the child starts as its own
+process group leader (`Setpgid`), cancellation first enumerates its
+descendants from `/proc` while the ppid chain is still intact and SIGKILLs
+each directly — a direct kill to a descendant's pid crosses the namespace
+boundary because the caller's capabilities in the ancestor user namespace
+carry it (probed: the same child that survived the group kill died from a
+direct one) — then takes the group and the child. Both cancel legs measure
+the CHILD gone, not the wrapper, which is the only reading of "cancelled" a
+job row can honestly report.
+
+*Third, the remainder named.* The crash path (xcut dies without cancelling)
+still orphans the tree on Linux: the Windows job object takes its children on
+close, but nothing here registers a parent-death relay — group and descendant
+kills are cancel-path code. A scope-armed tree stays memory-capped while
+orphaned; a netns-only tree is bounded by nothing. Open until a carrier for
+parent-death survives its own probe discipline.

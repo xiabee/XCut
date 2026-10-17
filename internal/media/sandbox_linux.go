@@ -223,6 +223,16 @@ func netPart() wrapPart {
 // pair rides along — the child gets its own /proc (mount-proc needs the mount
 // namespace) and cannot see or signal host processes. The trailing "--" hands
 // everything after it to the child verbatim.
+//
+// Nothing here reaches for a kill relay: unshare(1)'s --kill-child was probed
+// for exactly that role and measured inert (the flag is accepted and the child
+// still survives its parent's death, with and without the PID namespace —
+// probed on bookworm's util-linux 2.38), and the cancellation path does not
+// lean on unmeasured flags. The kill that reaches the child lives in
+// processgroup_unix.go: a group kill for same-namespace members plus direct
+// descendant kills, which the kernel permits across the namespace boundary
+// (measured) where group signals are not (also measured: group signals resolve
+// per pid namespace, so the wrap's --pid shields the child from them).
 func unshareArgs() []string {
 	return []string{"--user", "--map-root-user", "--fork", "--mount", "--mount-proc", "--pid", "--net", "--"}
 }
